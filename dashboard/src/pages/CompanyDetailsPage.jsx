@@ -120,10 +120,10 @@ export default function CompanyDetailsPage() {
 
   const handleChange = (e) => {
     if (!isAdmin) return;
-    const { name, value, type } = e.target;
+    const { name, value } = e.target;
     setCompany((prev) => ({
       ...prev,
-      [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value,
+      [name]: value,
     }));
   };
 

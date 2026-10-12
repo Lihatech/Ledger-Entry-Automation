@@ -588,7 +588,11 @@ export default function ParametersPage() {
     try {
       setError('');
       setSuccessMsg('');
-      const targetCount = parseInt(newOpTargetCount) || 10;
+      const targetCount = Number(newOpTargetCount);
+      if (newOpTargetCount === '' || !Number.isInteger(targetCount) || targetCount < 1 || targetCount > 100) {
+        setError('Target parameter count must be a whole number between 1 and 100.');
+        return;
+      }
       const opTitle = newOpName.trim() || `${newOpType.replace('_', ' ').toUpperCase()} Sheet`;
       const res = await createTemplate(selectedPart.part_number, {
         name: opTitle,
@@ -615,7 +619,11 @@ export default function ParametersPage() {
     try {
       setError('');
       setSuccessMsg('');
-      const targetVal = parseInt(editTargetCount) || 10;
+      const targetVal = Number(editTargetCount);
+      if (editTargetCount === '' || !Number.isInteger(targetVal) || targetVal < 1 || targetVal > 100) {
+        setError('Target parameter count must be a whole number between 1 and 100.');
+        return;
+      }
       const cycleVal = parseFloat(editCycleTime) || 0.0;
       const res = await updateTemplate(selectedTemplate.id, { 
         target_parameter_count: targetVal,
@@ -2948,7 +2956,7 @@ export default function ParametersPage() {
                       max="100"
                       className="form-input"
                       value={newOpTargetCount}
-                      onChange={(e) => setNewOpTargetCount(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setNewOpTargetCount(e.target.value)}
                       required
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
@@ -3337,7 +3345,7 @@ export default function ParametersPage() {
                       max="100"
                       className="form-input"
                       value={editTargetCount}
-                      onChange={(e) => setEditTargetCount(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setEditTargetCount(e.target.value)}
                       required
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
