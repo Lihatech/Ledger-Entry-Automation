@@ -16,7 +16,9 @@ import '../services/api_service.dart';
 ///   - Section 1: Read-only Product Parameters from Master DB
 ///   - Section 2: Process Parameters from Master DB
 class SetupApprovalScreen extends StatefulWidget {
-  const SetupApprovalScreen({super.key});
+  final Map<String, dynamic>? template;
+
+  const SetupApprovalScreen({super.key, this.template});
 
   @override
   State<SetupApprovalScreen> createState() => _SetupApprovalScreenState();
@@ -64,7 +66,7 @@ class _SetupApprovalScreenState extends State<SetupApprovalScreen>
   Future<void> _loadData() async {
     setState(() { _isLoading = true; _errorMessage = null; });
     final provider = Provider.of<InspectionProvider>(context, listen: false);
-    final template = provider.selectedTemplate;
+    final template = widget.template ?? provider.selectedTemplate;
     if (template == null || template['id'] == null) {
       setState(() { _isLoading = false; _errorMessage = 'No active template selected.'; });
       return;

@@ -11,6 +11,14 @@ class AccessControlTests(TestCase):
         self.admin = User.objects.create_user(username='access_admin', password='password', role='admin')
         self.operator = User.objects.create_user(username='access_operator', password='password', role='operator')
 
+    def test_display_name_falls_back_to_username(self):
+        self.assertEqual(self.operator.display_name, 'access_operator')
+
+        self.operator.first_name = 'Asha'
+        self.operator.last_name = 'Patel'
+        self.operator.save(update_fields=['first_name', 'last_name'])
+        self.assertEqual(self.operator.display_name, 'Asha Patel')
+
     def test_existing_roles_and_common_access(self):
         self.assertTrue(self.operator.has_access('messages.use'))
         self.assertTrue(self.operator.has_access('document.view'))

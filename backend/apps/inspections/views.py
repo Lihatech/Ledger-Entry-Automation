@@ -24,7 +24,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
-from apps.users.permissions import (  # type: ignore
+from apps.users.permissions import (
     HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor, MobileInspectionAccess,
 )
 from .models import (
@@ -242,9 +242,26 @@ class BatchMeasureView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        session_obj = InspectionSession.objects.filter(session_id=session_id).first()
-        session_insp_type = session_obj.inspection_type if session_obj else None
-        session_hourly_slot = (session_obj.hourly_unlocked_slot or 1) if session_obj else 1
+        session_obj = InspectionSession.objects.select_related('template').filter(session_id=session_id).first()
+        if not session_obj:
+            return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        op_name = session_obj.template.name if session_obj.template and session_obj.template.name else (session_obj.inspection_type or 'Inspection')
+        if (session_obj.status or '').lower() in ['completed', 'approved']:
+            return Response(
+                {'error': f"Operation '{op_name}' is fully completed and locked against edits."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if session_obj.inspection_type == 'first_piece' and (
+            session_obj.is_first_piece_finalized or session_obj.status in [InspectionSession.Status.FINALIZED_PASSED, InspectionSession.Status.FINALIZED_FAILED]
+        ):
+            return Response(
+                {'error': f"1st Piece Inspection for Operation '{op_name}' is finalized and locked."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        session_insp_type = session_obj.inspection_type
+        session_hourly_slot = (session_obj.hourly_unlocked_slot or 1)
 
         results = []
         failed_codes = []
@@ -441,7 +458,10 @@ class SessionListView(generics.ListAPIView):
         only_completed  = self.request.query_params.get('only_completed')
         start_date      = self.request.query_params.get('start_date')
         end_date        = self.request.query_params.get('end_date')
+        template_id     = self.request.query_params.get('template') or self.request.query_params.get('template_id')
 
+        if template_id:
+            qs = qs.filter(template_id=template_id)
         if status_filter:
             qs = qs.filter(status=status_filter)
         if machine_code:
@@ -606,23 +626,23 @@ class SetupStatusView(APIView):
         else:
             mach_q = Q(machine__machine_code=machine_id)
 
+        # ── Optional template filter ──────────────────────────────────────────
+        template_id_param = request.query_params.get('template') or request.query_params.get('template_id')
+        fp_q = mach_q & Q(started_at__date=today, inspection_type='first_piece')
+        hourly_q = mach_q & Q(started_at__date=today, inspection_type='hourly')
+        if template_id_param and str(template_id_param).isdigit():
+            fp_q = fp_q & Q(template_id=int(template_id_param))
+            hourly_q = hourly_q & Q(template_id=int(template_id_param))
+
         # ── 1. Find today's first_piece session (priority for Setup Approval) ──
         fp_session = InspectionSession.objects.select_related(
-            'part', 'machine', 'machine__plant__factory'
-        ).filter(
-            mach_q,
-            started_at__date=today,
-            inspection_type='first_piece',
-        ).order_by('-trial_number', '-started_at').first()
+            'part', 'machine', 'machine__plant__factory', 'template'
+        ).filter(fp_q).order_by('-trial_number', '-started_at').first()
 
         # ── 2. Find ALL of today's hourly sessions (all operations, all slots) ────
         hourly_sessions_qs = InspectionSession.objects.select_related(
             'part', 'machine', 'machine__plant__factory', 'template'
-        ).filter(
-            mach_q,
-            started_at__date=today,
-            inspection_type='hourly',
-        ).order_by('template_id', 'hourly_unlocked_slot', '-started_at')
+        ).filter(hourly_q).order_by('template_id', 'hourly_unlocked_slot', '-started_at')
 
         # Latest single hourly session kept for backward compat
         hourly_session = hourly_sessions_qs.first()
@@ -695,16 +715,26 @@ class SetupStatusView(APIView):
             next_slot_op = (max(completed_slots_op) + 1) if completed_slots_op else 1
 
             t = sessions_for_op[0].template
+            op_fp = InspectionSession.objects.filter(
+                mach_q,
+                template_id=tid,
+                started_at__date=today,
+                inspection_type='first_piece',
+            ).order_by('-trial_number', '-started_at').first()
+
             operations.append({
-                'template_id':        tid,
-                'template_name':      (t.name or '') if t else '',
-                'inspection_type':    (t.inspection_type if t else 'hourly'),
-                'total_parameters':   (t.target_parameter_count if t else 0),
-                'completed_slots':    completed_slots_op,
-                'active_slot':        active_slot_op or next_slot_op,
-                'active_session_id':  active_session_id_op,
-                'next_unlocked_slot': next_slot_op,
-                'hourly_sessions':    slot_details,
+                'template_id':              tid,
+                'template_name':            (t.name or '') if t else '',
+                'inspection_type':          (t.inspection_type if t else 'hourly'),
+                'total_parameters':         (t.target_parameter_count if t else 0),
+                'completed_slots':          completed_slots_op,
+                'active_slot':              active_slot_op or next_slot_op,
+                'active_session_id':        active_session_id_op,
+                'next_unlocked_slot':       next_slot_op,
+                'first_piece_session_id':   str(op_fp.session_id) if op_fp else None,
+                'is_first_piece_finalized': op_fp.is_first_piece_finalized if op_fp else False,
+                'first_piece_status':       op_fp.status if op_fp else 'not_started',
+                'hourly_sessions':          slot_details,
             })
 
         # ── 6. Legacy completed_slots (union across all operations) ───────────────

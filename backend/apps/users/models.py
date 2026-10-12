@@ -96,6 +96,11 @@ class User(AbstractUser):
         emp = f" ({self.employee_id})" if self.employee_id else ""
         return f"{self.get_full_name() or self.username}{emp} : {role_label}"
 
+    @property
+    def display_name(self):
+        """Stable user label for live feeds and reports."""
+        return self.get_full_name().strip() or self.username or f"User #{self.pk}"
+
     def effective_access(self):
         if not self.is_active:
             return set()

@@ -293,17 +293,12 @@ class InspectionService:
             'shift': shift,
             'started_at__date': today,
             'inspection_type': actual_inspection_type,
+            'template': template,
         }
         if actual_inspection_type == 'first_piece':
             filter_kwargs['trial_number'] = trial_number
         elif actual_inspection_type == 'hourly':
             filter_kwargs['hourly_unlocked_slot'] = hourly_slot
-            # H5 FIX (per-operation session isolation): include the template so that
-            # two different operations (e.g. OP-10 and OP-02) running on the same
-            # machine+part+shift at the same slot each get their OWN InspectionSession.
-            # Without this, both operators hit the same session row and corrupt each
-            # other's measurement data (race condition / data collision).
-            filter_kwargs['template'] = template
 
         with transaction.atomic():
             # Lock any matching rows so concurrent requests queue up here
@@ -311,6 +306,12 @@ class InspectionService:
                 InspectionSession.objects
                 .select_for_update()
                 .filter(**filter_kwargs)
+                .exclude(
+                    status__in=[
+                        InspectionSession.Status.COMPLETED,
+                        InspectionSession.Status.APPROVED,
+                    ]
+                )
                 .order_by('-started_at')
                 .first()
             )
@@ -494,8 +495,19 @@ class InspectionService:
         """
         # Fetch session
         session = InspectionSession.objects.select_related(
-            'part', 'machine'
+            'part', 'machine', 'template'
         ).get(session_id=session_id)
+
+        # Whole operation completion lock
+        op_name = session.template.name if session.template and session.template.name else (session.inspection_type or 'Inspection')
+        if (session.status or '').lower() in ['completed', 'approved']:
+            raise PermissionError(f"Operation '{op_name}' has been fully completed and locked against edits.")
+
+        # First piece finalize lock (protects 1st PC #1..#3 from post-finalization edits)
+        if (inspection_type == 'first_piece' or session.inspection_type == 'first_piece') and (
+            session.is_first_piece_finalized or session.status in [InspectionSession.Status.FINALIZED_PASSED, InspectionSession.Status.FINALIZED_FAILED]
+        ):
+            raise PermissionError(f"1st Piece Inspection for Operation '{op_name}' is finalized and locked.")
 
         # Fetch parameter safely from Redis cache or DB by part_id and parameter_code
         parameter = _get_cached_parameter(session.part_id, parameter_code)
@@ -1258,7 +1270,7 @@ class InspectionService:
     def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
                                 meas_type=None, meas_trial=None, meas_slot=None):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {
@@ -1295,7 +1307,7 @@ class InspectionService:
     def _push_process_param_event(self, session, process_parameter, status_val, value, voice_raw_text='', method='voice',
                                   meas_type='first_piece', meas_trial=1, meas_slot=0):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {
@@ -1332,7 +1344,7 @@ class InspectionService:
 
     def _push_session_event(self, session, event_type: str):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {

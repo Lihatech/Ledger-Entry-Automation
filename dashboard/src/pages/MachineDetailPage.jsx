@@ -38,7 +38,7 @@ export default function MachineDetailPage() {
   const ws = useWebSocket();
   const wsEvents = ws?.events ?? [];
 
-  const { companyName, companyCode, shiftHours = 8 } = useCompany();
+  const { companyName, companyCode } = useCompany();
 
   // Fetch machine details, performance summary, and session history
   const fetchData = useCallback(async () => {
@@ -464,9 +464,14 @@ export default function MachineDetailPage() {
                       <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '7%', fontWeight: 'bold', background: '#cbd5e1' }}>1st Pc #1</th>
                       <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '7%', fontWeight: 'bold', background: '#cbd5e1' }}>1st Pc #2</th>
                       <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '7%', fontWeight: 'bold', background: '#cbd5e1' }}>1st Pc #3</th>
-                      {Array.from({ length: shiftHours }).map((_, i) => (
-                        <th key={`h-${i}`} style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>{i + 1}/Hr</th>
-                      ))}
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>1/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>2/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>3/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>4/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>5/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>6/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>7/Hr</th>
+                      <th style={{ border: '1px solid #000000', padding: '3px 1px', width: '5%', fontWeight: 'bold' }}>8/Hr</th>
                       <th style={{ border: '1px solid #000000', padding: '4px 2px', width: '7%', fontWeight: 'bold' }}>Status</th>
                     </tr>
                   </thead>
@@ -542,13 +547,12 @@ export default function MachineDetailPage() {
                               );
                             })()}
 
-                            {/* Hourly Slots dynamically */}
-                            {Array.from({ length: shiftHours }).map((_, i) => {
-                              const slot = i + 1;
+                            {/* Hourly Slots 1..8 */}
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map((slot) => {
                               const v = p.hourly[slot];
                               const isOOC = p.hourlyOOC?.[slot] || isValOOC(v, p.lower_limit, p.upper_limit, p.hourlyStatuses?.[slot]);
                               return (
-                                <td key={`h-body-${slot}`} style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
+                                <td key={slot} style={{ border: '1px solid #000000', padding: '3px 1px', fontWeight: isOOC ? 'bold' : 'normal', fontSize: 10, fontFamily: 'Consolas, monospace', color: isOOC ? '#dc2626' : '#000000', background: isOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
                                   {v !== undefined ? fmt(v) : '-'}
                                 </td>
                               );

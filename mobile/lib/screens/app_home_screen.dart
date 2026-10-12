@@ -1045,7 +1045,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       spacing: 0,
                       runSpacing: 0,
                       children: [
-
                         IconButton(
                           icon: const Icon(
                             Icons.bug_report_outlined,
