@@ -235,6 +235,14 @@ class InspectionParameter(models.Model):
             self.upper_limit = nom + upper_tol
             self.lower_limit = nom + lower_tol
         super().save(*args, **kwargs)
+        try:
+            from django.core.cache import cache
+            if self.template_id and getattr(self.template, 'part_id', None):
+                cache.delete(f"param_spec_{self.template.part_id}_{self.parameter_code}")
+                if self.parameter_name:
+                    cache.delete(f"param_spec_{self.template.part_id}_{self.parameter_name}")
+        except Exception:
+            pass
 
     @property
     def tolerance_range(self):
@@ -333,6 +341,14 @@ class ProcessParameter(models.Model):
                 self.upper_limit = nom + upper_tol
                 self.lower_limit = nom + lower_tol
         super().save(*args, **kwargs)
+        try:
+            from django.core.cache import cache
+            if self.template_id and getattr(self.template, 'part_id', None):
+                cache.delete(f"proc_param_spec_{self.template.part_id}_{self.parameter_code}")
+                if self.parameter_name:
+                    cache.delete(f"proc_param_spec_{self.template.part_id}_{self.parameter_name}")
+        except Exception:
+            pass
 
 
 class DrawingDocument(models.Model):

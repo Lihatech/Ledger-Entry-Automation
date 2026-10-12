@@ -62,8 +62,17 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   int _getParameterRule(Map<String, dynamic> param) {
     final type = (param['measurement_type'] ?? '').toString().toLowerCase();
     final name = (param['parameter_name'] ?? '').toString().toUpperCase();
+    final unit = (param['unit'] ?? '').toString().toLowerCase();
+    final tech = (param['measurement_technique'] ?? '').toString().toUpperCase();
 
-    if (type == 'visual') return 2; // Rule 2: Visual (YES/NO)
+    if (type == 'visual' ||
+        unit == 'pass' ||
+        unit == 'yes/no' ||
+        unit == 'visual' ||
+        name.contains('PLUG GAUGE') ||
+        tech.contains('PLUGE GAUGE') ||
+        tech.contains('PLUG GAUGE') ||
+        tech.contains('VISUALLY')) return 2; // Rule 2: Visual (YES/NO)
     if (type == 'min_limit' || name.contains('MIN'))
       return 31; // Rule 3A: MIN Limit
     if (type == 'max_limit' || type == 'surface' || name.contains('MAX'))
@@ -93,6 +102,17 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     Map<String, dynamic>? recorded,
   ) {
     if (recorded == null) return false;
+
+    final rule = _getParameterRule(param);
+    final val = double.tryParse(
+      '${recorded['measured_value'] ?? recorded['value']}',
+    );
+
+    // Rule 2 Visual: YES (1.0) is ALWAYS OK, NO (0.0) is ALWAYS OUT OF SPEC
+    if (rule == 2 && val != null) {
+      return val >= 0.5;
+    }
+
     final status = (recorded['status'] ?? '').toString().toLowerCase();
     if (status == 'ok' || status == 'pass' || recorded['is_pass'] == true) {
       return true;
@@ -103,12 +123,8 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return false;
     }
 
-    final val = double.tryParse(
-      '${recorded['measured_value'] ?? recorded['value']}',
-    );
     if (val == null) return false;
 
-    final rule = _getParameterRule(param);
     if (rule == 2) {
       return val >= 0.5;
     } else if (rule == 31) {
@@ -166,14 +182,16 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       if (clean == '1' ||
           clean == '1.0' ||
           clean == 'yes' ||
-          clean == 'pass' ||
-          clean == 'ok') {
+          clean.contains('pass') ||
+          clean.contains('ok') ||
+          clean.contains('yes')) {
         parsedVal = 1.0;
       } else if (clean == '0' ||
           clean == '0.0' ||
           clean == 'no' ||
-          clean == 'fail' ||
-          clean == 'reject') {
+          clean.contains('fail') ||
+          clean.contains('reject') ||
+          clean.contains('no')) {
         parsedVal = 0.0;
       } else {
         parsedVal = double.tryParse(
@@ -1726,8 +1744,10 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
     if (isFilled && recorded != null) {
       final isOk = _isMeasurementPassing(param, recorded);
+      final rawVal = double.tryParse('${recorded['measured_value'] ?? recorded['value']}');
+      final isRecordedYes = rawVal != null ? rawVal >= 0.5 : isOk;
       final displayVal = (rule == 2)
-          ? (isOk ? 'YES (PASS)' : 'NO (REJECT)')
+          ? (isRecordedYes ? 'YES (PASS)' : 'NO (REJECT)')
           : '${recorded['measured_value'] ?? recorded['value']} ${param['unit']}';
 
       final isQueued = recorded['status'] == 'queued';

@@ -82,6 +82,7 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
             'parameter_code': param.parameter_code,
             'parameter_name': param.parameter_name,
             'measurement_type': param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(param, 'measurement_technique', '') or '',
             'unit': param.unit or 'mm',
             'nominal_value': float(param.nominal_value) if param.nominal_value is not None else 0.0,
             'upper_tolerance': float(param.upper_tolerance) if param.upper_tolerance is not None else 0.0,
@@ -121,6 +122,7 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
             'parameter_name': proc_param.parameter_name,
             'data_type': proc_param.data_type or 'numeric',
             'measurement_type': proc_param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(proc_param, 'measurement_technique', '') or '',
             'unit': proc_param.unit or '',
             'specification': proc_param.specification or '',
             'nominal_value': float(proc_param.nominal_value) if proc_param.nominal_value is not None else None,
@@ -155,7 +157,7 @@ class ToleranceValidator:
     Applies the 3 Mechanical Rules while preserving original DB spec values.
     """
 
-    def validate(self, measured_value: float, parameter: InspectionParameter) -> ValidationResult:
+    def validate(self, measured_value: float, parameter: InspectionParameter, voice_raw_text: str = '') -> ValidationResult:
         nominal      = float(parameter.nominal_value)
         upper_limit  = float(parameter.upper_limit)
         lower_limit  = float(parameter.lower_limit)
@@ -164,10 +166,34 @@ class ToleranceValidator:
         m_type = (parameter.measurement_type or '').lower()
         p_code = (parameter.parameter_code or '').upper()
         p_name = (parameter.parameter_name or '').upper()
+        p_unit = (parameter.unit or '').lower()
+        p_tech = (getattr(parameter, 'measurement_technique', '') or '').upper()
 
-        if m_type == 'visual' or (parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual']:
+        raw_upper = str(voice_raw_text or '').strip().upper()
+        is_explicit_yes = any(aff in raw_upper for aff in ['YES', 'PASS', 'OK', 'TRUE']) or raw_upper in ['1', '1.0']
+        is_explicit_no  = any(neg in raw_upper for neg in ['NO', 'FAIL', 'REJECT']) or raw_upper in ['0', '0.0']
+
+        is_visual = (
+            m_type == 'visual'
+            or p_unit in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+            or 'PLUG GAUGE' in p_name
+            or 'PLUGE GAUGE' in p_tech
+            or 'PLUG GAUGE' in p_tech
+            or 'VISUALLY' in p_tech
+            or 'COMPARE WITH MASTER' in p_tech
+            or (lower_limit == 0.0 and upper_limit == 1.0)
+            or is_explicit_yes
+            or is_explicit_no
+        )
+
+        if is_visual:
             # Rule 2: Visual Pass/Fail Check (1.0 = PASS / YES, 0.0 = REJECT / NO)
-            is_within = measured_value >= 0.5
+            if is_explicit_yes:
+                is_within = True
+            elif is_explicit_no:
+                is_within = False
+            else:
+                is_within = measured_value >= 0.5
             message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
         elif m_type == 'min_limit' or 'MIN' in p_name:
             # Rule 3A: Minimum Threshold (Any value >= nominal or lower_limit is OK)
@@ -559,8 +585,31 @@ class InspectionService:
                 ll = float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None
                 ul = float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None
 
-                if mtype == 'visual':
-                    is_within = num_val >= 0.5
+                p_tech = (getattr(process_parameter, 'measurement_technique', '') or '').upper()
+                p_name = (process_parameter.parameter_name or '').upper()
+                raw_upper = str(voice_raw_text or '').strip().upper()
+                is_explicit_yes = any(aff in raw_upper for aff in ['YES', 'PASS', 'OK', 'TRUE']) or raw_upper in ['1', '1.0']
+                is_explicit_no  = any(neg in raw_upper for neg in ['NO', 'FAIL', 'REJECT']) or raw_upper in ['0', '0.0']
+
+                is_visual_proc = (
+                    mtype == 'visual'
+                    or (process_parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+                    or 'PLUG GAUGE' in p_name
+                    or 'PLUGE GAUGE' in p_tech
+                    or 'PLUG GAUGE' in p_tech
+                    or 'VISUALLY' in p_tech
+                    or 'COMPARE WITH MASTER' in p_tech
+                    or is_explicit_yes
+                    or is_explicit_no
+                )
+
+                if is_visual_proc:
+                    if is_explicit_yes:
+                        is_within = True
+                    elif is_explicit_no:
+                        is_within = False
+                    else:
+                        is_within = num_val >= 0.5
                     msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
                 elif mtype == 'min_limit' or 'MIN' in (process_parameter.parameter_name or '').upper():
                     min_bound = nom if nom > 0 else (ll if ll is not None else 0.0)
@@ -580,11 +629,18 @@ class InspectionService:
 
                 status_val = 'ok' if is_within else 'out_of_spec'
             elif dt == 'yes_no':
-                str_val = str(voice_raw_text or measured_value or '').strip().upper()
-                exp_val = (process_parameter.specification or 'YES').strip().upper()
-                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK', 'PASS']:
+                str_val = str(voice_raw_text or '').strip().upper()
+                is_affirmative = (
+                    (measured_value is not None and float(measured_value) >= 0.5)
+                    or any(aff in str_val for aff in ['YES', 'PASS', 'OK', 'TRUE'])
+                    or str_val in ['1', '1.0']
+                )
+                if is_affirmative:
+                    status_val = 'ok'
+                    msg = "Visual Inspection PASSED (YES)."
+                else:
                     status_val = 'out_of_spec'
-                    msg = f"Value '{str_val}' does not match expected '{exp_val}'."
+                    msg = "Visual Inspection REJECTED (NO)."
             elif dt in ['text', 'selection']:
                 str_val = str(voice_raw_text or measured_value or '').strip()
                 if process_parameter.specification:
@@ -702,7 +758,7 @@ class InspectionService:
                 session.save(update_fields=['is_setup_approved'])
 
         # Validate
-        result = self.validator.validate(measured_value, parameter)
+        result = self.validator.validate(measured_value, parameter, voice_raw_text=voice_raw_text)
 
         # Build measurement document
         measurement = {
