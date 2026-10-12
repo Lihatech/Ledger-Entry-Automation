@@ -1,0 +1,84 @@
+name: Publish Mobile Update
+
+on:
+  push:
+    tags:
+      - 'mobile-v*'
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: 'What changed in this update?'
+        required: false
+        default: 'Bug fixes and improvements.'
+        type: string
+      mandatory:
+        description: 'Require users to install this update'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.6'
+          channel: stable
+          cache: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > mobile/android/app/release-keystore.jks
+          {
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "storeFile=release-keystore.jks"
+          } > mobile/android/key.properties
+
+      - name: Build signed APK
+        working-directory: mobile
+        run: |
+          flutter pub get
+          flutter build apk --release --dart-define=API_BASE_URL=https://backend-production-343b4.up.railway.app/api
+
+      - name: Publish APK to Railway
+        env:
+          MOBILE_RELEASES_ENDPOINT: ${{ secrets.MOBILE_RELEASES_ENDPOINT }}
+          MOBILE_RELEASES_BUCKET: ${{ secrets.MOBILE_RELEASES_BUCKET }}
+          MOBILE_RELEASES_REGION: ${{ secrets.MOBILE_RELEASES_REGION }}
+          MOBILE_RELEASES_ACCESS_KEY_ID: ${{ secrets.MOBILE_RELEASES_ACCESS_KEY_ID }}
+          MOBILE_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.MOBILE_RELEASES_SECRET_ACCESS_KEY }}
+          RELEASE_NOTES: ${{ inputs.release_notes || 'Bug fixes and improvements.' }}
+          MANDATORY: ${{ inputs.mandatory || false }}
+        run: |
+          pip install boto3
+          EXTRA_ARGS=()
+          if [ "$MANDATORY" = "true" ]; then EXTRA_ARGS+=(--mandatory); fi
+          python scripts/publish_mobile_release.py \
+            mobile/build/app/outputs/flutter-apk/app-release.apk \
+            --release-notes "$RELEASE_NOTES" \
+            "${EXTRA_ARGS[@]}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Inspection_Hub
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30

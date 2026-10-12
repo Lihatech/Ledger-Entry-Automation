@@ -38,6 +38,9 @@ mobile/build/
 mobile/.metadata
 *.apk
 *.aab
+mobile/android/key.properties
+*.jks
+*.keystore
 
 # IDE & OS
 .vscode/

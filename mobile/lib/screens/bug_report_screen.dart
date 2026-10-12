@@ -1,8 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 
 class BugReportScreen extends StatefulWidget {
@@ -38,19 +38,22 @@ class _BugReportScreenState extends State<BugReportScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-      final uri = Uri.parse('${ApiService.baseUrl}/support/bug-reports/');
-
-      final request = http.MultipartRequest('POST', uri);
-      request.headers['Authorization'] = 'Bearer $token';
-      request.fields['message'] = _messageController.text.trim();
-
-      if (_screenshot != null) {
-        request.files.add(await http.MultipartFile.fromPath('screenshot', _screenshot!.path));
+      var response = await _sendReport();
+      if (response.statusCode == 401) {
+        await response.stream.drain<void>();
+        final refreshed = await ApiService.refreshToken();
+        if (refreshed == true) {
+          response = await _sendReport();
+        } else if (refreshed == false) {
+          await ApiService.clearTokens();
+          ApiService.onUnauthenticated?.call();
+          throw Exception('Your session has expired. Please sign in again.');
+        } else {
+          throw Exception('Unable to refresh your session. Please check your connection and try again.');
+        }
       }
 
-      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         if (mounted) {
@@ -60,12 +63,13 @@ class _BugReportScreenState extends State<BugReportScreen> {
           Navigator.pop(context);
         }
       } else {
-        throw Exception('Failed to submit bug report.');
+        throw Exception(_serverError(responseBody, response.statusCode));
       }
     } catch (e) {
       if (mounted) {
+        final message = e.toString().replaceFirst(RegExp(r'^Exception: '), '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${e.toString()}')),
+          SnackBar(content: Text(message)),
         );
       }
     } finally {
@@ -73,6 +77,39 @@ class _BugReportScreenState extends State<BugReportScreen> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  Future<http.StreamedResponse> _sendReport() async {
+    final token = await ApiService.getToken();
+    if (token == null || token.isEmpty) {
+      throw Exception('Your session has expired. Please sign in again.');
+    }
+
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${ApiService.baseUrl}/support/bug-reports/'),
+    );
+    request.headers['Authorization'] = 'Bearer $token';
+    request.fields['message'] = _messageController.text.trim();
+
+    if (_screenshot != null) {
+      request.files.add(
+        await http.MultipartFile.fromPath('screenshot', _screenshot!.path),
+      );
+    }
+
+    return request.send().timeout(const Duration(seconds: 35));
+  }
+
+  String _serverError(String responseBody, int statusCode) {
+    try {
+      final data = jsonDecode(responseBody);
+      if (data is Map<String, dynamic>) {
+        final message = data['detail'] ?? data['error'] ?? data['message'];
+        if (message is String && message.isNotEmpty) return message;
+      }
+    } catch (_) {}
+    return 'Failed to submit bug report (HTTP $statusCode).';
   }
 
   @override

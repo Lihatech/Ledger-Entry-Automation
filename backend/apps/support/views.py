@@ -1,4 +1,8 @@
+import json
+import os
+
 from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.mail import EmailMessage
@@ -9,6 +13,80 @@ from apps.users.permissions import HasAccess
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _mobile_releases_client():
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        's3',
+        endpoint_url=os.environ['MOBILE_RELEASES_ENDPOINT'],
+        region_name=os.environ.get('MOBILE_RELEASES_REGION', 'auto'),
+        aws_access_key_id=os.environ['MOBILE_RELEASES_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['MOBILE_RELEASES_SECRET_ACCESS_KEY'],
+        config=Config(
+            signature_version='s3v4',
+            s3={'addressing_style': 'virtual'},
+        ),
+    )
+
+
+class MobileUpdateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        try:
+            installed_version = int(request.query_params.get('version_code', 0))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'version_code must be an integer.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        bucket = os.environ.get('MOBILE_RELEASES_BUCKET')
+        if not bucket:
+            return Response(
+                {'detail': 'Mobile releases are not configured.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        try:
+            client = _mobile_releases_client()
+            manifest_object = client.get_object(
+                Bucket=bucket,
+                Key='android/latest.json',
+            )
+            manifest = json.loads(manifest_object['Body'].read())
+            latest_version = int(manifest['versionCode'])
+            object_key = manifest['objectKey']
+
+            if not isinstance(object_key, str) or not object_key.startswith('android/'):
+                raise ValueError('Invalid Android release object key')
+
+            if latest_version <= installed_version:
+                return Response({'updateAvailable': False})
+
+            download_url = client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': object_key},
+                ExpiresIn=900,
+            )
+            return Response({
+                'updateAvailable': True,
+                'mandatory': bool(manifest.get('mandatory', False)),
+                'versionCode': latest_version,
+                'versionName': str(manifest['versionName']),
+                'releaseNotes': str(manifest.get('releaseNotes', '')),
+                'downloadUrl': download_url,
+                'sha256': str(manifest['sha256']),
+            })
+        except Exception:
+            logger.exception('Unable to read the latest mobile release')
+            return Response(
+                {'detail': 'Unable to check for an app update.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
 # Try to import Cloudinary — gracefully degrade if not configured
 try:
@@ -58,7 +136,6 @@ class BugReportListCreateView(generics.ListCreateAPIView):
         )
 
         from django.utils.html import escape
-        from rest_framework.exceptions import APIException
 
         # ── Send email notification ───────────────────────────────────
         try:
@@ -117,10 +194,10 @@ Please check the admin dashboard for more details.
             email.attach_alternative(html_content, "text/html")
             email.send(fail_silently=False)
 
-        except Exception as e:
-            logger.error(f"Failed to send bug report email: {e}")
-            bug_report.delete()
-            raise APIException("Failed to send bug report email. Please try again later.")
+        except Exception:
+            # The report is the source of truth. Notification delivery is
+            # best-effort and must not make a successfully saved report fail.
+            logger.exception("Failed to send bug report email for report %s", bug_report.id)
 
 
 

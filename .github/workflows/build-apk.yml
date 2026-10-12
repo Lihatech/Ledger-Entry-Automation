@@ -35,6 +35,22 @@ jobs:
           distribution: "zulu"
           java-version: "17"
 
+      - name: Configure Android release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > mobile/android/app/release-keystore.jks
+          {
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyPassword=$KEY_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "storeFile=release-keystore.jks"
+          } > mobile/android/key.properties
+
       - name: Download new company logo from Cloudinary
         run: |
           echo "Downloading logo from: ${{ inputs.logo_url }}"
@@ -51,7 +67,7 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile
-        run: flutter build apk --release
+        run: flutter build apk --release --dart-define=API_BASE_URL=https://backend-production-343b4.up.railway.app/api
 
       - name: Copy APK to repo root
         run: cp mobile/build/app/outputs/flutter-apk/app-release.apk Inspection_Hub.apk

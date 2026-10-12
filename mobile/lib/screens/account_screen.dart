@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -14,9 +15,12 @@ class AccountScreen extends StatefulWidget {
 }
 
 class _AccountScreenState extends State<AccountScreen> {
+  late final Future<PackageInfo> _packageInfo;
+
   @override
   void initState() {
     super.initState();
+    _packageInfo = PackageInfo.fromPlatform();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<AuthProvider>(context, listen: false).refreshProfile();
     });
@@ -626,6 +630,17 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 ),
 
+                const SizedBox(height: 16),
+                FutureBuilder<PackageInfo>(
+                  future: _packageInfo,
+                  builder: (_, snapshot) => Text(
+                    snapshot.hasData
+                        ? 'Inspection Hub ${snapshot.data!.version} (${snapshot.data!.buildNumber})'
+                        : '',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
+                ),
                 const SizedBox(height: 16),
               ],
             ),

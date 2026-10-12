@@ -3,17 +3,16 @@ import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
-import '../providers/messaging_provider.dart';
 import '../providers/notification_provider.dart';
 import '../models/notification_item.dart';
 import '../services/api_service.dart';
+import '../services/app_update_service.dart';
 import '../services/persistence_service.dart';
 import 'account_screen.dart';
 import 'machine_select_screen.dart';
 import 'operation_select_screen.dart';
 import 'daily_production_report_screen.dart';
 import 'inspection_voice_screen.dart';
-import 'setup_approval_report_screen.dart';
 import 'report_sheet_screen.dart';
 import 'tasks_screen.dart';
 import 'messaging/messages_screen.dart';
@@ -36,6 +35,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   void initState() {
     super.initState();
     _loadDashboardData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppUpdateService.checkAndPrompt(context);
+    });
   }
 
   Future<void> _loadDashboardData() async {
@@ -1788,23 +1790,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     );
   }
 
-  Widget _buildBottomNavItem({
-    required IconData icon,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        child: Icon(
-          icon,
-          color: isSelected ? const Color(0xFF4F46E5) : const Color(0xFF94A3B8),
-          size: 24,
-        ),
-      ),
-    );
-  }
+
 
   Future<void> _resumeActiveSessionDirectly(BuildContext context) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1853,218 +1839,9 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     }
   }
 
-  Future<void> _handleProcessInspectionTap(BuildContext context) async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final provider = Provider.of<InspectionProvider>(context, listen: false);
-    final userId = auth.username ?? 'operator';
 
-    final hasSaved = await PersistenceService.hasSavedState(userId);
-    if (hasSaved) {
-      final savedState = await PersistenceService.loadState(userId);
-      if (savedState != null) {
-        if (context.mounted) {
-          _showResumeSessionDialog(context, savedState, userId);
-        }
-        return;
-      }
-    }
 
-    if (context.mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
-      );
-    }
-  }
 
-  void _showResumeSessionDialog(
-    BuildContext context,
-    Map<String, dynamic> state,
-    String userId,
-  ) {
-    final provider = Provider.of<InspectionProvider>(context, listen: false);
 
-    final machine = state['machine'];
-    final machineName =
-        (machine?['name'] ?? machine?['machine_code'] ?? 'BAL-01').toString();
 
-    final part = state['part'];
-    final partName =
-        (part?['part_name'] ?? part?['part_number'] ?? 'Poly V pulley')
-            .toString();
-
-    final type = state['inspection_type'] ?? 'hourly';
-    final slot = state['hourly_slot'] ?? 1;
-    final trial = state['trial_number'] ?? 1;
-    final inspText = type == 'first_piece'
-        ? '1ST PC #$trial'
-        : 'Hourly — Slot $slot/HR';
-
-    final params = state['parameters'] as List<dynamic>? ?? [];
-    final recordedMap =
-        state['recorded_results'] as Map<String, dynamic>? ?? {};
-    final recordedCount = recordedMap.length;
-    final totalCount = params.isNotEmpty ? params.length : 4;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0D1424),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2563EB).withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.history_rounded,
-                    color: Color(0xFF38BDF8),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Resume Session?',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'You have an unfinished inspection session:',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDialogRow(
-              Icons.precision_manufacturing_rounded,
-              'Machine:',
-              machineName,
-            ),
-            const SizedBox(height: 8),
-            _buildDialogRow(Icons.category_rounded, 'Part:', partName),
-            const SizedBox(height: 8),
-            _buildDialogRow(Icons.assignment_rounded, 'Inspection:', inspText),
-            const SizedBox(height: 8),
-            _buildDialogRow(
-              Icons.bar_chart_rounded,
-              'Progress:',
-              '$recordedCount / $totalCount Parameters',
-            ),
-            const SizedBox(height: 8),
-            _buildDialogRow(
-              Icons.access_time_rounded,
-              'Saved:',
-              'In local session',
-            ),
-          ],
-        ),
-        actionsPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 16,
-        ),
-        actions: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  await PersistenceService.clearState();
-                  provider.resetForNextOperation();
-                  if (context.mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const OperationSelectScreen(),
-                      ),
-                    );
-                  }
-                },
-                child: const Text(
-                  'START FRESH',
-                  style: TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  provider.restoreFromLocalState(state, userId);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const InspectionVoiceScreen(),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  elevation: 0,
-                ),
-                icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                label: const Text(
-                  'RESUME',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDialogRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF38BDF8), size: 16),
-        const SizedBox(width: 8),
-        Text(
-          '$label ',
-          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 13,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
 }
