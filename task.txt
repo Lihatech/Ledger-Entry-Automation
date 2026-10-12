@@ -1,14 +1,5 @@
 Task : Update to the system 
-1) Cycle time editable in the master database for each operation
-   - Frontend: Rename "Edit Target" button to "Edit Operation Settings" in ParametersPage.jsx.
-   - Frontend: Add prominent Cycle Time display on Configuration Status card.
-   - Frontend: Ensure Cycle Time input is clearly visible in the settings modal.
-2) Shift wise live reports has to be changed according to business hours
-   - Backend DB: Add explicit shift start times (e.g., `shift_1_start`, `shift_2_start`, `shift_3_start`) to the Factory model.
-   - Backend API: Update serializers to handle these new time fields.
-   - Frontend UI: Add dynamic time configuration inputs in CompanyDetailsPage.jsx (handles both 8hr and 12hr formats).
-   - Backend Logic: Modify analytics and reports to filter by "Production Day" (using configured shift times) rather than midnight-to-midnight.
-3) Pdir --> Pre-dispatch inspection report
-4) Runchart report
-5) Shift handover
-6) notification goes to operator when they not entered the hrly session 
+1) Pdir --> Pre-dispatch inspection report
+2) Runchart report
+3) Shift handover
+4) notification goes to operator when they not entered the hrly session 

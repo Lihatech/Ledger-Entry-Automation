@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:open_filex/open_filex.dart';
 
 import '../providers/auth_provider.dart';
@@ -12,8 +11,9 @@ import 'app_home_screen.dart';
 
 class ReportSheetScreen extends StatefulWidget {
   final String? sessionId;
+  final Map<String, dynamic>? template;
 
-  const ReportSheetScreen({super.key, this.sessionId});
+  const ReportSheetScreen({super.key, this.sessionId, this.template});
 
   @override
   State<ReportSheetScreen> createState() => _ReportSheetScreenState();
@@ -25,6 +25,8 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
   Map<String, dynamic>? _sessionDoc;
   List<dynamic> _machines = [];
   String? _selectedMachineCode;
+  List<dynamic> _todaySessions = [];
+  String? _activeSessionId;
   Timer? _refreshTimer;
 
   @override
@@ -67,15 +69,8 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
     final code = _selectedMachineCode ?? provider.selectedMachine?['machine_code'] ?? 'VMC-01';
 
     try {
-      if (widget.sessionId != null && widget.sessionId!.isNotEmpty) {
-        final doc = await ApiService.getSessionDetail(widget.sessionId!);
-        if (doc != null && mounted) {
-          setState(() {
-            _sessionDoc = doc;
-            _isLoading = false;
-          });
-          return;
-        }
+      if (widget.sessionId != null && widget.sessionId!.isNotEmpty && _activeSessionId == null) {
+        _activeSessionId = widget.sessionId;
       }
 
       // Query sessions for the currently selected machine
@@ -85,19 +80,48 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
         final now = DateTime.now();
         final todayLocal = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-        final todaySession = sessions.firstWhere((s) {
+        final matchingToday = sessions.where((s) {
           final startedAt = s['started_at']?.toString() ?? '';
           final sDate = startedAt.length >= 10 ? startedAt.substring(0, 10) : '';
           return sDate == todayISO || sDate == todayLocal;
-        }, orElse: () => sessions.first);
+        }).toList();
 
-        if (todaySession != null) {
-          final sId = todaySession['session_id'];
+        final listToUse = matchingToday.isNotEmpty ? matchingToday : sessions;
+
+        // Group by operation so user can toggle between OP 10, OP 20, OP 30
+        final Map<String, dynamic> opMap = {};
+        for (final s in listToUse) {
+          final tid = s['template_id']?.toString() ?? s['template_version']?.toString() ?? s['session_id']?.toString() ?? '';
+          if (tid.isNotEmpty && !opMap.containsKey(tid)) {
+            opMap[tid] = s;
+          }
+        }
+        final opsList = opMap.values.toList();
+
+        dynamic targetSession;
+        if (_activeSessionId != null) {
+          targetSession = listToUse.firstWhere((s) => s['session_id'] == _activeSessionId, orElse: () => null);
+        }
+        if (targetSession == null && widget.template != null && widget.template!['id'] != null) {
+          final reqTid = widget.template!['id'];
+          targetSession = listToUse.firstWhere((s) => s['template_id'] == reqTid, orElse: () => null);
+        }
+        if (targetSession == null && opsList.isNotEmpty) {
+          targetSession = opsList.first;
+        }
+        if (targetSession == null && listToUse.isNotEmpty) {
+          targetSession = listToUse.first;
+        }
+
+        if (targetSession != null) {
+          final sId = targetSession['session_id'];
           if (sId != null) {
             final doc = await ApiService.getSessionDetail(sId);
             if (doc != null && mounted) {
               setState(() {
                 _sessionDoc = doc;
+                _todaySessions = opsList;
+                _activeSessionId = sId;
                 _isLoading = false;
               });
               return;
@@ -281,6 +305,66 @@ class _ReportSheetScreenState extends State<ReportSheetScreen> {
                           ),
                         );
                       }).toList(),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+              ],
+
+              // Operation Selector Strip (when multiple operations exist for this machine)
+              if (_todaySessions.length > 1) ...[
+                Container(
+                  color: const Color(0xFFF8FAFC),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(right: 8),
+                          child: Text(
+                            'OPERATION:',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF64748B),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        ..._todaySessions.map((s) {
+                          final sId = s['session_id']?.toString() ?? '';
+                          final v = s['template_version']?.toString() ?? '';
+                          final name = s['template_name']?.toString() ?? (v.isNotEmpty ? 'Op $v' : 'Op');
+                          final isSelected = sId == _activeSessionId;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(
+                                v.isNotEmpty ? 'OP $v: $name' : name,
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 11,
+                                ),
+                              ),
+                              selected: isSelected,
+                              selectedColor: const Color(0xFF0D9488),
+                              backgroundColor: const Color(0xFFE2E8F0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setState(() {
+                                    _activeSessionId = sId;
+                                    _sessionDoc = null;
+                                  });
+                                  _fetchLiveReport(showLoading: true);
+                                }
+                              },
+                            ),
+                          );
+                        }),
+                      ],
                     ),
                   ),
                 ),

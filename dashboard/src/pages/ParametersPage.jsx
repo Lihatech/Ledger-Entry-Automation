@@ -3306,7 +3306,7 @@ export default function ParametersPage() {
             </div>
           </div>
         )}
-        {/* Modal 5: Supervisor Edit Target Parameters Count */}
+        {/* Modal 5: Supervisor Edit Target Parameters Count & Cycle Time */}
         {showEditTargetModal && selectedTemplate && (
           <div className="modal-overlay" onClick={() => setShowEditTargetModal(false)}>
             <div className="modal-content" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>

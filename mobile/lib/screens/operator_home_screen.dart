@@ -619,13 +619,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                         child: ListTile(
                           contentPadding: const EdgeInsets.all(16),
                           leading: CircleAvatar(
-                            backgroundColor: _isSetupApproved
-                                ? const Color(0xFFEFF6FF)
-                                : const Color(0xFFFEF3C7),
+                            backgroundColor: const Color(0xFFEFF6FF),
                             child: Text(
-                              _isSetupApproved ? '$_activeSlot/H' : '🔒',
-                              style: TextStyle(
-                                color: _isSetupApproved ? const Color(0xFF2563EB) : const Color(0xFFD97706),
+                              '$_activeSlot/H',
+                              style: const TextStyle(
+                                color: Color(0xFF2563EB),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 12,
                               ),
@@ -639,11 +637,9 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                _isSetupApproved
-                                    ? 'Hourly In-Process Inspection  •  Slot $_activeSlot/HR'
-                                    : '🔒 Locked until Quality Inspector finalizes 1st Piece Inspection as PASSED',
-                                style: TextStyle(
-                                  color: _isSetupApproved ? const Color(0xFF64748B) : const Color(0xFFF59E0B),
+                                'Hourly In-Process Inspection  •  Slot $_activeSlot/HR',
+                                style: const TextStyle(
+                                  color: Color(0xFF64748B),
                                   fontSize: 12,
                                 ),
                               ),
@@ -709,22 +705,18 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                               }),
                             ],
                           ),
-                          trailing: Icon(
-                            _isSetupApproved ? Icons.edit_note_rounded : Icons.lock_rounded,
-                            color: _isSetupApproved ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                          trailing: Builder(
+                            builder: (_) {
+                              final tid = t['id'] as int? ?? 0;
+                              final done = _opCompletedSlots[tid] ?? [];
+                              final isAllDone = done.length >= (provider.shiftHours > 0 ? provider.shiftHours : 8);
+                              if (isAllDone) {
+                                return const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 20);
+                              }
+                              return const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF64748B), size: 16);
+                            },
                           ),
                           onTap: () {
-                            if (!_isSetupApproved && provider.completedHourlySlots.isEmpty) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Hourly inspections locked. Waiting for Quality Inspector First Piece finalization.'),
-                                  backgroundColor: Color(0xFFF59E0B),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                              return;
-                            }
-
                             // Navigate to this operation's per-operation slot screen
                             final tid = t['id'] as int? ?? 0;
                             final List<int> completedSlotsForOp =
