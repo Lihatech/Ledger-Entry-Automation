@@ -12,7 +12,12 @@ val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
-// If android/key.properties exists, sign with release keystore; otherwise fallback to debug signing for local builds.
+val isReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (isReleaseBuild && !keystorePropertiesFile.exists()) {
+    throw GradleException("android/key.properties is required for release builds")
+}
 
 android {
     namespace = "com.mantri.inspection.mobile"
