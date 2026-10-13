@@ -103,16 +103,7 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   ) {
     if (recorded == null) return false;
 
-    final rule = _getParameterRule(param);
-    final val = double.tryParse(
-      '${recorded['measured_value'] ?? recorded['value']}',
-    );
-
-    // Rule 2 Visual: YES (1.0) is ALWAYS OK, NO (0.0) is ALWAYS OUT OF SPEC
-    if (rule == 2 && val != null) {
-      return val >= 0.5;
-    }
-
+    // Use recorded status as the primary source of truth
     final status = (recorded['status'] ?? '').toString().toLowerCase();
     if (status == 'ok' || status == 'pass' || recorded['is_pass'] == true) {
       return true;
@@ -123,8 +114,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return false;
     }
 
+    final rule = _getParameterRule(param);
+    final val = double.tryParse(
+      '${recorded['measured_value'] ?? recorded['value']}',
+    );
     if (val == null) return false;
 
+    // Fallback if status is not explicitly set
     if (rule == 2) {
       return val >= 0.5;
     } else if (rule == 31) {
@@ -179,20 +175,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     double? parsedVal;
     if (rule == 2) {
       final clean = inputStr.trim().toLowerCase();
-      if (clean == '1' ||
-          clean == '1.0' ||
-          clean == 'yes' ||
-          clean.contains('pass') ||
-          clean.contains('ok') ||
-          clean.contains('yes')) {
-        parsedVal = 1.0;
-      } else if (clean == '0' ||
-          clean == '0.0' ||
-          clean == 'no' ||
-          clean.contains('fail') ||
-          clean.contains('reject') ||
-          clean.contains('no')) {
+      final hasNo = RegExp(r'\b(no|fail|reject|false|not ok|not good|out of spec|defective)\b', caseSensitive: false).hasMatch(clean) || clean == '0' || clean == '0.0';
+      final hasYes = RegExp(r'\b(yes|pass|ok|true|good|accepted)\b', caseSensitive: false).hasMatch(clean) || clean == '1' || clean == '1.0';
+
+      if (hasNo) {
         parsedVal = 0.0;
+      } else if (hasYes) {
+        parsedVal = 1.0;
       } else {
         parsedVal = double.tryParse(
           inputStr.replaceAll(RegExp(r'[^0-9.-]'), ''),
@@ -1744,10 +1733,8 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
 
     if (isFilled && recorded != null) {
       final isOk = _isMeasurementPassing(param, recorded);
-      final rawVal = double.tryParse('${recorded['measured_value'] ?? recorded['value']}');
-      final isRecordedYes = rawVal != null ? rawVal >= 0.5 : isOk;
       final displayVal = (rule == 2)
-          ? (isRecordedYes ? 'YES (PASS)' : 'NO (REJECT)')
+          ? (isOk ? 'YES (PASS)' : 'NO (REJECT)')
           : '${recorded['measured_value'] ?? recorded['value']} ${param['unit']}';
 
       final isQueued = recorded['status'] == 'queued';
