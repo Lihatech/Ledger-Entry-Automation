@@ -1187,14 +1187,21 @@ class InspectionService:
             code = m_item.get('parameter_code')
             if not code:
                 return
-            itype = m_item.get('inspection_type') or def_type
 
-            trial = m_item.get('trial_number')
-            if trial is None or (trial == 0 and itype == 'first_piece'):
+            # The owning session is authoritative for the report column. Older
+            # payloads can contain a stale/misclassified inspection_type or slot
+            # (for example a First Piece value labelled as hourly). Trusting the
+            # embedded measurement metadata moves that value into the wrong
+            # column in the merged Live Report.
+            itype = def_type if def_type in ('first_piece', 'hourly') else (
+                m_item.get('inspection_type') or def_type
+            )
+
+            if itype == 'first_piece':
                 trial = def_trial if def_trial is not None and def_trial > 0 else 1
-
-            slot = m_item.get('hourly_slot')
-            if slot is None or (slot == 0 and itype == 'hourly'):
+                slot = 0
+            else:
+                trial = 0
                 slot = def_slot if def_slot is not None and def_slot > 0 else 1
 
             key = (code, itype, slot if itype == 'hourly' else trial)
