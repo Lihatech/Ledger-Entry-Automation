@@ -887,16 +887,31 @@ class ClearHistoryView(APIView):
         session_id   = request.query_params.get('session_id')
 
         if session_id:
-            session = InspectionSession.objects.filter(session_id=session_id).exclude(status='completed').first()
+            session = InspectionSession.objects.filter(session_id=session_id).exclude(
+                is_first_piece_finalized=True,
+            ).exclude(
+                status__in=[
+                    InspectionSession.Status.FINALIZED_PASSED,
+                    InspectionSession.Status.FINALIZED_FAILED,
+                ],
+            ).first()
             if session:
                 session.delete()  # Deletes PostgreSQL record including document_payload
             return Response({'message': f'Session {session_id} deleted.'})
 
         if machine_code:
-            # Safely clear only non-completed sessions to keep historical finalized data intact
+            # Safely clear only live sessions. Finalized First Piece sessions
+            # contain the permanent combined report snapshot and must survive.
             active_sessions = InspectionSession.objects.filter(
                 machine__machine_code=machine_code
-            ).exclude(status='completed')
+            ).exclude(
+                is_first_piece_finalized=True,
+            ).exclude(
+                status__in=[
+                    InspectionSession.Status.FINALIZED_PASSED,
+                    InspectionSession.Status.FINALIZED_FAILED,
+                ],
+            )
             active_sessions.delete()  # Deletes PostgreSQL records including document_payload
 
             return Response({

@@ -798,6 +798,8 @@ class InspectionService:
                 meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot,
             )
 
+            self._refresh_finalized_report_snapshots(session)
+
             return {
                 'parameter_code': parameter_code,
                 'measured_value': measured_value,
@@ -918,6 +920,8 @@ class InspectionService:
             voice_raw_text=voice_raw_text, method=method,
             meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot
         )
+
+        self._refresh_finalized_report_snapshots(session)
 
         return {
             'parameter_code': parameter_code,
@@ -1085,6 +1089,18 @@ class InspectionService:
             save=True
         )
 
+        # Persist the complete First Piece + hourly report before any live
+        # sessions are eligible for cleanup.
+        snapshot = self.get_session_document(
+            str(session.session_id),
+            use_finalized_snapshot=False,
+        )
+        if snapshot:
+            InspectionSession.objects.filter(pk=session.pk).update(
+                finalized_report_snapshot=snapshot,
+            )
+            session.finalized_report_snapshot = snapshot
+
         self._push_session_event(session, 'first_piece_finalized')
         return session
 
@@ -1154,6 +1170,8 @@ class InspectionService:
             save=True
         )
 
+        self._refresh_finalized_report_snapshots(session)
+
         if action == 'reject':
             self._push_rejection_alert(session, remark, rejected_parameters)
         else:
@@ -1162,7 +1180,7 @@ class InspectionService:
         return session
 
     # ── Get Full Document ─────────────────────────────────────────────────
-    def get_session_document(self, session_id: str) -> Optional[dict]:
+    def get_session_document(self, session_id: str, use_finalized_snapshot: bool = True) -> Optional[dict]:
         """Retrieve full inspection document from document_payload JSONB field."""
         session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related(
             'operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part'
@@ -1170,6 +1188,25 @@ class InspectionService:
 
         if not session_obj:
             return None
+
+        # Once live companion sessions are removed, serve the permanent combined
+        # report captured at finalization instead of rebuilding from deleted rows.
+        if use_finalized_snapshot and session_obj.finalized_report_snapshot:
+            from django.utils import timezone as django_timezone
+            report_date = django_timezone.localtime(session_obj.started_at).date()
+            live_scope = InspectionSession.objects.filter(
+                machine=session_obj.machine,
+                part=session_obj.part,
+                template=session_obj.template,
+                shift=session_obj.shift,
+                started_at__date=report_date,
+            ).exclude(
+                pk=session_obj.pk,
+            ).exclude(
+                is_first_piece_finalized=True,
+            ).exists()
+            if not live_scope:
+                return dict(session_obj.finalized_report_snapshot)
 
         # Get document from JSONB field
         doc = doc_utils.get_document(session_obj)
@@ -1402,6 +1439,32 @@ class InspectionService:
 
         doc['measurements'] = list(meas_dict.values())
         return doc
+
+    def _refresh_finalized_report_snapshots(self, session) -> None:
+        """Refresh finalized combined reports affected by a new measurement."""
+        if not session.machine_id or not session.part_id or not session.started_at:
+            return
+
+        from django.utils import timezone as django_timezone
+        report_date = django_timezone.localtime(session.started_at).date()
+        finalized_sessions = InspectionSession.objects.filter(
+            machine_id=session.machine_id,
+            part_id=session.part_id,
+            template_id=session.template_id,
+            shift=session.shift,
+            inspection_type='first_piece',
+            is_first_piece_finalized=True,
+            started_at__date=report_date,
+        )
+        for finalized_session in finalized_sessions:
+            snapshot = self.get_session_document(
+                str(finalized_session.session_id),
+                use_finalized_snapshot=False,
+            )
+            if snapshot:
+                InspectionSession.objects.filter(pk=finalized_session.pk).update(
+                    finalized_report_snapshot=snapshot,
+                )
 
     # ── WebSocket Push ────────────────────────────────────────────────────
     def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
