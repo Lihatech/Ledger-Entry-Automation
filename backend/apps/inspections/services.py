@@ -798,7 +798,7 @@ class InspectionService:
                 meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot,
             )
 
-            self._refresh_finalized_report_snapshots(session)
+            self._safe_refresh_finalized_report_snapshots(session)
 
             return {
                 'parameter_code': parameter_code,
@@ -921,7 +921,7 @@ class InspectionService:
             meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot
         )
 
-        self._refresh_finalized_report_snapshots(session)
+        self._safe_refresh_finalized_report_snapshots(session)
 
         return {
             'parameter_code': parameter_code,
@@ -1170,7 +1170,7 @@ class InspectionService:
             save=True
         )
 
-        self._refresh_finalized_report_snapshots(session)
+        self._safe_refresh_finalized_report_snapshots(session)
 
         if action == 'reject':
             self._push_rejection_alert(session, remark, rejected_parameters)
@@ -1466,6 +1466,16 @@ class InspectionService:
                     finalized_report_snapshot=snapshot,
                 )
 
+    def _safe_refresh_finalized_report_snapshots(self, session) -> None:
+        """Refresh snapshots without turning a saved measurement into an API error."""
+        try:
+            self._refresh_finalized_report_snapshots(session)
+        except Exception:
+            logger.exception(
+                "Unable to refresh finalized report snapshots after session %s",
+                session.session_id,
+            )
+
     # ── WebSocket Push ────────────────────────────────────────────────────
     def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
                                 meas_type=None, meas_trial=None, meas_slot=None):
@@ -1627,6 +1637,9 @@ class InspectionService:
         session.has_ooc = result.status == 'out_of_spec'
         session.supervisor_override_active = True
         session.save(update_fields=['document_payload', 'has_ooc', 'supervisor_override_active'])
+
+        # Keep the permanent report aligned with supervisor corrections.
+        self._safe_refresh_finalized_report_snapshots(session)
 
         self._push_session_event(session, 'supervisor_override')
         return {

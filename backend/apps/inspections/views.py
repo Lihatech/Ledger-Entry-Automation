@@ -885,37 +885,78 @@ class ClearHistoryView(APIView):
     def delete(self, request):
         machine_code = request.query_params.get('machine_code')
         session_id   = request.query_params.get('session_id')
+        protected_statuses = [
+            InspectionSession.Status.COMPLETED,
+            InspectionSession.Status.APPROVED,
+            InspectionSession.Status.FINALIZED_PASSED,
+            InspectionSession.Status.FINALIZED_FAILED,
+        ]
 
         if session_id:
-            session = InspectionSession.objects.filter(session_id=session_id).exclude(
-                is_first_piece_finalized=True,
-            ).exclude(
-                status__in=[
-                    InspectionSession.Status.FINALIZED_PASSED,
-                    InspectionSession.Status.FINALIZED_FAILED,
-                ],
-            ).first()
-            if session:
-                session.delete()  # Deletes PostgreSQL record including document_payload
-            return Response({'message': f'Session {session_id} deleted.'})
+            session = InspectionSession.objects.filter(session_id=session_id).first()
+            if not session:
+                return Response(
+                    {'deleted': False, 'message': f'Session {session_id} was not found.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            is_protected = session.is_first_piece_finalized or session.status in protected_statuses
+            if is_protected:
+                return Response({
+                    'deleted': False,
+                    'retained': True,
+                    'message': 'Finalized or completed report was retained and not deleted.',
+                })
+
+            # Capture the latest combined values before deleting a live companion
+            # session. If refresh fails, keep the live session so history is safe.
+            try:
+                _service._refresh_finalized_report_snapshots(session)
+            except Exception:
+                logger.exception('Unable to snapshot report before deleting session %s', session_id)
+                return Response(
+                    {'deleted': False, 'message': 'Could not preserve the finalized report before cleanup.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            session.delete()
+            return Response({'deleted': True, 'retained': False, 'message': f'Session {session_id} deleted.'})
 
         if machine_code:
             # Safely clear only live sessions. Finalized First Piece sessions
             # contain the permanent combined report snapshot and must survive.
-            active_sessions = InspectionSession.objects.filter(
-                machine__machine_code=machine_code
-            ).exclude(
-                is_first_piece_finalized=True,
-            ).exclude(
-                status__in=[
-                    InspectionSession.Status.FINALIZED_PASSED,
-                    InspectionSession.Status.FINALIZED_FAILED,
-                ],
+            all_sessions = InspectionSession.objects.filter(machine__machine_code=machine_code)
+            protected_sessions = all_sessions.filter(
+                Q(is_first_piece_finalized=True) | Q(status__in=protected_statuses)
             )
-            active_sessions.delete()  # Deletes PostgreSQL records including document_payload
+            try:
+                for finalized_session in protected_sessions.filter(
+                    inspection_type='first_piece',
+                    is_first_piece_finalized=True,
+                ).iterator():
+                    _service._refresh_finalized_report_snapshots(finalized_session)
+            except Exception:
+                logger.exception('Unable to snapshot finalized reports before clearing machine %s', machine_code)
+                return Response(
+                    {'deleted': False, 'message': 'Could not preserve finalized reports before cleanup.'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+            active_sessions = all_sessions.exclude(
+                is_first_piece_finalized=True,
+            ).exclude(status__in=protected_statuses)
+            deleted_count = active_sessions.count()
+            retained_count = protected_sessions.count()
+            active_sessions.delete()
 
             return Response({
-                'message': f'All history completely cleared for machine {machine_code}.'
+                'deleted': True,
+                'deleted_count': deleted_count,
+                'retained_count': retained_count,
+                'message': (
+                    f'Live sessions cleared for machine {machine_code}; '
+                    f'{retained_count} completed/finalized report(s) retained.'
+                ),
             })
 
         return Response({'error': 'machine_code or session_id parameter is required.'}, status=status.HTTP_400_BAD_REQUEST)
