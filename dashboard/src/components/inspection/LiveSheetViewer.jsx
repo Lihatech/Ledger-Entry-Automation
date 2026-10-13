@@ -30,6 +30,7 @@ const PROCESS_10_SPECS = {
 
 const isValOOC = (val, lower, upper, status) => {
   if (status === 'out_of_spec' || status === 'rejected' || status === 'ooc') return true;
+  if (status === 'ok' || status === 'pass') return false;
   if (val === undefined || val === null || val === '') return false;
   const num = Number(val);
   if (isNaN(num)) return false;
@@ -251,6 +252,8 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
         critical: !!m.is_critical,
         trials: {},
         hourly: {},
+        trialStatuses: {},
+        hourlyStatuses: {},
         trialsOOC: {},
         hourlyOOC: {},
         lastVoiceText: m.voice_raw_text,
@@ -261,16 +264,22 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
       if (m.upper_limit !== undefined && m.upper_limit !== null) paramMap[code].upper_limit = m.upper_limit;
     }
 
-    const isOOC = (m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
-                  isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit);
+    const isOOC = (m.status === 'ok' || m.status === 'pass')
+      ? false
+      : ((m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
+         isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit, m.status));
 
     if (isHourlyMeas) {
       const slot = m.hourly_slot || 1;
       paramMap[code].hourly[slot] = m.measured_value;
+      paramMap[code].hourlyStatuses = paramMap[code].hourlyStatuses || {};
+      paramMap[code].hourlyStatuses[slot] = m.status;
       paramMap[code].hourlyOOC[slot] = isOOC;
     } else {
       const tNo = (trialNo >= 1 && trialNo <= 3) ? trialNo : 1;
       paramMap[code].trials[tNo] = m.measured_value;
+      paramMap[code].trialStatuses = paramMap[code].trialStatuses || {};
+      paramMap[code].trialStatuses[tNo] = m.status;
       paramMap[code].trialsOOC[tNo] = isOOC;
     }
 
@@ -428,9 +437,9 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
               const tr3 = p.trials[3];
               const hr  = p.hourly;
 
-              const tr1OOC = p.trialsOOC?.[1] || isValOOC(tr1, p.lower_limit, p.upper_limit);
-              const tr2OOC = p.trialsOOC?.[2] || isValOOC(tr2, p.lower_limit, p.upper_limit);
-              const tr3OOC = p.trialsOOC?.[3] || isValOOC(tr3, p.lower_limit, p.upper_limit);
+              const tr1OOC = p.trialsOOC?.[1] || isValOOC(tr1, p.lower_limit, p.upper_limit, p.trialStatuses?.[1]);
+              const tr2OOC = p.trialsOOC?.[2] || isValOOC(tr2, p.lower_limit, p.upper_limit, p.trialStatuses?.[2]);
+              const tr3OOC = p.trialsOOC?.[3] || isValOOC(tr3, p.lower_limit, p.upper_limit, p.trialStatuses?.[3]);
 
               const isJustUpdated = p.code === lastUpdatedCode;
               const isAltRow = i % 2 === 1;
@@ -514,7 +523,7 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
                   {/* Hourly Readings (1/Hr .. 8/Hr or 12/Hr) : OOC values in RED */}
                   {Array.from({ length: session.shift_hours || session.total_hourly_slots || 8 }, (_, i) => i + 1).map((slot) => {
                     const hVal = hr[slot];
-                    const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit);
+                    const hOOC = p.hourlyOOC?.[slot] || isValOOC(hVal, p.lower_limit, p.upper_limit, p.hourlyStatuses?.[slot]);
                     return (
                       <td key={slot} style={{ border: '1px solid #000000', padding: '2px 1px', fontWeight: hOOC ? 'bold' : 'normal', fontSize: 9.5, fontFamily: 'Consolas, monospace', color: hOOC ? '#dc2626' : '#000000', background: hOOC ? 'rgba(254, 226, 226, 0.45)' : undefined }}>
                         {hVal !== undefined ? fmt(hVal) : '-'}

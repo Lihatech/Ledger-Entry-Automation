@@ -62,8 +62,17 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
   int _getParameterRule(Map<String, dynamic> param) {
     final type = (param['measurement_type'] ?? '').toString().toLowerCase();
     final name = (param['parameter_name'] ?? '').toString().toUpperCase();
+    final unit = (param['unit'] ?? '').toString().toLowerCase();
+    final tech = (param['measurement_technique'] ?? '').toString().toUpperCase();
 
-    if (type == 'visual') return 2; // Rule 2: Visual (YES/NO)
+    if (type == 'visual' ||
+        unit == 'pass' ||
+        unit == 'yes/no' ||
+        unit == 'visual' ||
+        name.contains('PLUG GAUGE') ||
+        tech.contains('PLUGE GAUGE') ||
+        tech.contains('PLUG GAUGE') ||
+        tech.contains('VISUALLY')) return 2; // Rule 2: Visual (YES/NO)
     if (type == 'min_limit' || name.contains('MIN'))
       return 31; // Rule 3A: MIN Limit
     if (type == 'max_limit' || type == 'surface' || name.contains('MAX'))
@@ -93,6 +102,8 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     Map<String, dynamic>? recorded,
   ) {
     if (recorded == null) return false;
+
+    // Use recorded status as the primary source of truth
     final status = (recorded['status'] ?? '').toString().toLowerCase();
     if (status == 'ok' || status == 'pass' || recorded['is_pass'] == true) {
       return true;
@@ -103,12 +114,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
       return false;
     }
 
+    final rule = _getParameterRule(param);
     final val = double.tryParse(
       '${recorded['measured_value'] ?? recorded['value']}',
     );
     if (val == null) return false;
 
-    final rule = _getParameterRule(param);
+    // Fallback if status is not explicitly set
     if (rule == 2) {
       return val >= 0.5;
     } else if (rule == 31) {
@@ -163,18 +175,13 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     double? parsedVal;
     if (rule == 2) {
       final clean = inputStr.trim().toLowerCase();
-      if (clean == '1' ||
-          clean == '1.0' ||
-          clean == 'yes' ||
-          clean == 'pass' ||
-          clean == 'ok') {
-        parsedVal = 1.0;
-      } else if (clean == '0' ||
-          clean == '0.0' ||
-          clean == 'no' ||
-          clean == 'fail' ||
-          clean == 'reject') {
+      final hasNo = RegExp(r'\b(no|fail|reject|false|not ok|not good|out of spec|defective)\b', caseSensitive: false).hasMatch(clean) || clean == '0' || clean == '0.0';
+      final hasYes = RegExp(r'\b(yes|pass|ok|true|good|accepted)\b', caseSensitive: false).hasMatch(clean) || clean == '1' || clean == '1.0';
+
+      if (hasNo) {
         parsedVal = 0.0;
+      } else if (hasYes) {
+        parsedVal = 1.0;
       } else {
         parsedVal = double.tryParse(
           inputStr.replaceAll(RegExp(r'[^0-9.-]'), ''),

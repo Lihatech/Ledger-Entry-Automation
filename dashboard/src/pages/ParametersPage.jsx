@@ -1047,6 +1047,7 @@ export default function ParametersPage() {
     if (mode === 'rule2') {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'yes_no',
         measurement_type: 'visual',
         unit: 'Pass',
         nominal_value: '1.00',
@@ -1056,6 +1057,7 @@ export default function ParametersPage() {
     } else if (mode === 'rule3') {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'max_limit',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '1.60',
@@ -1065,6 +1067,7 @@ export default function ParametersPage() {
     } else {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'dimensional',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '10.00',
@@ -1140,11 +1143,13 @@ export default function ParametersPage() {
 
       const payload = {
         ...paramForm,
+        data_type: ruleMode === 'rule2' ? 'yes_no' : (paramForm.data_type || 'numeric'),
+        measurement_type: ruleMode === 'rule2' ? 'visual' : paramForm.measurement_type,
         parameter_code: autoCode,
         sequence_order: seqOrder,
         nominal_value: nominal,
-        upper_tolerance: upperT,
-        lower_tolerance: lowerT,
+        upper_tolerance: ruleMode === 'rule2' ? 0 : upperT,
+        lower_tolerance: ruleMode === 'rule2' ? 0 : lowerT,
       };
 
       if (editingParam) {
@@ -1179,6 +1184,7 @@ export default function ParametersPage() {
     if (mode === 'rule2') {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'yes_no',
         measurement_type: 'visual',
         unit: 'Pass',
         nominal_value: '1.00',
@@ -1188,6 +1194,7 @@ export default function ParametersPage() {
     } else if (mode === 'rule3') {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'max_limit',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '1.60',
@@ -1197,6 +1204,7 @@ export default function ParametersPage() {
     } else {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'dimensional',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '10.00',
@@ -1277,13 +1285,13 @@ export default function ParametersPage() {
         template: selectedTemplate.id,
         parameter_name: processParamForm.parameter_name.trim(),
         parameter_code: processParamForm.parameter_code.trim() || `PR${seqOrder}`,
-        data_type: processParamForm.data_type,
-        measurement_type: processParamForm.measurement_type || 'dimensional',
+        data_type: processRuleMode === 'rule2' ? 'yes_no' : (processParamForm.data_type || 'numeric'),
+        measurement_type: processRuleMode === 'rule2' ? 'visual' : (processParamForm.measurement_type || 'dimensional'),
         unit: processParamForm.unit.trim(),
         specification: processParamForm.specification.trim(),
         nominal_value: nominal,
-        upper_tolerance: upperT,
-        lower_tolerance: lowerT,
+        upper_tolerance: processRuleMode === 'rule2' ? 0 : upperT,
+        lower_tolerance: processRuleMode === 'rule2' ? 0 : lowerT,
         is_required: processParamForm.is_required,
         is_active: processParamForm.is_active,
         sequence_order: seqOrder,

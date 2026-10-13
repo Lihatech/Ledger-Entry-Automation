@@ -7,6 +7,7 @@ InspectionService   : orchestrates session creation, measurement recording,
 """
 
 import logging
+import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -82,6 +83,7 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
             'parameter_code': param.parameter_code,
             'parameter_name': param.parameter_name,
             'measurement_type': param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(param, 'measurement_technique', '') or '',
             'unit': param.unit or 'mm',
             'nominal_value': float(param.nominal_value) if param.nominal_value is not None else 0.0,
             'upper_tolerance': float(param.upper_tolerance) if param.upper_tolerance is not None else 0.0,
@@ -121,6 +123,7 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
             'parameter_name': proc_param.parameter_name,
             'data_type': proc_param.data_type or 'numeric',
             'measurement_type': proc_param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(proc_param, 'measurement_technique', '') or '',
             'unit': proc_param.unit or '',
             'specification': proc_param.specification or '',
             'nominal_value': float(proc_param.nominal_value) if proc_param.nominal_value is not None else None,
@@ -148,6 +151,35 @@ class ValidationResult:
     message:        str
 
 
+
+def parse_visual_text(text: str) -> Optional[bool]:
+    """
+    Parses visual/voice confirmation text into boolean (True=Pass/Yes, False=Fail/No).
+    Explicit negative tokens ('NO', 'FAIL', 'REJECT', 'FALSE', 'NOT OK', 'NOT GOOD', etc.)
+    take strict precedence over affirmative tokens.
+    Matches normalized tokens using word boundaries, avoiding substring misclassification (e.g. 'OK' in 'NOT OK').
+    """
+    if not text:
+        return None
+    raw = str(text).strip().upper()
+    if raw in ('0', '0.0'):
+        return False
+    if raw in ('1', '1.0'):
+        return True
+
+    neg_pattern = r'\b(NO|FAIL|REJECT|FALSE|NOT\s+OK|NOT\s+GOOD|OUT\s+OF\s+SPEC|DEFECTIVE)\b'
+    aff_pattern = r'\b(YES|PASS|OK|TRUE|GOOD|ACCEPTED)\b'
+
+    has_neg = bool(re.search(neg_pattern, raw))
+    has_aff = bool(re.search(aff_pattern, raw))
+
+    if has_neg:
+        return False
+    if has_aff:
+        return True
+    return None
+
+
 # ─── Tolerance Validator ──────────────────────────────────────────────────
 class ToleranceValidator:
     """
@@ -155,7 +187,7 @@ class ToleranceValidator:
     Applies the 3 Mechanical Rules while preserving original DB spec values.
     """
 
-    def validate(self, measured_value: float, parameter: InspectionParameter) -> ValidationResult:
+    def validate(self, measured_value: float, parameter: InspectionParameter, voice_raw_text: str = '') -> ValidationResult:
         nominal      = float(parameter.nominal_value)
         upper_limit  = float(parameter.upper_limit)
         lower_limit  = float(parameter.lower_limit)
@@ -164,11 +196,48 @@ class ToleranceValidator:
         m_type = (parameter.measurement_type or '').lower()
         p_code = (parameter.parameter_code or '').upper()
         p_name = (parameter.parameter_name or '').upper()
+        p_unit = (parameter.unit or '').lower()
+        p_tech = (getattr(parameter, 'measurement_technique', '') or '').upper()
 
-        if m_type == 'visual' or (parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual']:
+        # Visual check is strictly determined by configured type, unit, or technique
+        is_visual = (
+            m_type == 'visual'
+            or p_unit in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+            or 'PLUG GAUGE' in p_name
+            or 'PLUGE GAUGE' in p_tech
+            or 'PLUG GAUGE' in p_tech
+            or 'VISUALLY' in p_tech
+            or 'COMPARE WITH MASTER' in p_tech
+        )
+
+        if is_visual:
             # Rule 2: Visual Pass/Fail Check (1.0 = PASS / YES, 0.0 = REJECT / NO)
-            is_within = measured_value >= 0.5
-            message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+            text_ans = parse_visual_text(voice_raw_text)
+            num_ans = None
+            if measured_value is not None:
+                try:
+                    num_ans = float(measured_value) >= 0.5
+                except (ValueError, TypeError):
+                    pass
+
+            if text_ans is False:
+                # Explicit negative ALWAYS fails, even if numeric was >= 0.5
+                is_within = False
+                message = 'Visual Inspection REJECTED (NO).'
+            elif text_ans is True:
+                if num_ans is False:
+                    # Contradictory: voice YES but numeric < 0.5
+                    is_within = False
+                    message = 'Contradictory visual reading (Voice: YES, Numeric: NO).'
+                else:
+                    is_within = True
+                    message = 'Visual Inspection PASSED (YES).'
+            elif num_ans is not None:
+                is_within = num_ans
+                message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+            else:
+                is_within = False
+                message = 'Visual Inspection REJECTED (No valid input).'
         elif m_type == 'min_limit' or 'MIN' in p_name:
             # Rule 3A: Minimum Threshold (Any value >= nominal or lower_limit is OK)
             min_bound = nominal if nominal > 0 else lower_limit
@@ -559,9 +628,39 @@ class InspectionService:
                 ll = float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None
                 ul = float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None
 
-                if mtype == 'visual':
-                    is_within = num_val >= 0.5
-                    msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+                p_tech = (getattr(process_parameter, 'measurement_technique', '') or '').upper()
+                p_name = (process_parameter.parameter_name or '').upper()
+
+                is_visual_proc = (
+                    mtype == 'visual'
+                    or (process_parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+                    or 'PLUG GAUGE' in p_name
+                    or 'PLUGE GAUGE' in p_tech
+                    or 'PLUG GAUGE' in p_tech
+                    or 'VISUALLY' in p_tech
+                    or 'COMPARE WITH MASTER' in p_tech
+                )
+
+                if is_visual_proc:
+                    text_ans = parse_visual_text(voice_raw_text)
+                    num_ans = num_val >= 0.5 if measured_value is not None else None
+
+                    if text_ans is False:
+                        is_within = False
+                        msg = 'Visual Inspection REJECTED (NO).'
+                    elif text_ans is True:
+                        if num_ans is False:
+                            is_within = False
+                            msg = 'Contradictory visual reading (Voice: YES, Numeric: NO).'
+                        else:
+                            is_within = True
+                            msg = 'Visual Inspection PASSED (YES).'
+                    elif num_ans is not None:
+                        is_within = num_ans
+                        msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+                    else:
+                        is_within = False
+                        msg = 'Visual Inspection REJECTED (No valid input).'
                 elif mtype == 'min_limit' or 'MIN' in (process_parameter.parameter_name or '').upper():
                     min_bound = nom if nom > 0 else (ll if ll is not None else 0.0)
                     is_within = num_val >= min_bound
@@ -580,11 +679,31 @@ class InspectionService:
 
                 status_val = 'ok' if is_within else 'out_of_spec'
             elif dt == 'yes_no':
-                str_val = str(voice_raw_text or measured_value or '').strip().upper()
-                exp_val = (process_parameter.specification or 'YES').strip().upper()
-                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK', 'PASS']:
+                text_ans = parse_visual_text(voice_raw_text)
+                num_ans = None
+                if measured_value is not None:
+                    try:
+                        num_ans = float(measured_value) >= 0.5
+                    except (ValueError, TypeError):
+                        pass
+
+                if text_ans is False:
+                    # Explicit negative response strictly takes precedence
                     status_val = 'out_of_spec'
-                    msg = f"Value '{str_val}' does not match expected '{exp_val}'."
+                    msg = "Visual Inspection REJECTED (NO)."
+                elif text_ans is True:
+                    if num_ans is False:
+                        status_val = 'out_of_spec'
+                        msg = "Contradictory visual reading (Voice: YES, Numeric: NO)."
+                    else:
+                        status_val = 'ok'
+                        msg = "Visual Inspection PASSED (YES)."
+                elif num_ans is not None:
+                    status_val = 'ok' if num_ans else 'out_of_spec'
+                    msg = "Visual Inspection PASSED (YES)." if num_ans else "Visual Inspection REJECTED (NO)."
+                else:
+                    status_val = 'out_of_spec'
+                    msg = "Visual Inspection REJECTED (No valid input)."
             elif dt in ['text', 'selection']:
                 str_val = str(voice_raw_text or measured_value or '').strip()
                 if process_parameter.specification:
@@ -702,7 +821,7 @@ class InspectionService:
                 session.save(update_fields=['is_setup_approved'])
 
         # Validate
-        result = self.validator.validate(measured_value, parameter)
+        result = self.validator.validate(measured_value, parameter, voice_raw_text=voice_raw_text)
 
         # Build measurement document
         measurement = {
@@ -1131,14 +1250,32 @@ class InspectionService:
             code = m_item.get('parameter_code')
             if not code:
                 return
-            itype = m_item.get('inspection_type') or def_type
 
-            trial = m_item.get('trial_number')
-            if trial is None or (trial == 0 and itype == 'first_piece'):
-                trial = def_trial if def_trial is not None and def_trial > 0 else 1
+            # The owning session is authoritative for the report column. Older
+            # payloads can contain a stale/misclassified inspection_type or slot
+            # (for example a First Piece value labelled as hourly). Trusting the
+            # embedded measurement metadata moves that value into the wrong
+            # column in the merged Live Report.
+            itype = def_type if def_type in ('first_piece', 'hourly') else (
+                m_item.get('inspection_type') or def_type
+            )
 
-            slot = m_item.get('hourly_slot')
-            if slot is None or (slot == 0 and itype == 'hourly'):
+            if itype == 'first_piece':
+                if m_item.get('carried_forward'):
+                    # Preserving original trial or excluding duplicate copies:
+                    # Carried-forward measurements originated in an earlier trial.
+                    # Preserve the original trial if present, otherwise exclude the copied
+                    # measurement so it does not overwrite or appear in the retry trial's columns.
+                    orig_trial = m_item.get('trial_number')
+                    if orig_trial and orig_trial != def_trial and orig_trial > 0:
+                        trial = orig_trial
+                    else:
+                        return
+                else:
+                    trial = def_trial if def_trial is not None and def_trial > 0 else 1
+                slot = 0
+            else:
+                trial = 0
                 slot = def_slot if def_slot is not None and def_slot > 0 else 1
 
             key = (code, itype, slot if itype == 'hourly' else trial)
