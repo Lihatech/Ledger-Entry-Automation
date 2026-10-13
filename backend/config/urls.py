@@ -25,6 +25,7 @@ urlpatterns = [
     path('api/document-control/', include('apps.document_control.urls')),
     path('api/', include('apps.tasks.urls')),
     path('api/support/', include('apps.support.urls')),
+    path('api/inventory/', include('apps.inventory.urls')),
 ]
 
 # Serve media files in development

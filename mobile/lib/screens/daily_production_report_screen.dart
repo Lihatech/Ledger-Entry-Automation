@@ -31,6 +31,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   Map<String, dynamic>? _selectedMachine;
   Map<String, dynamic>? _selectedPart;
   Map<String, dynamic>? _selectedTemplate;
+  Map<String, dynamic>? _selectedReceipt;
   List<dynamic> _allMachines = [];
 
   double _currentCycleTime = 10.0;
@@ -150,9 +151,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     Map<String, dynamic>? tempMachine = _selectedMachine;
     Map<String, dynamic>? tempPart = _selectedPart;
     Map<String, dynamic>? tempTemplate = _selectedTemplate;
+    Map<String, dynamic>? tempReceipt = _selectedReceipt;
 
     List<dynamic> modalParts = [];
     List<dynamic> modalTemplates = [];
+    List<dynamic> modalReceipts = await ApiService.getInventoryReceipts();
     bool isFetchingParts = false;
     bool isFetchingTemplates = false;
 
@@ -284,7 +287,35 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                   const SizedBox(height: 14),
 
-                  // 2. Part Dropdown (Filtered by Machine)
+                  // 2. Company / Receipt Dropdown
+                  const Text('Company / Receipt', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<int>(
+                    key: ValueKey('receipt_${tempReceipt?['id']}'),
+                    initialValue: tempReceipt?['id'] as int?,
+                    dropdownColor: Colors.white,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      filled: true, fillColor: Colors.white,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                    ),
+                    hint: Text(modalReceipts.isEmpty ? 'No accepted receipts found' : 'Select company / challan', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),),
+                    items: modalReceipts.map<DropdownMenuItem<int>>((receipt) {
+                      final company = receipt['company_name'] ?? 'Company';
+                      final challan = receipt['challan_number'] ?? '';
+                      final part = receipt['part_name'] ?? '';
+                      return DropdownMenuItem<int>(value: receipt['id'] as int, child: Text('$company — $challan${part.toString().isNotEmpty ? ' · $part' : ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)));
+                    }).toList(),
+                    onChanged: (newReceiptId) { if (newReceiptId == null) return; setModalState(() { tempReceipt = modalReceipts.firstWhere((r) => r['id'] == newReceiptId); }); },
+                  ),
+
+                  const SizedBox(height: 14),
+
+                  // 3. Part Dropdown (Filtered by Machine)
                   const Text('Part (Filtered to Machine)', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   if (isFetchingParts)
@@ -340,7 +371,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                   const SizedBox(height: 14),
 
-                  // 3. Operation Dropdown (Filtered by Part)
+                  // 4. Operation Dropdown (Filtered by Part)
                   const Text('Operation / Template', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   if (isFetchingTemplates)
@@ -424,6 +455,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                               _selectedMachine = tempMachine;
                               _selectedPart = tempPart;
                               _selectedTemplate = tempTemplate;
+                              _selectedReceipt = tempReceipt;
 
                               final provider = Provider.of<InspectionProvider>(context, listen: false);
                               provider.selectedMachine = tempMachine;
@@ -536,6 +568,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       'machine': machineId,
       'part': partId,
       'operation': operation,
+      if (_selectedReceipt?['id'] != null) 'inventory_receipt': _selectedReceipt!['id'],
       'shift': shift,
       'production_target': int.tryParse(_targetController.text.trim()) ?? 0,
       'jobs_completed': int.tryParse(_completedController.text.trim()) ?? 0,

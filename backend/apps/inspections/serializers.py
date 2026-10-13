@@ -170,6 +170,7 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'report_id', 'date', 'machine', 'machine_code', 'machine_name',
             'part', 'part_number', 'part_name', 'operation', 'shift',
+            'inventory_receipt',
             'operator', 'operator_name',
             'production_target', 'jobs_completed', 'correct_jobs', 'incorrect_jobs',
             'cr_count', 'mr_count', 'rw_count', 'remarks',

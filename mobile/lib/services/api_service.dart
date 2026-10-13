@@ -424,6 +424,21 @@ class ApiService {
     return [];
   }
 
+  static Future<List<dynamic>> getInventoryReceipts() async {
+    try {
+      final response = await authenticatedRequest(
+        (headers) => http.get(Uri.parse('$baseUrl/inventory/receipts/'), headers: headers),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data is List ? data : (data['results'] ?? []);
+      }
+    } catch (e) {
+      debugPrint('[API] getInventoryReceipts error: $e');
+    }
+    return [];
+  }
+
   // 4. Get Templates by Part
   static Future<List<dynamic>> getTemplatesByPart(String partNumber) async {
     final response = await authenticatedRequest((headers) => http.get(

@@ -1,4 +1,5 @@
 const MANAGE_IMPLIES_VIEW = {
+  'inventory.manage': ['inventory.view'],
   'production.daily.manage': ['production.daily.view'],
   'production.downtime.manage': ['production.downtime.view'],
   'production.jh.manage': ['production.jh.view'],
@@ -57,6 +58,7 @@ export function canOpenPath(user, path) {
     ['/hr', ['users.view']],
     ['/purchase', ['purchase.view']],
     ['/store', ['store.view']],
+    ['/inventory', ['inventory.view']],
     ['/maintenance', ['maintenance.view']],
     ['/marketing', ['marketing.view']],
     ['/tasks', ['tasks.view']],

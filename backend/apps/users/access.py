@@ -41,6 +41,7 @@ DOCUMENT_MANAGE = {
 }
 USER_MANAGE = {'users.view', 'users.create', 'users.manage', 'roles.manage'}
 ISSUE_MANAGE = {'support.create', 'support.manage'}
+INVENTORY_VIEW = {'inventory.view'}
 MASTER_DATABASE_VIEW = {'development.parameters.view'}
 MASTER_DATABASE_MANAGE = MASTER_DATABASE_VIEW | {'development.parameters.manage'}
 MASTER_DATABASE_MANAGE_ACTIONS = {'development.parameters.manage'}
@@ -77,6 +78,10 @@ ACCESS_GROUPS = [
     ('Users and Roles', [
         _permission('users.manage', 'Manage users and roles', *USER_MANAGE),
     ]),
+    ('Inventory Management', [
+        _permission('inventory.view', 'View inventory management', *INVENTORY_VIEW),
+        _permission('inventory.manage', 'Manage inventory receipts and reconciliation'),
+    ]),
 ]
 
 ACCESS_KEYS = {
@@ -99,6 +104,7 @@ OPERATIONAL_READ = {
 # A manage grant always includes the corresponding read access. This keeps
 # older custom roles valid after the UI moved to View/Manage bundles.
 MANAGE_IMPLIES_VIEW = {
+    'inventory.manage': {'inventory.view'},
     'production.daily.manage': {'production.daily.view'},
     'production.downtime.manage': {'production.downtime.view'},
     'production.jh.manage': {'production.jh.view'},

@@ -137,6 +137,10 @@ class DailyProductionReport(models.Model):
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')
     operation = models.CharField(max_length=100, blank=True, default='')
+    inventory_receipt = models.ForeignKey(
+        'inventory.InventoryReceipt', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='production_reports',
+    )
     shift = models.CharField(max_length=20, default='I', db_index=True)
     operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='production_reports')
 
@@ -196,6 +200,10 @@ class DailyProductionReport(models.Model):
         else:
             self.achievement_percentage = 0.0
         super().save(*args, **kwargs)
+
+        if self.status == self.Status.SUBMITTED and self.inventory_receipt_id:
+            from apps.inventory.services import reconcile_receipt_from_reports
+            reconcile_receipt_from_reports(self.inventory_receipt)
 
         # Immediately ensure linked DowntimeReport is created and updated
         if self.status == self.Status.SUBMITTED:
