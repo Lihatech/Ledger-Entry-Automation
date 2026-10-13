@@ -102,6 +102,14 @@ class InspectionSession(models.Model):
             "Replaces the MongoDB inspection_records document."
         ),
     )
+    finalized_report_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Immutable combined First Piece + hourly report snapshot captured "
+            "for finalized reports so live-session cleanup cannot remove history."
+        ),
+    )
 
     def clean(self):
         from django.core.exceptions import ValidationError
