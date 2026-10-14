@@ -119,3 +119,28 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         report.delete()
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.completed_quantity, 0)
+
+    def test_repeated_route_stages_keep_separate_positions(self):
+        machine_b = Machine.objects.create(
+            plant=self.plant_a, name='CNC B', machine_code='CNC-INV-B', status='active',
+        )
+        self.receipt_a.machine_sequence_steps = [
+            {'machine_id': self.machine_a.id, 'machine_code': 'CNC-INV-A', 'operation': 'Facing'},
+            {'machine_id': machine_b.id, 'machine_code': 'CNC-INV-B', 'operation': 'Drilling'},
+            {'machine_id': self.machine_a.id, 'machine_code': 'CNC-INV-A', 'operation': 'Facing'},
+        ]
+        self.receipt_a.save()
+
+        for machine, correct in ((self.machine_a, 4), (machine_b, 3), (self.machine_a, 2)):
+            DailyProductionReport.objects.create(
+                date=date.today(), machine=machine, part=self.part_a,
+                inventory_receipt=self.receipt_a, operator=self.user_a,
+                operation='Facing' if machine is self.machine_a else 'Drilling',
+                jobs_completed=correct, correct_jobs=correct, incorrect_jobs=0,
+                status=DailyProductionReport.Status.SUBMITTED,
+            )
+
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(len(self.receipt_a.position_summary), 3)
+        self.assertIn('Step 1: CNC-INV-A / Facing', self.receipt_a.position_summary)
+        self.assertIn('Step 3: CNC-INV-A / Facing', self.receipt_a.position_summary)

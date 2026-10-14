@@ -25,6 +25,12 @@ def reconcile_receipt_from_reports(receipt):
         stages = [item.strip() for item in locked_receipt.machine_sequence.split('->') if item.strip()]
         if steps:
             stages = [f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}" for step in steps]
+        # Keep duplicate labels separate. A route may intentionally visit the
+        # same machine/operation more than once, and a JSON object cannot hold
+        # two values under the same label.
+        label_counts = defaultdict(int)
+        for stage in stages:
+            label_counts[stage] += 1
         positions = {}
         previous_good = locked_receipt.received_quantity
         for index, stage in enumerate(stages):
@@ -36,7 +42,10 @@ def reconcile_receipt_from_reports(receipt):
             else:
                 machine_code = stage.split(' ', 1)[0]
                 good = min(good_by_machine.get(machine_code, 0), previous_good)
-            positions[stage] = max(previous_good - good, 0)
+            position_key = stage
+            if label_counts[stage] > 1:
+                position_key = f"Step {index + 1}: {stage}"
+            positions[position_key] = max(previous_good - good, 0)
             previous_good = good
 
         totals = reports.aggregate(
