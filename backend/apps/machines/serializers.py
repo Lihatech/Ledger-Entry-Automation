@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils.text import slugify
 from .models import Factory, Plant, Machine
 
 
@@ -39,12 +40,26 @@ class FactorySerializer(serializers.ModelSerializer):
 
 
 class PlantSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(required=False, allow_blank=True)
     factory_name   = serializers.CharField(source='factory.name', read_only=True)
     machine_count  = serializers.IntegerField(source='machines.count', read_only=True)
 
     class Meta:
         model  = Plant
         fields = ['id', 'factory', 'factory_name', 'name', 'code', 'shift_duration_hours', 'total_break_mins', 'is_active', 'machine_count', 'created_at']
+
+    def create(self, validated_data):
+        if not validated_data.get('code'):
+            factory = validated_data.get('factory')
+            base = slugify(validated_data.get('name', 'plant')).upper().replace('-', '')[:12] or 'PLANT'
+            prefix = f'{base}-{factory.pk if factory else 0}'
+            code = prefix[:20]
+            suffix = 1
+            while Plant.objects.filter(code=code).exists():
+                suffix += 1
+                code = f'{prefix[:17]}-{suffix}'[:20]
+            validated_data['code'] = code
+        return super().create(validated_data)
 
 
 class MachineSerializer(serializers.ModelSerializer):
