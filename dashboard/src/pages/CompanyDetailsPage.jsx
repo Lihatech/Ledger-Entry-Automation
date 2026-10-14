@@ -7,7 +7,7 @@ import { can } from '../utils/access';
 import { useCompany } from '../context/CompanyContext';
 import {
   getCompanyDetails, updateCompanyDetails, getCompanyPlants,
-  uploadCompanyLogo, removeCompanyLogo, createCompanyDetails
+  uploadCompanyLogo, removeCompanyLogo, createCompanyDetails, createCompanyPlant
 } from '../api/company';
 import {
   Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2,
@@ -52,6 +52,8 @@ export default function CompanyDetailsPage() {
   });
 
   const [plants, setPlants] = useState([]);
+  const [newPlantName, setNewPlantName] = useState('');
+  const [isAddingPlant, setIsAddingPlant] = useState(false);
 
   // Fetch factory and plant details on mount
   useEffect(() => {
@@ -254,6 +256,25 @@ export default function CompanyDetailsPage() {
       setError(errMsg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAddPlant = async () => {
+    if (!factoryId || !newPlantName.trim()) return;
+    setIsAddingPlant(true);
+    setError('');
+    try {
+      const res = await createCompanyPlant({ factory: factoryId, name: newPlantName.trim() });
+      setPlants((current) => [...current, res.data]);
+      setNewPlantName('');
+      setSuccessMsg(`Plant "${res.data?.name || newPlantName.trim()}" added successfully.`);
+      setTimeout(() => setSuccessMsg(''), 4500);
+    } catch (err) {
+      const details = err.response?.data;
+      const message = Object.entries(details || {}).flatMap(([field, values]) => (Array.isArray(values) ? values : [values]).map((value) => `${field}: ${value}`)).join(' · ');
+      setError(message || 'Failed to add plant. Please try again.');
+    } finally {
+      setIsAddingPlant(false);
     }
   };
 
@@ -881,6 +902,44 @@ export default function CompanyDetailsPage() {
                           style={inputStyle(true)}
                         />
                       </div>
+                    </div>
+
+                    {/* Plant directory */}
+                    <div
+                      style={{
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-md)',
+                        padding: '18px 20px',
+                        background: 'var(--bg-elevated)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+                        Plants / Workshop Locations
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 14 }}>
+                        Add each internal plant here. These names appear in HR when assigning a user.
+                      </div>
+                      {plants.length > 0 && (
+                        <div style={{ display: 'grid', gap: 7, marginBottom: 12 }}>
+                          {plants.map((plant) => (
+                            <div key={plant.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                              <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plant.name}</span>
+                              <span className="font-mono" style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{plant.code}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isAdmin && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
+                          <label className="form-group" style={{ flex: 1, margin: 0 }}>
+                            <span className="form-label">New plant name</span>
+                            <input className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
+                          </label>
+                          <button type="button" className="btn btn-secondary" onClick={handleAddPlant} disabled={isAddingPlant || !newPlantName.trim() || !factoryId}>
+                            {isAddingPlant ? 'Adding…' : 'Add plant'}
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Operating Capacity Summary Card */}

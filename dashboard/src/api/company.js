@@ -39,3 +39,8 @@ export const getCompanyPlants = async () => {
   const res = await api.get('/api/machines/plants/');
   return res;
 };
+
+export const createCompanyPlant = async (data) => {
+  const res = await api.post('/api/machines/plants/', data);
+  return res;
+};
