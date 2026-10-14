@@ -1,4 +1,5 @@
 from collections import defaultdict
+import re
 
 from django.db import transaction
 from django.db.models import Sum
@@ -22,7 +23,11 @@ def reconcile_receipt_from_reports(receipt):
             good_by_machine[code] += report.correct_jobs or 0
             good_by_step[(code, (report.operation or '').strip())] += report.correct_jobs or 0
 
-        stages = [item.strip() for item in locked_receipt.machine_sequence.split('->') if item.strip()]
+        stages = [
+            item.strip()
+            for item in re.split(r'\s*(?:->|→)\s*', locked_receipt.machine_sequence or '')
+            if item.strip()
+        ]
         if steps:
             stages = [f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}" for step in steps]
         # Keep duplicate labels separate. A route may intentionally visit the

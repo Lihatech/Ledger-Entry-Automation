@@ -168,3 +168,24 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('machine_sequence_steps', response.data)
+
+    def test_unicode_machine_sequence_is_reconciled(self):
+        machine_b = Machine.objects.create(
+            plant=self.plant_a, name='CNC B', machine_code='CNC-INV-B', status='active',
+        )
+        self.receipt_a.machine_sequence = 'CNC-INV-A / Facing → CNC-INV-B / Drilling'
+        self.receipt_a.save()
+        for machine, operation, correct in (
+            (self.machine_a, 'Facing', 4),
+            (machine_b, 'Drilling', 3),
+        ):
+            DailyProductionReport.objects.create(
+                date=date.today(), machine=machine, part=self.part_a,
+                inventory_receipt=self.receipt_a, operator=self.user_a,
+                operation=operation, jobs_completed=correct, correct_jobs=correct,
+                incorrect_jobs=0, status=DailyProductionReport.Status.SUBMITTED,
+            )
+
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.completed_quantity, 3)
+        self.assertEqual(len(self.receipt_a.position_summary), 2)
