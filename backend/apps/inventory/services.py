@@ -55,7 +55,11 @@ def reconcile_receipt_from_reports(receipt):
         )
         rework = totals['rework'] or 0
         rejected = (totals['customer_reject'] or 0) + (totals['machine_reject'] or 0)
-        completed = previous_good if stages else sum(good_by_machine.values())
+        # Legacy receipts may not have a route. Even then, report totals must
+        # never manufacture more completed parts than physically received.
+        completed = previous_good if stages else min(
+            sum(good_by_machine.values()), locked_receipt.received_quantity,
+        )
         locked_receipt.reconcile(
             completed=completed,
             rework=rework,

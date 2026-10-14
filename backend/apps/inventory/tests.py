@@ -144,3 +144,16 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(len(self.receipt_a.position_summary), 3)
         self.assertIn('Step 1: CNC-INV-A / Facing', self.receipt_a.position_summary)
         self.assertIn('Step 3: CNC-INV-A / Facing', self.receipt_a.position_summary)
+
+    def test_unsequenced_reports_are_capped_at_received_quantity(self):
+        for correct in (7, 8):
+            DailyProductionReport.objects.create(
+                date=date.today(), machine=self.machine_a, part=self.part_a,
+                inventory_receipt=self.receipt_a, operator=self.user_a,
+                jobs_completed=correct, correct_jobs=correct, incorrect_jobs=0,
+                status=DailyProductionReport.Status.SUBMITTED,
+            )
+
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.received_quantity, 10)
+        self.assertEqual(self.receipt_a.completed_quantity, 10)
