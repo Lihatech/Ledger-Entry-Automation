@@ -38,6 +38,7 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             'dispatched_quantity', 'last_reconciled_at', 'reconciled',
             'last_dispatched_at', 'last_dispatched_by',
             'position_summary', 'status_label', 'created_at', 'updated_at',
+            'machine_sequence',
         ]
 
     def validate(self, attrs):
@@ -45,6 +46,18 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
         user = getattr(request, 'user', None)
         user_plant_id = getattr(user, 'plant_id', None)
         submitted_plant = attrs.get('plant')
+
+        if self.instance:
+            if 'received_quantity' in attrs and attrs['received_quantity'] != self.instance.received_quantity:
+                raise serializers.ValidationError({
+                    'received_quantity': 'Use Add incoming stock to record additional parts received.'
+                })
+            if 'machine_sequence_steps' in attrs and attrs['machine_sequence_steps'] != self.instance.machine_sequence_steps:
+                has_production = self.instance.production_reports.filter(status='SUBMITTED').exists()
+                if has_production or self.instance.dispatched_quantity:
+                    raise serializers.ValidationError({
+                        'machine_sequence_steps': 'The machine sequence cannot change after production or dispatch history exists.'
+                    })
 
         # A plant-assigned user cannot create or move a receipt into another
         # plant. If omitted, their assigned plant is used automatically.

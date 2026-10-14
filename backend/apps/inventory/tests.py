@@ -87,3 +87,12 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(self.receipt_a.not_started_quantity, 5)
         self.assertEqual(response.data['incoming_history'][0]['quantity'], 5)
         self.assertEqual(response.data['incoming_history'][0]['vehicle_number'], 'MH-12-AA-1234')
+
+    def test_received_quantity_cannot_be_manually_changed(self):
+        response = self.client.patch(
+            f'/api/inventory/receipts/{self.receipt_a.id}/',
+            {'received_quantity': 25},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('received_quantity', response.data)
