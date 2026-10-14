@@ -9,13 +9,14 @@ import {
   getCompanyDetails, updateCompanyDetails, getCompanyPlants,
   uploadCompanyLogo, removeCompanyLogo, createCompanyDetails, createCompanyPlant
 } from '../api/company';
+import { updateProfile } from '../api/auth';
 import {
   Building2, AlertCircle, CheckCircle2, User, Clock, ShieldCheck, Lock, Save, Loader2,
   Upload, Trash2
 } from 'lucide-react';
 
 export default function CompanyDetailsPage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { refreshCompany } = useCompany() || {};
   const isAdmin = can(user, 'quality.machines.manage');
 
@@ -53,6 +54,10 @@ export default function CompanyDetailsPage() {
 
   const [plants, setPlants] = useState([]);
   const [newPlantName, setNewPlantName] = useState('');
+
+  useEffect(() => {
+    if (user?.plant_name) setNewPlantName(user.plant_name);
+  }, [user?.plant_name]);
 
   // Fetch factory and plant details on mount
   useEffect(() => {
@@ -242,13 +247,17 @@ export default function CompanyDetailsPage() {
 
       if (res?.data) {
         const pendingPlantName = newPlantName.trim();
-        if (pendingPlantName && savedFactoryId) {
-          const plantRes = await createCompanyPlant({ factory: savedFactoryId, name: pendingPlantName });
-          setPlants((current) => [...current, plantRes.data]);
-          setNewPlantName('');
+        const plantChanged = pendingPlantName && pendingPlantName !== user?.plant_name;
+        if (plantChanged && savedFactoryId) {
+          const existingPlant = plants.find((plant) => plant.name?.trim().toLowerCase() === pendingPlantName.toLowerCase());
+          const selectedPlant = existingPlant || (await createCompanyPlant({ factory: savedFactoryId, name: pendingPlantName })).data;
+          if (!existingPlant) setPlants((current) => [...current, selectedPlant]);
+          await updateProfile({ plant: selectedPlant.id });
+          await refreshUser?.();
+          setNewPlantName(selectedPlant.name);
         }
         if (refreshCompany) refreshCompany();
-        setSuccessMsg(pendingPlantName ? 'Company details and plant saved successfully!' : (factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!'));
+        setSuccessMsg(plantChanged ? 'Company details and your plant assignment saved successfully!' : (factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!'));
         setTimeout(() => setSuccessMsg(''), 4500);
       }
     } catch (err) {
@@ -485,19 +494,10 @@ export default function CompanyDetailsPage() {
                     <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
                     {isAdmin && (
                       <div className="plant-entry-row" style={{ display: 'flex', alignItems: 'center' }}>
-                        <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
+                        <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" style={inputStyle()} />
                       </div>
                     )}
-                    {plants.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
-                        {plants.map((plant) => (
-                          <div key={plant.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plant.name}</span>
-                            <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plant.code}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {!isAdmin && <input id="plant-workshop-name" className="form-input" value={user?.plant_name || ''} readOnly style={inputStyle()} />}
                   </div>
 
                   <div className="form-group" style={{ margin: 0 }}>
