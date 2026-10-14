@@ -3,11 +3,22 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
 
+from apps.machines.models import Plant
+
 
 class InventoryReceipt(models.Model):
     """A client job-work receipt and its shift-reconciled quantity snapshot."""
 
     company_name = models.CharField(max_length=150)
+    # Internal production location. Nullable only for legacy receipts created
+    # before plant ownership was introduced; new API receipts must set it.
+    plant = models.ForeignKey(
+        Plant,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='inventory_receipts',
+    )
     challan_number = models.CharField(max_length=80)
     part_name = models.CharField(max_length=150)
     received_quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])

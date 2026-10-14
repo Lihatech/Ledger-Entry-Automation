@@ -3,7 +3,6 @@ from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
 
 from apps.users.permissions import HasAccess
 from .models import InventoryReceipt, InventoryDispatch
@@ -14,7 +13,9 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
-        qs = InventoryReceipt.objects.all()
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by')
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(plant_id=self.request.user.plant_id)
         search = self.request.query_params.get('search', '').strip()
         if search:
             from django.db.models import Q
@@ -36,8 +37,13 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
 
 
 class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
-    queryset = InventoryReceipt.objects.all()
     serializer_class = InventoryReceiptSerializer
+
+    def get_queryset(self):
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by')
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(plant_id=self.request.user.plant_id)
+        return qs
 
     def get_permissions(self):
         return [HasAccess('inventory.manage' if self.request.method in ('PUT', 'PATCH') else 'inventory.view')]
@@ -53,7 +59,13 @@ class InventoryReceiptDispatchView(APIView):
         if quantity < 1:
             return Response({'quantity': ['Dispatch quantity must be at least 1.']}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
-            receipt = InventoryReceipt.objects.select_for_update().get(pk=pk)
+            receipts = InventoryReceipt.objects.select_for_update()
+            if getattr(request.user, 'plant_id', None):
+                receipts = receipts.filter(plant_id=request.user.plant_id)
+            try:
+                receipt = receipts.get(pk=pk)
+            except InventoryReceipt.DoesNotExist:
+                return Response({'detail': 'Receipt not found.'}, status=status.HTTP_404_NOT_FOUND)
             ready = max(receipt.completed_quantity - receipt.dispatched_quantity, 0)
             if quantity > ready:
                 return Response({'quantity': [f'Only {ready} parts are ready to dispatch.']}, status=status.HTTP_400_BAD_REQUEST)
