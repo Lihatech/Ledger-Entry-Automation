@@ -228,3 +228,29 @@ class DowntimeReportApiTestCase(APITestCase):
         self.assertEqual(dt2.total_downtime, 20)
         self.assertEqual(dt2.status, 'COMPLETED')
         self.assertEqual(dt2.remarks, 'Shahid Downtime')
+
+    def test_daily_report_retry_is_idempotent(self):
+        payload = {
+            'idempotency_key': 'mobile-retry-001',
+            'date': '2026-08-30',
+            'machine': self.machine1.id,
+            'part': self.part.id,
+            'operation': 'Facing',
+            'shift': 'I',
+            'jobs_completed': 10,
+            'correct_jobs': 10,
+            'incorrect_jobs': 0,
+            'cr_count': 0,
+            'mr_count': 0,
+            'rw_count': 0,
+        }
+        first = self.client.post('/api/inspections/daily-production-reports/', payload, format='json')
+        retry = self.client.post('/api/inspections/daily-production-reports/', payload, format='json')
+
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(retry.status_code, status.HTTP_200_OK)
+        self.assertEqual(first.data['id'], retry.data['id'])
+        self.assertEqual(
+            DailyProductionReport.objects.filter(idempotency_key='mobile-retry-001').count(),
+            1,
+        )

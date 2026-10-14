@@ -133,6 +133,8 @@ class DailyProductionReport(models.Model):
     Completely separate from inspection session records.
     """
     report_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Stable client token used to make mobile retries safe.
+    idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
     date = models.DateField(db_index=True)
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')

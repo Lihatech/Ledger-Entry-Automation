@@ -1,5 +1,6 @@
 import time
 import logging
+from django.db import IntegrityError
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Q
@@ -1095,6 +1096,25 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
             effective_shift = submitted_shift
 
         serializer.save(operator=operator, shift=effective_shift)
+
+    def create(self, request, *args, **kwargs):
+        """Return the original report when a client safely retries a submission."""
+        idempotency_key = request.data.get('idempotency_key')
+        if idempotency_key:
+            existing = self.get_queryset().filter(idempotency_key=idempotency_key).first()
+            if existing:
+                return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        try:
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            # Two identical requests can pass the initial lookup at the same
+            # time; the unique key makes one win and the other returns it.
+            if idempotency_key:
+                existing = self.get_queryset().filter(idempotency_key=idempotency_key).first()
+                if existing:
+                    return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+            raise
 
     @action(detail=True, methods=['get'])
     def export_pdf(self, request, pk=None):

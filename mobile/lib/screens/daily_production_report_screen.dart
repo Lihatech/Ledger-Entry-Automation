@@ -22,6 +22,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   final _mrController = TextEditingController(text: '0');
   final _rwController = TextEditingController(text: '0');
   final _remarksController = TextEditingController();
+  // Kept for the lifetime of this form so a retry reuses the same submission.
+  final String _submissionKey = '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
 
   bool _isSubmitting = false;
   bool _isLoadingContext = true;
@@ -564,6 +566,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final shift = auth.isShiftLocked ? auth.assignedShift : provider.shift;
 
     final payload = {
+      'idempotency_key': _submissionKey,
       'date': dateStr,
       'machine': machineId,
       'part': partId,

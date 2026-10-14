@@ -168,7 +168,7 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyProductionReport
         fields = [
-            'id', 'report_id', 'date', 'machine', 'machine_code', 'machine_name',
+            'id', 'report_id', 'idempotency_key', 'date', 'machine', 'machine_code', 'machine_name',
             'part', 'part_number', 'part_name', 'operation', 'shift',
             'inventory_receipt',
             'operator', 'operator_name',
@@ -186,6 +186,8 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
         return '-'
 
     def validate(self, attrs):
+        if not attrs.get('idempotency_key'):
+            attrs['idempotency_key'] = None
         jobs_completed = attrs.get('jobs_completed', 0)
         correct_jobs = attrs.get('correct_jobs', 0)
         incorrect_jobs = attrs.get('incorrect_jobs', 0)
