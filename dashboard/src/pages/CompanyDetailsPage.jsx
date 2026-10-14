@@ -443,8 +443,9 @@ export default function CompanyDetailsPage() {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+                <div className="company-profile-grid">
                 {/* Row 1: Name & Code */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'contents' }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">
                       Company / Factory Name {isAdmin && <span style={{ color: '#ef4444' }}>*</span>}
@@ -479,7 +480,7 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 {/* Row 2: Plant & Location */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'contents' }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
                     {isAdmin && (
@@ -514,7 +515,7 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 {/* Row 3: Industry Type */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'contents' }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Industry Type</label>
                     <input
@@ -530,7 +531,7 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 {/* Row 3: Email & Phone */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ display: 'contents' }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Official Email Address</label>
                     <input
@@ -560,7 +561,7 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 {/* Row 4: GSTIN & Company Logo */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+                <div style={{ display: 'contents' }}>
                   <div className="form-group" style={{ margin: 0, minWidth: 0 }}>
                     <label className="form-label">GSTIN / Tax Registration No.</label>
                     <input
@@ -730,6 +731,7 @@ export default function CompanyDetailsPage() {
                       resize: isAdmin ? 'vertical' : 'none',
                     }}
                   />
+                </div>
                 </div>
 
                 {/* ── Section 2: Shift & Operating Hours Configuration ──────────────── */}

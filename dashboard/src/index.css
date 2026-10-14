@@ -825,8 +825,14 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
 
 /* ── Form Inputs ───────────────────────────────────────────── */
 .form-group { margin-bottom: 18px; }
-.plant-entry-row { width: 50%; }
+.company-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 16px;
+}
+.plant-entry-row { width: 100%; }
 @media (max-width: 760px) {
+  .company-profile-grid { grid-template-columns: 1fr; }
   .plant-entry-row { width: 100%; }
 }
 
