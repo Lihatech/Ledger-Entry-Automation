@@ -71,6 +71,8 @@ class InventoryReceiptDispatchView(APIView):
         quantity = int(decimal_quantity)
         if quantity < 1:
             return Response({'quantity': ['Dispatch quantity must be at least 1.']}, status=status.HTTP_400_BAD_REQUEST)
+        if idempotency_key and len(idempotency_key) > 64:
+            return Response({'idempotency_key': ['Request key must be 64 characters or fewer.']}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             receipts = InventoryReceipt.objects.select_for_update()
             if getattr(request.user, 'plant_id', None):
@@ -80,8 +82,10 @@ class InventoryReceiptDispatchView(APIView):
             except InventoryReceipt.DoesNotExist:
                 return Response({'detail': 'Receipt not found.'}, status=status.HTTP_404_NOT_FOUND)
             if idempotency_key:
-                previous_dispatch = receipt.dispatch_events.filter(idempotency_key=idempotency_key).first()
+                previous_dispatch = InventoryDispatch.objects.filter(idempotency_key=idempotency_key).select_related('receipt').first()
                 if previous_dispatch:
+                    if previous_dispatch.receipt_id != receipt.pk:
+                        return Response({'idempotency_key': ['Request key has already been used for another receipt.']}, status=status.HTTP_409_CONFLICT)
                     return Response(InventoryReceiptSerializer(receipt).data, status=status.HTTP_200_OK)
             ready = max(receipt.completed_quantity - receipt.dispatched_quantity, 0)
             if quantity > ready:
@@ -104,12 +108,19 @@ class InventoryReceiptIntakeView(APIView):
     """Record another physical arrival against an existing receipt."""
 
     def post(self, request, pk):
+        raw_quantity = request.data.get('quantity')
+        idempotency_key = str(request.data.get('idempotency_key') or '').strip() or None
         try:
-            quantity = int(request.data.get('quantity'))
-        except (TypeError, ValueError):
-            return Response({'quantity': ['Enter a valid incoming quantity.']}, status=status.HTTP_400_BAD_REQUEST)
+            decimal_quantity = Decimal(str(raw_quantity))
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({'quantity': ['Enter a valid whole-number incoming quantity.']}, status=status.HTTP_400_BAD_REQUEST)
+        if not decimal_quantity.is_finite() or decimal_quantity != decimal_quantity.to_integral_value():
+            return Response({'quantity': ['Incoming quantity must be a whole number.']}, status=status.HTTP_400_BAD_REQUEST)
+        quantity = int(decimal_quantity)
         if quantity < 1:
             return Response({'quantity': ['Incoming quantity must be at least 1.']}, status=status.HTTP_400_BAD_REQUEST)
+        if idempotency_key and len(idempotency_key) > 64:
+            return Response({'idempotency_key': ['Request key must be 64 characters or fewer.']}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             receipts = InventoryReceipt.objects.select_for_update()
@@ -120,13 +131,21 @@ class InventoryReceiptIntakeView(APIView):
             except InventoryReceipt.DoesNotExist:
                 return Response({'detail': 'Receipt not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+            if idempotency_key:
+                previous_intake = InventoryReceiptIntake.objects.filter(idempotency_key=idempotency_key).select_related('receipt').first()
+                if previous_intake:
+                    if previous_intake.receipt_id != receipt.pk:
+                        return Response({'idempotency_key': ['Request key has already been used for another receipt.']}, status=status.HTTP_409_CONFLICT)
+                    return Response(InventoryReceiptSerializer(receipt).data, status=status.HTTP_200_OK)
+
             receipt.received_quantity += quantity
-            accounted = receipt.completed_quantity + receipt.rework_quantity + receipt.rejected_quantity + receipt.in_process_quantity
-            receipt.not_started_quantity = max(receipt.received_quantity - accounted, 0)
-            receipt.save(update_fields=['received_quantity', 'not_started_quantity', 'updated_at'])
+            from .services import reconcile_receipt_from_reports
+            receipt.save(update_fields=['received_quantity', 'updated_at'])
+            receipt = reconcile_receipt_from_reports(receipt)
             InventoryReceiptIntake.objects.create(
                 receipt=receipt,
                 quantity=quantity,
+                idempotency_key=idempotency_key,
                 received_by=request.user,
                 vehicle_number=str(request.data.get('vehicle_number') or '').strip(),
                 notes=str(request.data.get('notes') or '').strip(),

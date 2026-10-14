@@ -4,6 +4,7 @@ from .models import InventoryReceipt
 
 
 class InventoryReceiptSerializer(serializers.ModelSerializer):
+    HISTORY_LIMIT = 100
     plant_name = serializers.CharField(source='plant.name', read_only=True)
     factory_name = serializers.CharField(source='plant.factory.name', read_only=True)
     plant = serializers.PrimaryKeyRelatedField(
@@ -81,7 +82,15 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
         if steps:
             if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
                 raise serializers.ValidationError({'machine_sequence_steps': 'Each machine step must be an object.'})
-            machine_ids = [step.get('machine_id') for step in steps if step.get('machine_id')]
+            machine_ids = []
+            for step in steps:
+                try:
+                    step['machine_id'] = int(step.get('machine_id'))
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                if step['machine_id'] < 1:
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                machine_ids.append(step['machine_id'])
             if len(machine_ids) != len(steps):
                 raise serializers.ValidationError({'machine_sequence_steps': 'Each step must include a machine.'})
             if any(not str(step.get('operation') or '').strip() for step in steps):
@@ -121,10 +130,11 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                 'dispatched_by': (event.dispatched_by.get_full_name() or event.dispatched_by.username) if event.dispatched_by else 'System',
                 'created_at': event.created_at,
             }
-            for event in events
+            for event in events[:self.HISTORY_LIMIT]
         ]
 
     def get_incoming_history(self, obj):
+        events = obj.intake_events.select_related('received_by').all()[:self.HISTORY_LIMIT]
         return [
             {
                 'quantity': event.quantity,
@@ -133,5 +143,5 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                 'notes': event.notes,
                 'created_at': event.created_at,
             }
-            for event in obj.intake_events.select_related('received_by').all()
+            for event in events
         ]

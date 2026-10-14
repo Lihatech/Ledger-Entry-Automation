@@ -97,8 +97,16 @@ class InventoryReceipt(models.Model):
         self.rejected_quantity = max(0, int(rejected))
         self.dispatched_quantity = max(0, int(dispatched))
         accounted = self.completed_quantity + self.rework_quantity + self.rejected_quantity
-        self.not_started_quantity = max(self.received_quantity - accounted, 0)
-        self.in_process_quantity = 0
+        # Position values represent parts waiting between route stages. Keep
+        # those parts in WIP instead of incorrectly reporting them as unstarted.
+        self.in_process_quantity = max(
+            sum(int(value or 0) for value in (positions or {}).values()),
+            0,
+        )
+        self.not_started_quantity = max(
+            self.received_quantity - accounted - self.in_process_quantity,
+            0,
+        )
         if positions is not None:
             self.position_summary = positions
         self.last_reconciled_at = timezone.now()
@@ -125,6 +133,7 @@ class InventoryReceiptIntake(models.Model):
         related_name='intake_events',
     )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
     received_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
