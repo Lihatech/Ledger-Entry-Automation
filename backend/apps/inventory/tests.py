@@ -142,6 +142,24 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['plant'], self.plant_a.id)
 
+    def test_unassigned_user_uses_the_only_active_plant(self):
+        self.plant_b.is_active = False
+        self.plant_b.save(update_fields=['is_active'])
+        user = get_user_model().objects.create_user(
+            username='unassigned-inventory-user', password='test-pass',
+            access_grants=['inventory.view', 'inventory.manage'],
+        )
+        self.client.force_authenticate(user)
+        response = self.client.post('/api/inventory/receipts/', {
+            'company_name': 'Customer E', 'challan_number': 'E-001',
+            'part_name': 'Part E', 'received_quantity': 5,
+            'machine_sequence_steps': [
+                {'machine_id': self.machine_a.id, 'operation': 'Facing'},
+            ],
+        }, format='json')
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['plant'], self.plant_a.id)
+
     def test_inventory_manager_can_read_receipt_setup_data(self):
         machines = self.client.get('/api/machines/', {'plant': self.plant_a.id, 'status': 'active'})
         parts = self.client.get('/api/parts/', {'machine': self.machine_a.id})

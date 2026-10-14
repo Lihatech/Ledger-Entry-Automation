@@ -71,9 +71,20 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             machine_ids = [step.get('machine_id') for step in steps if isinstance(step, dict) and step.get('machine_id')]
             machines = list(Machine.objects.filter(pk__in=machine_ids).select_related('plant'))
             plant_ids = {machine.plant_id for machine in machines if machine.plant_id}
-            if len(set(machine_ids)) != len(machines) or len(plant_ids) != 1:
+            if len(set(machine_ids)) != len(machines) or (plant_ids and len(plant_ids) != 1):
                 raise serializers.ValidationError({'plant': 'Select a plant or add machine steps from one plant.'})
-            attrs['plant'] = Plant.objects.get(pk=plant_ids.pop())
+            if len(plant_ids) == 1:
+                attrs['plant'] = Plant.objects.get(pk=plant_ids.pop())
+            else:
+                # Some legacy machine records have no plant relation. If the
+                # company has exactly one active plant, it is unambiguous and
+                # can be assigned automatically without adding another form
+                # step for the operator.
+                active_plants = list(Plant.objects.filter(is_active=True).order_by('pk')[:2])
+                if len(active_plants) == 1:
+                    attrs['plant'] = active_plants[0]
+                else:
+                    raise serializers.ValidationError({'plant': 'Configure an active plant before creating an inventory receipt.'})
 
         if self.instance and 'plant' in attrs and attrs['plant'].pk != self.instance.plant_id:
             raise serializers.ValidationError({'plant': 'A receipt cannot be moved between plants.'})
