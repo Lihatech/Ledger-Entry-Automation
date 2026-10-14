@@ -10,11 +10,16 @@ from rest_framework.views import APIView
 
 from apps.users.permissions import HasAccess
 from .models import InventoryReceipt, InventoryDispatch, InventoryReceiptIntake
-from .serializers import InventoryReceiptSerializer
+from .serializers import InventoryReceiptSerializer, InventoryReceiptSelectionSerializer
 
 
 class InventoryReceiptListCreateView(generics.ListCreateAPIView):
     serializer_class = InventoryReceiptSerializer
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET' and not self.request.user.has_access('inventory.view'):
+            return InventoryReceiptSelectionSerializer
+        return InventoryReceiptSerializer
 
     def get_queryset(self):
         qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related(

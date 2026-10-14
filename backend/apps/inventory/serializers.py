@@ -145,3 +145,14 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             }
             for event in events
         ]
+
+
+class InventoryReceiptSelectionSerializer(serializers.ModelSerializer):
+    """Safe receipt fields for production-report receipt selection."""
+    class Meta:
+        model = InventoryReceipt
+        fields = [
+            'id', 'company_name', 'challan_number', 'part_name',
+            'received_quantity', 'vehicle_number', 'machine_sequence',
+            'machine_sequence_steps',
+        ]
