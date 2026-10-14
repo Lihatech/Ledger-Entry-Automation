@@ -825,6 +825,10 @@ td.deviation-ooc { color: var(--accent-red);   font-family: 'JetBrains Mono', mo
 
 /* ── Form Inputs ───────────────────────────────────────────── */
 .form-group { margin-bottom: 18px; }
+.plant-entry-row { width: 50%; }
+@media (max-width: 760px) {
+  .plant-entry-row { width: 100%; }
+}
 
 .form-label {
   display: block;
