@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+import logging
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -11,6 +12,8 @@ from rest_framework.views import APIView
 from apps.users.permissions import HasAccess
 from .models import InventoryReceipt, InventoryDispatch, InventoryReceiptIntake
 from .serializers import InventoryReceiptSerializer, InventoryReceiptSelectionSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class InventoryReceiptListCreateView(generics.ListCreateAPIView):
@@ -46,6 +49,26 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """Return useful validation details and capture them for diagnostics."""
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            fields = ','.join(str(key) for key in serializer.errors.keys())
+            logger.warning('Inventory receipt validation failed fields=%s user=%s', fields, getattr(request.user, 'pk', None))
+            try:
+                import sentry_sdk
+                with sentry_sdk.push_scope() as scope:
+                    scope.set_tag('endpoint', 'inventory.receipts.create')
+                    scope.set_tag('validation_fields', fields)
+                    scope.set_extra('machine_step_count', len(request.data.get('machine_sequence_steps') or []))
+                    sentry_sdk.capture_message('Inventory receipt validation failed', level='warning')
+            except Exception:
+                pass
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
 class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
