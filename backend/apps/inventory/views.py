@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -15,7 +16,10 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
-        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by', 'intake_events__received_by')
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related(
+            Prefetch('dispatch_events', queryset=InventoryDispatch.objects.select_related('dispatched_by'), to_attr='_prefetched_dispatch_events'),
+            'intake_events__received_by',
+        )
         if getattr(self.request.user, 'plant_id', None):
             qs = qs.filter(plant_id=self.request.user.plant_id)
         search = self.request.query_params.get('search', '').strip()
@@ -42,7 +46,10 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
-        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by', 'intake_events__received_by')
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related(
+            Prefetch('dispatch_events', queryset=InventoryDispatch.objects.select_related('dispatched_by'), to_attr='_prefetched_dispatch_events'),
+            'intake_events__received_by',
+        )
         if getattr(self.request.user, 'plant_id', None):
             qs = qs.filter(plant_id=self.request.user.plant_id)
         return qs

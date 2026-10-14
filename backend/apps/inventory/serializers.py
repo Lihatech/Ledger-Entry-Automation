@@ -112,13 +112,16 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
         return obj.created_by.get_full_name() or obj.created_by.username
 
     def get_dispatch_history(self, obj):
+        events = getattr(obj, '_prefetched_dispatch_events', None)
+        if events is None:
+            events = obj.dispatch_events.select_related('dispatched_by').all()
         return [
             {
                 'quantity': event.quantity,
                 'dispatched_by': (event.dispatched_by.get_full_name() or event.dispatched_by.username) if event.dispatched_by else 'System',
                 'created_at': event.created_at,
             }
-            for event in obj.dispatch_events.select_related('dispatched_by').all()
+            for event in events
         ]
 
     def get_incoming_history(self, obj):
