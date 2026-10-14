@@ -426,13 +426,24 @@ class ApiService {
 
   static Future<List<dynamic>> getInventoryReceipts() async {
     try {
-      final response = await authenticatedRequest(
-        (headers) => http.get(Uri.parse('$baseUrl/inventory/receipts/'), headers: headers),
-      );
-      if (response.statusCode == 200) {
+      var nextUrl = '$baseUrl/inventory/receipts/';
+      final receipts = <dynamic>[];
+      final visited = <String>{};
+      while (nextUrl.isNotEmpty && visited.add(nextUrl)) {
+        final response = await authenticatedRequest(
+          (headers) => http.get(Uri.parse(nextUrl), headers: headers),
+        );
+        if (response.statusCode != 200) return [];
         final data = jsonDecode(response.body);
-        return data is List ? data : (data['results'] ?? []);
+        if (data is List) {
+          receipts.addAll(data);
+          break;
+        }
+        if (data is! Map) return [];
+        receipts.addAll((data['results'] as List?) ?? const []);
+        nextUrl = (data['next'] ?? '').toString();
       }
+      return receipts;
     } catch (e) {
       debugPrint('[API] getInventoryReceipts error: $e');
     }
