@@ -491,39 +491,24 @@ export default function CompanyDetailsPage() {
                 </div>
 
                 {/* Plant names */}
-                <div
-                  style={{
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '14px 16px',
-                    background: 'var(--bg-elevated)',
-                  }}
-                >
-                  <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                    Plant / Workshop Name
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-                    Add each plant here. These names appear in HR when assigning users.
-                  </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Plant / Workshop Name</label>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <input className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
+                      <button type="button" className="btn btn-secondary" onClick={handleAddPlant} disabled={isAddingPlant || !newPlantName.trim() || !factoryId}>
+                        {isAddingPlant ? 'Adding…' : 'Add plant'}
+                      </button>
+                    </div>
+                  )}
                   {plants.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
                       {plants.map((plant) => (
-                        <div key={plant.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8 }}>
+                        <div key={plant.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6 }}>
                           <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plant.name}</span>
                           <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plant.code}</span>
                         </div>
                       ))}
-                    </div>
-                  )}
-                  {isAdmin && (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'end' }}>
-                      <label className="form-group" style={{ flex: 1, margin: 0 }}>
-                        <span className="form-label">New plant name</span>
-                        <input className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
-                      </label>
-                      <button type="button" className="btn btn-secondary" onClick={handleAddPlant} disabled={isAddingPlant || !newPlantName.trim() || !factoryId}>
-                        {isAddingPlant ? 'Adding…' : 'Add plant'}
-                      </button>
                     </div>
                   )}
                 </div>
