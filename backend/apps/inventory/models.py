@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.utils import timezone
@@ -60,6 +61,13 @@ class InventoryReceipt(models.Model):
 
     def save(self, *args, **kwargs):
         if self.machine_sequence_steps:
+            if (
+                not isinstance(self.machine_sequence_steps, list)
+                or any(not isinstance(step, dict) for step in self.machine_sequence_steps)
+            ):
+                raise ValidationError({
+                    'machine_sequence_steps': 'Each machine sequence step must be an object.'
+                })
             self.machine_sequence = ' → '.join(
                 f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}"
                 for step in self.machine_sequence_steps

@@ -157,3 +157,14 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.received_quantity, 10)
         self.assertEqual(self.receipt_a.completed_quantity, 10)
+
+    def test_malformed_machine_sequence_is_rejected(self):
+        response = self.client.post('/api/inventory/receipts/', {
+            'company_name': 'Customer Invalid',
+            'challan_number': 'INVALID-001',
+            'part_name': 'Part Invalid',
+            'received_quantity': 5,
+            'machine_sequence_steps': ['not-a-step'],
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('machine_sequence_steps', response.data)
