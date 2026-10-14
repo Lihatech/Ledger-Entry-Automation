@@ -16,12 +16,15 @@ def reconcile_receipt_from_reports(receipt):
         locked_receipt = InventoryReceipt.objects.select_for_update().get(pk=receipt.pk)
         reports = locked_receipt.production_reports.filter(status='SUBMITTED').select_related('machine')
         good_by_machine = defaultdict(int)
-        good_by_step = defaultdict(int)
+        good_by_step_id = defaultdict(int)
+        good_by_step_code = defaultdict(int)
         steps = locked_receipt.machine_sequence_steps or []
         for report in reports:
             code = report.machine.machine_code
             good_by_machine[code] += report.correct_jobs or 0
-            good_by_step[(code, (report.operation or '').strip())] += report.correct_jobs or 0
+            operation = (report.operation or '').strip()
+            good_by_step_id[(report.machine_id, operation)] += report.correct_jobs or 0
+            good_by_step_code[(code, operation)] += report.correct_jobs or 0
 
         stages = [
             item.strip()
@@ -43,7 +46,12 @@ def reconcile_receipt_from_reports(receipt):
                 step = steps[index]
                 machine_code = step.get('machine_code') or step.get('machine_name') or ''
                 operation = (step.get('operation') or '').strip()
-                good = min(good_by_step.get((machine_code, operation), 0), previous_good)
+                machine_id = step.get('machine_id')
+                if machine_id:
+                    matched_good = good_by_step_id.get((machine_id, operation), 0)
+                else:
+                    matched_good = good_by_step_code.get((machine_code, operation), 0)
+                good = min(matched_good, previous_good)
             else:
                 machine_code = stage.split(' ', 1)[0]
                 good = min(good_by_machine.get(machine_code, 0), previous_good)

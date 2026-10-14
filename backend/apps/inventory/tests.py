@@ -189,3 +189,23 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.completed_quantity, 3)
         self.assertEqual(len(self.receipt_a.position_summary), 2)
+
+    def test_machine_code_change_does_not_erase_tracking(self):
+        self.receipt_a.machine_sequence_steps = [{
+            'machine_id': self.machine_a.id,
+            'machine_code': 'CNC-INV-A',
+            'operation': 'Facing',
+        }]
+        self.receipt_a.save()
+        self.machine_a.machine_code = 'CNC-INV-A-RENAMED'
+        self.machine_a.save()
+
+        DailyProductionReport.objects.create(
+            date=date.today(), machine=self.machine_a, part=self.part_a,
+            inventory_receipt=self.receipt_a, operator=self.user_a,
+            operation='Facing', jobs_completed=4, correct_jobs=4,
+            incorrect_jobs=0, status=DailyProductionReport.Status.SUBMITTED,
+        )
+
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.completed_quantity, 4)
