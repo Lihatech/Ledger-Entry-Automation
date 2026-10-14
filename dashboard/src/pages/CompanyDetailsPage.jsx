@@ -492,10 +492,10 @@ export default function CompanyDetailsPage() {
 
                 {/* Plant names */}
                 <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Plant / Workshop Name</label>
+                  <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
                   {isAdmin && (
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
+                      <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
                       <button type="button" className="btn btn-secondary" onClick={handleAddPlant} disabled={isAddingPlant || !newPlantName.trim() || !factoryId}>
                         {isAddingPlant ? 'Adding…' : 'Add plant'}
                       </button>
