@@ -104,9 +104,12 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
       setSession((prev) => {
         if (!prev) return prev;
         const updatedMeasurements = [...(prev.measurements || [])];
-        const trialNo = latest.trial_number || 1;
-        const inspType = latest.inspection_type || (trialNo > 3 ? 'hourly' : 'first_piece');
-        const slot = latest.hourly_slot || (inspType === 'hourly' ? trialNo : 1);
+        // WebSocket events carry the canonical owner/session classification.
+        // Do not infer hourly data from trial_number: hourly sessions use
+        // trial_number=0 and belong to hourly_slot 1..N.
+        const inspType = latest.inspection_type === 'hourly' ? 'hourly' : 'first_piece';
+        const trialNo = inspType === 'first_piece' ? (latest.trial_number || 1) : 0;
+        const slot = inspType === 'hourly' ? (latest.hourly_slot || 1) : 0;
 
         const existingIdx = updatedMeasurements.findIndex(
           (m) => m.parameter_code === latest.parameter_code &&

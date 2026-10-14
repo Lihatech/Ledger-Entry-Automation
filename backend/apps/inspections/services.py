@@ -1179,6 +1179,43 @@ class InspectionService:
 
         return session
 
+    def _report_scope_queryset(self, session, inspection_type=None):
+        """Return sessions belonging to the same combined inspection report.
+
+        First Piece and hourly templates can be different rows because they are
+        configured for different inspection types.  The operation name is the
+        shared identity between those templates; falling back to template_id
+        keeps older unnamed templates isolated instead of mixing operations.
+        """
+        from django.utils import timezone as django_timezone
+
+        queryset = InspectionSession.objects.filter(
+            machine_id=session.machine_id,
+            part_id=session.part_id,
+            shift=session.shift,
+        )
+        if session.started_at:
+            report_date = django_timezone.localtime(session.started_at).date()
+            queryset = queryset.filter(started_at__date=report_date)
+
+        template_name = (getattr(session.template, 'name', '') or '').strip()
+        document_operation_name = (
+            (doc_utils.get_document(session) or {}).get('operation_name') or ''
+        ).strip()
+        operation_name = template_name or document_operation_name
+        if operation_name:
+            queryset = queryset.filter(
+                Q(template_id=session.template_id) |
+                Q(template__name__iexact=operation_name) |
+                Q(document_payload__operation_name__iexact=operation_name)
+            )
+        elif session.template_id:
+            queryset = queryset.filter(template_id=session.template_id)
+
+        if inspection_type:
+            queryset = queryset.filter(inspection_type=inspection_type)
+        return queryset
+
     # ── Get Full Document ─────────────────────────────────────────────────
     def get_session_document(self, session_id: str, use_finalized_snapshot: bool = True) -> Optional[dict]:
         """Retrieve full inspection document from document_payload JSONB field."""
@@ -1192,15 +1229,7 @@ class InspectionService:
         # Once live companion sessions are removed, serve the permanent combined
         # report captured at finalization instead of rebuilding from deleted rows.
         if use_finalized_snapshot and session_obj.finalized_report_snapshot:
-            from django.utils import timezone as django_timezone
-            report_date = django_timezone.localtime(session_obj.started_at).date()
-            live_scope = InspectionSession.objects.filter(
-                machine=session_obj.machine,
-                part=session_obj.part,
-                template=session_obj.template,
-                shift=session_obj.shift,
-                started_at__date=report_date,
-            ).exclude(
+            live_scope = self._report_scope_queryset(session_obj).exclude(
                 pk=session_obj.pk,
             ).exclude(
                 is_first_piece_finalized=True,
@@ -1334,23 +1363,13 @@ class InspectionService:
 
         # Merge measurements from same-day first piece and hourly sessions
         if session_obj:
-            from django.utils import timezone as django_tz
-            session_date = django_tz.localtime(session_obj.started_at).date() if session_obj.started_at else None
-            session_shift = session_obj.shift
-
-            # Get all first piece sessions for same machine/part/template/date/shift
-            fp_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'first_piece',
-            }
-            if session_date:
-                fp_kwargs['started_at__date'] = session_date
-            if session_shift:
-                fp_kwargs['shift'] = session_shift
-
-            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
+            # Get all First Piece sessions for this report scope.  The owning
+            # session determines the trial column; measurement metadata is only
+            # a compatibility fallback for legacy payloads.
+            fp_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='first_piece',
+            ).order_by('trial_number', 'started_at')
             for fp_s in fp_sessions:
                 fp_doc = doc_utils.get_document(fp_s)
                 t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
@@ -1418,19 +1437,12 @@ class InspectionService:
                         'hourly_slot':           0,
                     }
 
-            # Get all hourly sessions for same machine/part/template/date/shift
-            hourly_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'hourly',
-            }
-            if session_date:
-                hourly_kwargs['started_at__date'] = session_date
-            if session_shift:
-                hourly_kwargs['shift'] = session_shift
-
-            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
+            # Get all hourly sessions for this report scope.  The owning
+            # session's hourly_unlocked_slot is authoritative for 1/HR..N/HR.
+            hourly_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='hourly',
+            ).order_by('hourly_unlocked_slot', 'started_at')
             for h_sess in hourly_sessions:
                 h_doc = doc_utils.get_document(h_sess)
                 slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
@@ -1445,17 +1457,10 @@ class InspectionService:
         if not session.machine_id or not session.part_id or not session.started_at:
             return
 
-        from django.utils import timezone as django_timezone
-        report_date = django_timezone.localtime(session.started_at).date()
-        finalized_sessions = InspectionSession.objects.filter(
-            machine_id=session.machine_id,
-            part_id=session.part_id,
-            template_id=session.template_id,
-            shift=session.shift,
+        finalized_sessions = self._report_scope_queryset(
+            session,
             inspection_type='first_piece',
-            is_first_piece_finalized=True,
-            started_at__date=report_date,
-        )
+        ).filter(is_first_piece_finalized=True)
         for finalized_session in finalized_sessions:
             snapshot = self.get_session_document(
                 str(finalized_session.session_id),
