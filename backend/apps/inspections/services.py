@@ -427,8 +427,13 @@ class InspectionService:
             # combined report. Retrials inherit their parent's identity. For
             # hourly sessions created without a parent, reuse the latest
             # matching First Piece identity when it is unambiguous.
-            report_group_id = parent_session.report_group_id if parent_session else None
-            if not report_group_id:
+            report_group_id = None
+            if actual_inspection_type in ('first_piece', 'hourly'):
+                report_group_id = parent_session.report_group_id if parent_session else None
+                if not report_group_id:
+                    report_group_id = getattr(template, 'operation_key', None)
+
+            if actual_inspection_type in ('first_piece', 'hourly') and not report_group_id:
                 operation_name = (template.name or '').strip()
                 matching_first_piece = InspectionSession.objects.filter(
                     machine=machine,
@@ -466,7 +471,9 @@ class InspectionService:
                         report_group_id__isnull=True,
                     ).update(report_group_id=report_group_id)
 
-            report_group_id = report_group_id or uuid.uuid4()
+            # Final/approval sessions are not part of the combined live
+            # First Piece + hourly report. Keep them ungrouped so their
+            # measurements cannot be classified into either column family.
 
             initial_recorded_count = len(initial_measurements)
 
@@ -620,7 +627,7 @@ class InspectionService:
         # avoiding lock-order races between different companion sessions.
         list(
             self._report_scope_queryset(session)
-            .select_for_update()
+            .select_for_update(of=('self',))
             .order_by('pk')
         )
         session = InspectionSession.objects.select_related(
@@ -1319,7 +1326,15 @@ class InspectionService:
 
         # Once live companion sessions are removed, serve the permanent combined
         # report captured at finalization instead of rebuilding from deleted rows.
-        if use_finalized_snapshot and session_obj.finalized_report_snapshot and (
+        # While companions still exist, rebuild from PostgreSQL instead. This
+        # prevents an older snapshot from hiding a newly saved hourly or
+        # First Piece measurement when snapshot refresh was unable to complete.
+        live_companions_exist = self._report_scope_queryset(session_obj).exclude(
+            pk=session_obj.pk,
+        ).filter(
+            inspection_type__in=('first_piece', 'hourly'),
+        ).exists()
+        if use_finalized_snapshot and session_obj.finalized_report_snapshot and not live_companions_exist and (
             session_obj.is_first_piece_finalized or
             session_obj.status in [
                 InspectionSession.Status.APPROVED,
@@ -1328,7 +1343,13 @@ class InspectionService:
                 InspectionSession.Status.COMPLETED,
             ]
         ):
-            return dict(session_obj.finalized_report_snapshot)
+            snapshot = dict(session_obj.finalized_report_snapshot)
+            # Older snapshots were created before report_group_id existed.
+            # Add the current relational identity at read time so the
+            # frontend can match this finalized report with live companions.
+            if session_obj.report_group_id and not snapshot.get('report_group_id'):
+                snapshot['report_group_id'] = str(session_obj.report_group_id)
+            return snapshot
 
         # Get document from JSONB field
         doc = doc_utils.get_document(session_obj)
@@ -1557,7 +1578,7 @@ class InspectionService:
             # generation and replace a newer snapshot with stale data.
             scope = list(
                 self._report_scope_queryset(session)
-                .select_for_update()
+                .select_for_update(of=('self',))
                 .order_by('pk')
             )
             protected_statuses = [

@@ -4,6 +4,7 @@ This is the core master data that drives the entire inspection workflow.
 """
 
 import logging
+import uuid
 from decimal import Decimal
 from django.db import models, transaction
 from django.core.cache import cache
@@ -85,6 +86,9 @@ class InspectionTemplate(models.Model):
 
     part            = models.ForeignKey(Part, on_delete=models.CASCADE, related_name='templates')
     name            = models.CharField(max_length=150, blank=True, default='', help_text='Custom Operation Name e.g. Op 10 - Rough Turning')
+    # Immutable identity shared by the First Piece and hourly templates for
+    # one operation. The display name may be edited without splitting reports.
+    operation_key   = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     inspection_type = models.CharField(max_length=20, choices=InspectionType.choices)
     version         = models.PositiveIntegerField(default=1)
     target_parameter_count = models.PositiveIntegerField(

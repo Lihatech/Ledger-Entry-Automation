@@ -119,7 +119,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
             'operator_name', 'supervisor_name', 'inspector_name',
             'template_id', 'template_name', 'template_version',
             'inspection_type', 'shift', 'status', 'shift_hours', 'total_hourly_slots', 'shift_duration_hours', 'total_break_mins',
-            'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'rejection_reason',
+            'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'report_group_id', 'rejection_reason',
             'total_parameters', 'recorded_count', 'progress_percent',
             'has_ooc', 'has_critical_fail', 'is_setup_approved', 'is_first_piece_finalized',
             'started_at', 'completed_at', 'reviewed_at', 'finalized_at',

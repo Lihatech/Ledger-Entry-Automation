@@ -64,7 +64,7 @@ class InspectionTemplateSerializer(serializers.ModelSerializer):
         model  = InspectionTemplate
         fields = [
             'id', 'name', 'part', 'part_number', 'part_name',
-            'inspection_type', 'version', 'target_parameter_count',
+            'inspection_type', 'version', 'operation_key', 'target_parameter_count',
             'configured_parameter_count', 'is_configuration_complete',
             'is_active', 'is_published', 'published_at', 'cycle_time_mins',
             'status', 'status_display',
@@ -78,7 +78,7 @@ class InspectionTemplateSerializer(serializers.ModelSerializer):
             'parameters', 'process_parameters',
         ]
         read_only_fields = [
-            'part', 'version', 'created_at', 'published_at',
+            'part', 'version', 'operation_key', 'created_at', 'published_at',
             'reviewed_at', 'approved_at', 'status_display'
         ]
 
@@ -126,7 +126,7 @@ class InspectionTemplateListSerializer(serializers.ModelSerializer):
     class Meta:
         model  = InspectionTemplate
         fields = [
-            'id', 'name', 'part_number', 'inspection_type', 'version', 'is_active',
+            'id', 'name', 'part_number', 'inspection_type', 'version', 'operation_key', 'is_active',
             'is_published', 'published_at', 'cycle_time_mins',
             'status', 'status_display',
             'created_by', 'created_by_name', 'created_at',
