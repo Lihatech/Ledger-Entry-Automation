@@ -73,6 +73,9 @@ def reconcile_receipt_from_reports(receipt):
         completed = previous_good if stages else min(
             sum(good_by_machine.values()), locked_receipt.received_quantity,
         )
+        defect_capacity = max(locked_receipt.received_quantity - completed, 0)
+        rework = min(rework, defect_capacity)
+        rejected = min(rejected, defect_capacity - rework)
         locked_receipt.reconcile(
             completed=completed,
             rework=rework,

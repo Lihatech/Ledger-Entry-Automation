@@ -7,7 +7,14 @@ export const getAllInventoryReceipts = async (params = {}) => {
   let response = await getInventoryReceipts(params);
   const rows = Array.isArray(response.data) ? [...response.data] : [...(response.data?.results || [])];
   let next = response.data?.next;
+  const visited = new Set();
+  let pageCount = 0;
   while (next) {
+    if (visited.has(next) || pageCount >= 100) {
+      throw new Error('Inventory pagination returned a repeated page link.');
+    }
+    visited.add(next);
+    pageCount += 1;
     response = await axios.get(next);
     if (Array.isArray(response.data)) rows.push(...response.data);
     else rows.push(...(response.data?.results || []));

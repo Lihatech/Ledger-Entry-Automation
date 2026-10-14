@@ -175,11 +175,6 @@ class DailyProductionReport(models.Model):
     def save(self, *args, **kwargs):
         previous_receipt_id = None
         previous_status = None
-        if self.pk:
-            previous = type(self).objects.filter(pk=self.pk).values('inventory_receipt_id', 'status').first()
-            if previous:
-                previous_receipt_id = previous['inventory_receipt_id']
-                previous_status = previous['status']
 
         # Auto-calculate target from available time and cycle time
         available_time = 420
@@ -211,6 +206,13 @@ class DailyProductionReport(models.Model):
         else:
             self.achievement_percentage = 0.0
         with transaction.atomic():
+            if self.pk:
+                previous = type(self).objects.select_for_update().filter(pk=self.pk).values(
+                    'inventory_receipt_id', 'status'
+                ).first()
+                if previous:
+                    previous_receipt_id = previous['inventory_receipt_id']
+                    previous_status = previous['status']
             super().save(*args, **kwargs)
 
             from apps.inventory.services import reconcile_receipt_from_reports

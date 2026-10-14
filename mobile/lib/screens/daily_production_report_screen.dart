@@ -157,7 +157,15 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
     List<dynamic> modalParts = [];
     List<dynamic> modalTemplates = [];
-    List<dynamic> modalReceipts = await ApiService.getInventoryReceipts();
+    List<dynamic> modalReceipts;
+    try {
+      modalReceipts = await ApiService.getInventoryReceipts();
+    } on InventoryReceiptFetchException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      }
+      return;
+    }
     bool isFetchingParts = false;
     bool isFetchingTemplates = false;
 

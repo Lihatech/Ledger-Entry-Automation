@@ -186,7 +186,7 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
         return '-'
 
     def validate(self, attrs):
-        if not attrs.get('idempotency_key'):
+        if 'idempotency_key' in attrs and not attrs.get('idempotency_key'):
             attrs['idempotency_key'] = None
         receipt = attrs.get('inventory_receipt') or getattr(self.instance, 'inventory_receipt', None)
         machine = attrs.get('machine') or getattr(self.instance, 'machine', None)

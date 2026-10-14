@@ -54,8 +54,8 @@ class InventoryReceipt(models.Model):
         ordering = ['-created_at']
         constraints = [
             models.UniqueConstraint(
-                fields=['company_name', 'challan_number'],
-                name='inventory_company_challan_unique',
+                fields=['plant', 'company_name', 'challan_number'],
+                name='inventory_plant_company_challan_unique',
             ),
         ]
 
@@ -76,6 +76,8 @@ class InventoryReceipt(models.Model):
                 f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}"
                 for step in self.machine_sequence_steps
             )
+        elif self.machine_sequence_steps == []:
+            self.machine_sequence = ''
         if self._state.adding and not self.not_started_quantity:
             self.not_started_quantity = self.received_quantity
         super().save(*args, **kwargs)

@@ -5,6 +5,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
+from rest_framework.exceptions import ValidationError
 from rest_framework.views import APIView
 
 from apps.users.permissions import HasAccess
@@ -56,6 +57,19 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
 
     def get_permissions(self):
         return [HasAccess('inventory.manage' if self.request.method in ('PUT', 'PATCH') else 'inventory.view')]
+
+    def perform_update(self, serializer):
+        # Serialize route edits with report submissions so a route cannot be
+        # changed between the history check and the database write.
+        with transaction.atomic():
+            locked = InventoryReceipt.objects.select_for_update().get(pk=serializer.instance.pk)
+            new_steps = serializer.validated_data.get('machine_sequence_steps', locked.machine_sequence_steps)
+            if new_steps != locked.machine_sequence_steps and (
+                locked.production_reports.filter(status='SUBMITTED').exists() or locked.dispatched_quantity
+            ):
+                raise ValidationError({'machine_sequence_steps': 'The machine sequence cannot change after production or dispatch history exists.'})
+            serializer.instance = locked
+            serializer.save()
 
 
 class InventoryReceiptDispatchView(APIView):
