@@ -36,7 +36,7 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('inventory.manage')]
-        return [HasAccess(('inventory.view', 'production.daily.manage', 'quality.inspections.record'))]
+        return [HasAccess(('inventory.view', 'production.daily.manage'))]
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

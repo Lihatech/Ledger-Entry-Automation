@@ -119,6 +119,19 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(report.correct_jobs, 10)
         self.assertEqual(self.receipt_a.completed_quantity, 10)
 
+    def test_report_cannot_link_unrelated_receipt_part(self):
+        self.user_a.access_grants = ['inventory.view', 'inventory.manage', 'production.daily.manage']
+        self.user_a.save(update_fields=['access_grants'])
+        response = self.client.post('/api/inspections/daily-production-reports/', {
+            'date': date.today().isoformat(), 'machine': self.machine_a.id,
+            'part': self.part_a.id, 'operation': 'Facing', 'shift': 'I',
+            'inventory_receipt': self.receipt_b.id,
+            'jobs_completed': 1, 'correct_jobs': 1, 'incorrect_jobs': 0,
+            'cr_count': 0, 'mr_count': 0, 'rw_count': 0,
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('inventory_receipt', response.data)
+
     def test_new_receipt_uses_request_users_plant(self):
         response = self.client.post('/api/inventory/receipts/', {
             'company_name': 'Customer C',

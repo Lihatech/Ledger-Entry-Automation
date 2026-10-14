@@ -188,6 +188,28 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if not attrs.get('idempotency_key'):
             attrs['idempotency_key'] = None
+        receipt = attrs.get('inventory_receipt') or getattr(self.instance, 'inventory_receipt', None)
+        machine = attrs.get('machine') or getattr(self.instance, 'machine', None)
+        part = attrs.get('part') or getattr(self.instance, 'part', None)
+        operation = (attrs.get('operation', getattr(self.instance, 'operation', '')) or '').strip()
+        request_user = getattr(self.context.get('request'), 'user', None)
+        if receipt and machine and part:
+            if receipt.plant_id and machine.plant_id != receipt.plant_id:
+                raise serializers.ValidationError({'inventory_receipt': 'The receipt belongs to a different plant.'})
+            if getattr(request_user, 'plant_id', None) and receipt.plant_id != request_user.plant_id:
+                raise serializers.ValidationError({'inventory_receipt': 'The receipt is outside your assigned plant.'})
+            receipt_part = (receipt.part_name or '').strip().casefold()
+            if receipt_part not in {part.part_name.strip().casefold(), part.part_number.strip().casefold()}:
+                raise serializers.ValidationError({'inventory_receipt': 'The receipt part does not match this production report.'})
+            steps = receipt.machine_sequence_steps or []
+            if steps:
+                matches_route = any(
+                    str(step.get('machine_id')) == str(machine.id)
+                    and (step.get('operation') or '').strip().casefold() == operation.casefold()
+                    for step in steps if isinstance(step, dict)
+                )
+                if not matches_route:
+                    raise serializers.ValidationError({'inventory_receipt': 'The report machine and operation are not in the receipt route.'})
         jobs_completed = attrs.get('jobs_completed', 0)
         correct_jobs = attrs.get('correct_jobs', 0)
         incorrect_jobs = attrs.get('incorrect_jobs', 0)
