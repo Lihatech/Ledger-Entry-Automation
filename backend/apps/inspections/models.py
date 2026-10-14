@@ -63,6 +63,9 @@ class InspectionSession(models.Model):
     status                     = models.CharField(max_length=25, choices=Status.choices, default=Status.IN_PROGRESS, db_index=True)
     trial_number               = models.IntegerField(default=1)   # 1 for 1st PC #1, 2 for 1st PC #2, 3 for 1st PC #3
     parent_session             = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='child_trials')
+    # Stable identity for one combined First Piece + hourly report.  This is
+    # persisted on the session so template renames cannot change report scope.
+    report_group_id            = models.UUIDField(null=True, blank=True, db_index=True)
     rejection_reason           = models.TextField(blank=True)
     hourly_unlocked_slot       = models.IntegerField(default=0)   # 0 = setup, 1..8 for 1/HR..8/HR
     shift_start_time           = models.DateTimeField(null=True, blank=True)

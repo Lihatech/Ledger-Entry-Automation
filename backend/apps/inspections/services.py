@@ -17,6 +17,7 @@ from decimal import Decimal
 from typing import Optional
 
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import F, Q
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -403,24 +404,76 @@ class InspectionService:
                 except (ValueError, TypeError, AttributeError):
                     parent_session = None
 
-                if parent_session:
-                    parent_doc = doc_utils.get_document(parent_session)
-                    if parent_doc:
-                        rejected_list = parent_doc.get('rejected_parameters') or []
-                        if rejected_list:
-                            rejected_codes = set(rejected_list)
-                        else:
-                            for p_sum in parent_doc.get('parameter_summary', []):
-                                if p_sum.get('status') == 'out_of_spec':
-                                    rejected_codes.add(p_sum.get('parameter_code'))
+            if parent_session:
+                parent_doc = doc_utils.get_document(parent_session)
+                if parent_doc:
+                    rejected_list = parent_doc.get('rejected_parameters') or []
+                    if rejected_list:
+                        rejected_codes = set(rejected_list)
+                    else:
+                        for p_sum in parent_doc.get('parameter_summary', []):
+                            if p_sum.get('status') == 'out_of_spec':
+                                rejected_codes.add(p_sum.get('parameter_code'))
 
-                        parent_measurements = parent_doc.get('measurements', [])
-                        for m in parent_measurements:
-                            code = m.get('parameter_code')
-                            if code and code not in rejected_codes and m.get('status') == 'ok':
-                                m_copy = dict(m)
-                                m_copy['carried_forward'] = True
-                                initial_measurements.append(m_copy)
+                    parent_measurements = parent_doc.get('measurements', [])
+                    for m in parent_measurements:
+                        code = m.get('parameter_code')
+                        if code and code not in rejected_codes and m.get('status') == 'ok':
+                            m_copy = dict(m)
+                            m_copy['carried_forward'] = True
+                            initial_measurements.append(m_copy)
+
+            # Persist one identity for every session that belongs to the same
+            # combined report. Retrials inherit their parent's identity. For
+            # hourly sessions created without a parent, reuse the latest
+            # matching First Piece identity when it is unambiguous.
+            report_group_id = None
+            if actual_inspection_type in ('first_piece', 'hourly'):
+                report_group_id = parent_session.report_group_id if parent_session else None
+                if not report_group_id:
+                    report_group_id = getattr(template, 'operation_key', None)
+
+            if actual_inspection_type in ('first_piece', 'hourly') and not report_group_id:
+                operation_name = (template.name or '').strip()
+                matching_first_piece = InspectionSession.objects.filter(
+                    machine=machine,
+                    part=part,
+                    shift=shift,
+                    started_at__date=today,
+                    inspection_type='first_piece',
+                ).order_by('-trial_number', '-started_at')
+                if operation_name:
+                    matching_first_piece = matching_first_piece.filter(
+                        Q(template__name__iexact=operation_name) |
+                        Q(document_payload__operation_name__iexact=operation_name)
+                    )
+                    first_piece = matching_first_piece.first()
+                else:
+                    # With unnamed templates there is no safe name-based
+                    # identity. Reuse a group only when exactly one distinct
+                    # First Piece group exists for this machine/part/shift.
+                    # Multiple unnamed operations remain isolated.
+                    candidates = list(matching_first_piece.only('pk', 'report_group_id'))
+                    group_ids = {item.report_group_id or item.session_id for item in candidates}
+                    if len(group_ids) == 1:
+                        first_piece = candidates[0]
+                    else:
+                        first_piece = None
+                if first_piece:
+                    report_group_id = first_piece.report_group_id or first_piece.session_id
+                    if not first_piece.report_group_id:
+                        first_piece.report_group_id = report_group_id
+                        first_piece.save(update_fields=['report_group_id'])
+                    # Backfill the same legacy report scope when a new
+                    # session reconnects to an older report created before
+                    # report_group_id existed.
+                    matching_first_piece.filter(
+                        report_group_id__isnull=True,
+                    ).update(report_group_id=report_group_id)
+
+            # Final/approval sessions are not part of the combined live
+            # First Piece + hourly report. Keep them ungrouped so their
+            # measurements cannot be classified into either column family.
 
             initial_recorded_count = len(initial_measurements)
 
@@ -437,6 +490,7 @@ class InspectionService:
                 trial_number         = trial_number,
                 hourly_unlocked_slot = hourly_slot if actual_inspection_type == 'hourly' else 0,
                 parent_session       = parent_session,
+                report_group_id      = report_group_id,
                 total_parameters     = total_params,
                 recorded_count       = initial_recorded_count,
             )
@@ -544,6 +598,7 @@ class InspectionService:
         return session
 
     # ── Record Measurement ────────────────────────────────────────────────
+    @transaction.atomic
     def record_measurement(
         self,
         session_id: str,
@@ -566,6 +621,18 @@ class InspectionService:
         session = InspectionSession.objects.select_related(
             'part', 'machine', 'template'
         ).get(session_id=session_id)
+
+        # Lock every session in this report scope in a stable order. This
+        # serializes measurement writes, snapshot refreshes, and cleanup while
+        # avoiding lock-order races between different companion sessions.
+        list(
+            self._report_scope_queryset(session)
+            .select_for_update(of=('self',))
+            .order_by('pk')
+        )
+        session = InspectionSession.objects.select_related(
+            'part', 'machine', 'template'
+        ).get(pk=session.pk)
 
         # Whole operation completion lock
         op_name = session.template.name if session.template and session.template.name else (session.inspection_type or 'Inspection')
@@ -1179,6 +1246,74 @@ class InspectionService:
 
         return session
 
+    def _report_scope_queryset(self, session, inspection_type=None):
+        """Return sessions belonging to the same combined inspection report.
+
+        First Piece and hourly templates can be different rows because they are
+        configured for different inspection types.  The operation name is the
+        shared identity between those templates; falling back to template_id
+        keeps older unnamed templates isolated instead of mixing operations.
+        """
+        from django.utils import timezone as django_timezone
+
+        queryset = InspectionSession.objects.filter(
+            machine_id=session.machine_id,
+            part_id=session.part_id,
+            shift=session.shift,
+        )
+        if session.started_at:
+            report_date = django_timezone.localtime(session.started_at).date()
+            queryset = queryset.filter(started_at__date=report_date)
+
+        if session.report_group_id:
+            queryset = queryset.filter(report_group_id=session.report_group_id)
+            if inspection_type:
+                queryset = queryset.filter(inspection_type=inspection_type)
+            return queryset
+
+        template_name = (getattr(session.template, 'name', '') or '').strip()
+        document_operation_name = (
+            (doc_utils.get_document(session) or {}).get('operation_name') or ''
+        ).strip()
+        generic_operation_labels = {
+            '1st Piece Cum In-Process Inspection',
+            'Hourly In-Process Inspection',
+            'Final Inspection',
+            'Setup Approval',
+        }
+        operation_names = {
+            name for name in (template_name, document_operation_name)
+            if name and name not in generic_operation_labels
+        }
+        operation_name = template_name or document_operation_name
+        if not template_name and document_operation_name in generic_operation_labels:
+            operation_name = ''
+        if operation_names and session.template_id:
+            operation_filter = Q(template_id=session.template_id)
+            for name in operation_names:
+                operation_filter |= Q(template__name__iexact=name)
+                operation_filter |= Q(
+                    template_id__isnull=True,
+                    document_payload__operation_name__iexact=name,
+                )
+            queryset = queryset.filter(operation_filter)
+        elif operation_names:
+            operation_filter = Q()
+            for name in operation_names:
+                operation_filter |= Q(template__name__iexact=name)
+                operation_filter |= Q(document_payload__operation_name__iexact=name)
+            queryset = queryset.filter(operation_filter)
+        elif session.template_id:
+            queryset = queryset.filter(template_id=session.template_id)
+        else:
+            # There is no safe shared identity. Never merge every unnamed,
+            # template-less session into one report.
+            queryset = queryset.filter(pk=session.pk)
+
+        if inspection_type:
+            queryset = queryset.filter(inspection_type=inspection_type)
+        return queryset
+
     # ── Get Full Document ─────────────────────────────────────────────────
     def get_session_document(self, session_id: str, use_finalized_snapshot: bool = True) -> Optional[dict]:
         """Retrieve full inspection document from document_payload JSONB field."""
@@ -1191,22 +1326,30 @@ class InspectionService:
 
         # Once live companion sessions are removed, serve the permanent combined
         # report captured at finalization instead of rebuilding from deleted rows.
-        if use_finalized_snapshot and session_obj.finalized_report_snapshot:
-            from django.utils import timezone as django_timezone
-            report_date = django_timezone.localtime(session_obj.started_at).date()
-            live_scope = InspectionSession.objects.filter(
-                machine=session_obj.machine,
-                part=session_obj.part,
-                template=session_obj.template,
-                shift=session_obj.shift,
-                started_at__date=report_date,
-            ).exclude(
-                pk=session_obj.pk,
-            ).exclude(
-                is_first_piece_finalized=True,
-            ).exists()
-            if not live_scope:
-                return dict(session_obj.finalized_report_snapshot)
+        # While companions still exist, rebuild from PostgreSQL instead. This
+        # prevents an older snapshot from hiding a newly saved hourly or
+        # First Piece measurement when snapshot refresh was unable to complete.
+        live_companions_exist = self._report_scope_queryset(session_obj).exclude(
+            pk=session_obj.pk,
+        ).filter(
+            inspection_type__in=('first_piece', 'hourly'),
+        ).exists()
+        if use_finalized_snapshot and session_obj.finalized_report_snapshot and not live_companions_exist and (
+            session_obj.is_first_piece_finalized or
+            session_obj.status in [
+                InspectionSession.Status.APPROVED,
+                InspectionSession.Status.FINALIZED_PASSED,
+                InspectionSession.Status.FINALIZED_FAILED,
+                InspectionSession.Status.COMPLETED,
+            ]
+        ):
+            snapshot = dict(session_obj.finalized_report_snapshot)
+            # Older snapshots were created before report_group_id existed.
+            # Add the current relational identity at read time so the
+            # frontend can match this finalized report with live companions.
+            if session_obj.report_group_id and not snapshot.get('report_group_id'):
+                snapshot['report_group_id'] = str(session_obj.report_group_id)
+            return snapshot
 
         # Get document from JSONB field
         doc = doc_utils.get_document(session_obj)
@@ -1245,6 +1388,7 @@ class InspectionService:
         doc['machine_code'] = session_obj.machine.machine_code if session_obj.machine else None
         doc['template_name'] = session_obj.template.name if session_obj.template else ''
         doc['template_version'] = session_obj.template.version if session_obj.template else 1
+        doc['report_group_id'] = str(session_obj.report_group_id) if session_obj.report_group_id else None
 
         # Add user names
         if session_obj.finalized_by:
@@ -1334,23 +1478,13 @@ class InspectionService:
 
         # Merge measurements from same-day first piece and hourly sessions
         if session_obj:
-            from django.utils import timezone as django_tz
-            session_date = django_tz.localtime(session_obj.started_at).date() if session_obj.started_at else None
-            session_shift = session_obj.shift
-
-            # Get all first piece sessions for same machine/part/template/date/shift
-            fp_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'first_piece',
-            }
-            if session_date:
-                fp_kwargs['started_at__date'] = session_date
-            if session_shift:
-                fp_kwargs['shift'] = session_shift
-
-            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
+            # Get all First Piece sessions for this report scope.  The owning
+            # session determines the trial column; measurement metadata is only
+            # a compatibility fallback for legacy payloads.
+            fp_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='first_piece',
+            ).order_by('trial_number', 'started_at')
             for fp_s in fp_sessions:
                 fp_doc = doc_utils.get_document(fp_s)
                 t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
@@ -1418,19 +1552,12 @@ class InspectionService:
                         'hourly_slot':           0,
                     }
 
-            # Get all hourly sessions for same machine/part/template/date/shift
-            hourly_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'hourly',
-            }
-            if session_date:
-                hourly_kwargs['started_at__date'] = session_date
-            if session_shift:
-                hourly_kwargs['shift'] = session_shift
-
-            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
+            # Get all hourly sessions for this report scope.  The owning
+            # session's hourly_unlocked_slot is authoritative for 1/HR..N/HR.
+            hourly_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='hourly',
+            ).order_by('hourly_unlocked_slot', 'started_at')
             for h_sess in hourly_sessions:
                 h_doc = doc_utils.get_document(h_sess)
                 slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
@@ -1445,26 +1572,36 @@ class InspectionService:
         if not session.machine_id or not session.part_id or not session.started_at:
             return
 
-        from django.utils import timezone as django_timezone
-        report_date = django_timezone.localtime(session.started_at).date()
-        finalized_sessions = InspectionSession.objects.filter(
-            machine_id=session.machine_id,
-            part_id=session.part_id,
-            template_id=session.template_id,
-            shift=session.shift,
-            inspection_type='first_piece',
-            is_first_piece_finalized=True,
-            started_at__date=report_date,
-        )
-        for finalized_session in finalized_sessions:
-            snapshot = self.get_session_document(
-                str(finalized_session.session_id),
-                use_finalized_snapshot=False,
+        with transaction.atomic():
+            # Lock the whole report scope before reading it. A measurement
+            # write and cleanup therefore cannot interleave with snapshot
+            # generation and replace a newer snapshot with stale data.
+            scope = list(
+                self._report_scope_queryset(session)
+                .select_for_update(of=('self',))
+                .order_by('pk')
             )
-            if snapshot:
-                InspectionSession.objects.filter(pk=finalized_session.pk).update(
-                    finalized_report_snapshot=snapshot,
+            protected_statuses = [
+                InspectionSession.Status.APPROVED,
+                InspectionSession.Status.FINALIZED_PASSED,
+                InspectionSession.Status.FINALIZED_FAILED,
+                InspectionSession.Status.COMPLETED,
+            ]
+            finalized_sessions = [
+                scoped for scoped in scope
+                if scoped.inspection_type == 'first_piece' and (
+                    scoped.is_first_piece_finalized or scoped.status in protected_statuses
                 )
+            ]
+            for finalized_session in finalized_sessions:
+                snapshot = self.get_session_document(
+                    str(finalized_session.session_id),
+                    use_finalized_snapshot=False,
+                )
+                if snapshot:
+                    InspectionSession.objects.filter(pk=finalized_session.pk).update(
+                        finalized_report_snapshot=snapshot,
+                    )
 
     def _safe_refresh_finalized_report_snapshots(self, session) -> None:
         """Refresh snapshots without turning a saved measurement into an API error."""
@@ -1488,6 +1625,7 @@ class InspectionService:
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
                 'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
+                'report_group_id':   str(session.report_group_id) if session.report_group_id else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,
@@ -1525,6 +1663,7 @@ class InspectionService:
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
                 'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
+                'report_group_id':   str(session.report_group_id) if session.report_group_id else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,

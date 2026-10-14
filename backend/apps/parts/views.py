@@ -126,7 +126,24 @@ class TemplateListCreateView(generics.ListCreateAPIView):
             part=part,
             inspection_type=serializer.validated_data['inspection_type']
         ).count()
-        serializer.save(part=part, created_by=self.request.user, version=last_version + 1)
+        template_name = (serializer.validated_data.get('name') or '').strip()
+        operation_key = None
+        if template_name:
+            sibling = InspectionTemplate.objects.filter(
+                part=part,
+                name__iexact=template_name,
+            ).order_by('id').first()
+            if sibling:
+                operation_key = sibling.operation_key
+
+        save_kwargs = {
+            'part': part,
+            'created_by': self.request.user,
+            'version': last_version + 1,
+        }
+        if operation_key:
+            save_kwargs['operation_key'] = operation_key
+        serializer.save(**save_kwargs)
 
     def get_permissions(self):
         if self.request.method == 'POST':

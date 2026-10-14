@@ -96,17 +96,34 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
   useEffect(() => {
     if (!wsEvents.length || !session) return;
     const latest = wsEvents[0];
+
+    // Only First Piece and hourly sessions belong to the combined report.
+    // Final/approval events must never be interpreted as First Piece data.
+    const isCombinedInspection =
+      latest.inspection_type === 'first_piece' ||
+      latest.inspection_type === 'hourly';
     
+    const sameReportGroup = Boolean(
+      isCombinedInspection &&
+      latest.report_group_id &&
+      session.report_group_id &&
+      latest.report_group_id === session.report_group_id
+    );
+
     if (
       latest.event === 'measurement_recorded' &&
-      (latest.session_id === sessionId || latest.parent_session_id === sessionId)
+      isCombinedInspection &&
+      (latest.session_id === sessionId || latest.parent_session_id === sessionId || sameReportGroup)
     ) {
       setSession((prev) => {
         if (!prev) return prev;
         const updatedMeasurements = [...(prev.measurements || [])];
-        const trialNo = latest.trial_number || 1;
-        const inspType = latest.inspection_type || (trialNo > 3 ? 'hourly' : 'first_piece');
-        const slot = latest.hourly_slot || (inspType === 'hourly' ? trialNo : 1);
+        // WebSocket events carry the canonical owner/session classification.
+        // Do not infer hourly data from trial_number: hourly sessions use
+        // trial_number=0 and belong to hourly_slot 1..N.
+        const inspType = latest.inspection_type;
+        const trialNo = inspType === 'first_piece' ? (latest.trial_number || 1) : 0;
+        const slot = inspType === 'hourly' ? (latest.hourly_slot || 1) : 0;
 
         const existingIdx = updatedMeasurements.findIndex(
           (m) => m.parameter_code === latest.parameter_code &&
@@ -141,7 +158,12 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
         return {
           ...prev,
           measurements: updatedMeasurements,
-          progress: latest.progress ?? prev.progress,
+          // A same-group companion event can update the combined columns,
+          // but its progress belongs to that companion session. Keep the
+          // displayed session's progress tied to its own events.
+          progress: latest.session_id === sessionId
+            ? (latest.progress ?? prev.progress)
+            : prev.progress,
         };
       });
 
