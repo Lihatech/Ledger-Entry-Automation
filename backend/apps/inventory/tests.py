@@ -1,8 +1,11 @@
 from django.contrib.auth import get_user_model
+from datetime import date
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from apps.machines.models import Factory, Plant
+from apps.inspections.models import DailyProductionReport
+from apps.machines.models import Factory, Machine, Plant
+from apps.parts.models import Part
 from .models import InventoryReceipt
 
 
@@ -29,6 +32,12 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.user_a = get_user_model().objects.create_user(
             username='plant-a-user', password='test-pass', plant=self.plant_a,
             access_grants=['inventory.view', 'inventory.manage'],
+        )
+        self.machine_a = Machine.objects.create(
+            plant=self.plant_a, name='CNC A', machine_code='CNC-INV-A', status='active',
+        )
+        self.part_a = Part.objects.create(
+            machine=self.machine_a, part_number='PART-INV-A', part_name='Part A', created_by=self.user_a,
         )
         self.receipt_a = InventoryReceipt.objects.create(
             plant=self.plant_a, company_name='Customer A', challan_number='A-001',
@@ -96,3 +105,17 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn('received_quantity', response.data)
+
+    def test_deleting_submitted_report_reconciles_former_receipt(self):
+        report = DailyProductionReport.objects.create(
+            date=date.today(), machine=self.machine_a, part=self.part_a,
+            inventory_receipt=self.receipt_a, operator=self.user_a,
+            jobs_completed=4, correct_jobs=4, incorrect_jobs=0,
+            status=DailyProductionReport.Status.SUBMITTED,
+        )
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.completed_quantity, 4)
+
+        report.delete()
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.completed_quantity, 0)
