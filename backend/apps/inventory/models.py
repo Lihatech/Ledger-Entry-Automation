@@ -68,6 +68,10 @@ class InventoryReceipt(models.Model):
                 raise ValidationError({
                     'machine_sequence_steps': 'Each machine sequence step must be an object.'
                 })
+            if any(not str(step.get('operation') or '').strip() for step in self.machine_sequence_steps):
+                raise ValidationError({
+                    'machine_sequence_steps': 'Each machine sequence step must include an operation.'
+                })
             self.machine_sequence = ' → '.join(
                 f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}"
                 for step in self.machine_sequence_steps

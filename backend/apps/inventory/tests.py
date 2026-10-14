@@ -169,6 +169,17 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('machine_sequence_steps', response.data)
 
+    def test_machine_sequence_requires_operation_name(self):
+        response = self.client.post('/api/inventory/receipts/', {
+            'company_name': 'Customer Missing Operation',
+            'challan_number': 'MISSING-OP-001',
+            'part_name': 'Part Missing Operation',
+            'received_quantity': 5,
+            'machine_sequence_steps': [{'machine_id': self.machine_a.id, 'operation': ' '}],
+        }, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('machine_sequence_steps', response.data)
+
     def test_unicode_machine_sequence_is_reconciled(self):
         machine_b = Machine.objects.create(
             plant=self.plant_a, name='CNC B', machine_code='CNC-INV-B', status='active',

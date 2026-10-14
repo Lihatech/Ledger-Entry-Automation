@@ -84,6 +84,8 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             machine_ids = [step.get('machine_id') for step in steps if step.get('machine_id')]
             if len(machine_ids) != len(steps):
                 raise serializers.ValidationError({'machine_sequence_steps': 'Each step must include a machine.'})
+            if any(not str(step.get('operation') or '').strip() for step in steps):
+                raise serializers.ValidationError({'machine_sequence_steps': 'Each step must include an operation name.'})
             machines = list(Machine.objects.filter(pk__in=machine_ids).select_related('plant'))
             if len(machines) != len(set(machine_ids)):
                 raise serializers.ValidationError({'machine_sequence_steps': 'One or more selected machines do not exist.'})
