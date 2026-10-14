@@ -244,6 +244,8 @@ class PlantListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = Plant.objects.select_related('factory').filter(is_active=True)
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(pk=self.request.user.plant_id)
         factory_id = self.request.query_params.get('factory')
         if factory_id:
             qs = qs.filter(factory_id=factory_id)
@@ -252,7 +254,7 @@ class PlantListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.machines.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class PlantDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -280,6 +282,8 @@ class MachineListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = Machine.objects.select_related('plant__factory').filter(is_active=True)
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(plant_id=self.request.user.plant_id)
         plant_id = self.request.query_params.get('plant')
         status   = self.request.query_params.get('status')
         if plant_id:
@@ -291,7 +295,7 @@ class MachineListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.machines.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class MachineDetailView(generics.RetrieveUpdateDestroyAPIView):

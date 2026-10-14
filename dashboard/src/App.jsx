@@ -30,6 +30,7 @@ import OEEReportPage from './pages/OEEReportPage';
 import HRModulePage from './pages/HRModulePage';
 import PurchaseModulePage from './pages/PurchaseModulePage';
 import StoreModulePage from './pages/StoreModulePage';
+import InventoryManagementPage from './pages/InventoryManagementPage';
 import MaintenanceModulePage from './pages/MaintenanceModulePage';
 import DevelopmentModulePage from './pages/DevelopmentModulePage';
 import DrawingsPage from './pages/DrawingsPage';
@@ -244,6 +245,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <PurchaseModulePage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/inventory"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <InventoryManagementPage />
           </ProtectedLayout>
         }
       />

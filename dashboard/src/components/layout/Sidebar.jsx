@@ -20,7 +20,7 @@ import {
   Cpu,
   TrendingUp,
   BarChart3,
-  Store,
+  Package,
   MessageSquare,
   FolderOpen,
 } from 'lucide-react';
@@ -86,10 +86,10 @@ const MODULES = [
     items: [],
   },
   {
-    key: 'store',
-    label: 'Store',
-    icon: Store,
-    to: '/store',
+    key: 'inventory',
+    label: 'Inventory Management',
+    icon: Package,
+    to: '/inventory',
     items: [],
   },
   {

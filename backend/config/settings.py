@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'apps.messaging',
     'apps.document_control',
     'apps.support',
+    'apps.inventory',
 ]
 
 # ─── Middleware ────────────────────────────────────────────────

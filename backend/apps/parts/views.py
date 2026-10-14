@@ -52,6 +52,8 @@ class PartListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         qs = Part.objects.select_related('machine').filter(is_active=True)
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(machine__plant_id=self.request.user.plant_id)
         machine_id = self.request.query_params.get('machine')
         if machine_id:
             qs = qs.filter(machine_id=machine_id)
@@ -63,7 +65,7 @@ class PartListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.parts.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class PartDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -108,6 +110,8 @@ class TemplateListCreateView(generics.ListCreateAPIView):
             part__part_number=part_number,
             is_active=True,
         )
+        if getattr(self.request.user, 'plant_id', None):
+            qs = qs.filter(part__machine__plant_id=self.request.user.plant_id)
         inspection_type = self.request.query_params.get('type')
         if inspection_type:
             qs = qs.filter(inspection_type=inspection_type)
@@ -127,7 +131,7 @@ class TemplateListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.templates.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class TemplateDetailView(generics.RetrieveUpdateDestroyAPIView):

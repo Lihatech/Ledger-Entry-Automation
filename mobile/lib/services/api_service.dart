@@ -8,6 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_saver/file_saver.dart';
 
+class InventoryReceiptFetchException implements Exception {
+  final String message;
+  InventoryReceiptFetchException(this.message);
+  @override
+  String toString() => message;
+}
+
 class ApiService {
   // Fix: Use 10.0.2.2 on Android debug builds (emulator/physical device loopback to host).
   // `localhost` only works inside the iOS simulator; Android needs the host alias.
@@ -422,6 +429,35 @@ class ApiService {
       if (decoded is Map && decoded['results'] != null) return decoded['results'];
     }
     return [];
+  }
+
+  static Future<List<dynamic>> getInventoryReceipts() async {
+    try {
+      var nextUrl = '$baseUrl/inventory/receipts/';
+      final receipts = <dynamic>[];
+      final visited = <String>{};
+      while (nextUrl.isNotEmpty && visited.add(nextUrl)) {
+        final response = await authenticatedRequest(
+          (headers) => http.get(Uri.parse(nextUrl), headers: headers).timeout(const Duration(seconds: 20)),
+        );
+        if (response.statusCode != 200) {
+          throw InventoryReceiptFetchException('Unable to load accepted receipts (HTTP ${response.statusCode}).');
+        }
+        final data = jsonDecode(response.body);
+        if (data is List) {
+          receipts.addAll(data);
+          break;
+        }
+        if (data is! Map) throw InventoryReceiptFetchException('The accepted receipts response was invalid.');
+        receipts.addAll((data['results'] as List?) ?? const []);
+        nextUrl = (data['next'] ?? '').toString();
+      }
+      return receipts;
+    } catch (e) {
+      debugPrint('[API] getInventoryReceipts error: $e');
+      if (e is InventoryReceiptFetchException) rethrow;
+      throw InventoryReceiptFetchException('Unable to load accepted receipts. Please retry.');
+    }
   }
 
   // 4. Get Templates by Part

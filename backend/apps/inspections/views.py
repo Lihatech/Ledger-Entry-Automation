@@ -1,7 +1,9 @@
 import time
 import logging
+from django.db import IntegrityError
 from django.core.cache import cache
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -1137,6 +1139,12 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     """
     serializer_class = DailyProductionReportSerializer
 
+    def handle_exception(self, exc):
+        if isinstance(exc, DjangoValidationError):
+            detail = exc.message_dict if hasattr(exc, 'message_dict') else exc.messages
+            return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+        return super().handle_exception(exc)
+
     def get_permissions(self):
         key = 'production.daily.view' if self.request.method in ('GET', 'HEAD', 'OPTIONS') else 'production.daily.manage'
         return [HasAccess(key)]
@@ -1181,6 +1189,25 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
             effective_shift = submitted_shift
 
         serializer.save(operator=operator, shift=effective_shift)
+
+    def create(self, request, *args, **kwargs):
+        """Return the original report when a client safely retries a submission."""
+        idempotency_key = request.data.get('idempotency_key')
+        if idempotency_key:
+            existing = self.get_queryset().filter(idempotency_key=idempotency_key, operator=request.user).first()
+            if existing:
+                return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+        try:
+            with transaction.atomic():
+                return super().create(request, *args, **kwargs)
+        except IntegrityError:
+            # Two identical requests can pass the initial lookup at the same
+            # time; the unique key makes one win and the other returns it.
+            if idempotency_key:
+                existing = self.get_queryset().filter(idempotency_key=idempotency_key, operator=request.user).first()
+                if existing:
+                    return Response(self.get_serializer(existing).data, status=status.HTTP_200_OK)
+            raise
 
     @action(detail=True, methods=['get'])
     def export_pdf(self, request, pk=None):

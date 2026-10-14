@@ -6,7 +6,8 @@ summaries, etc.) in a JSONB column.  MongoDB is no longer required.
 
 import uuid
 from django.conf import settings
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
 
 
 class InspectionSession(models.Model):
@@ -141,10 +142,16 @@ class DailyProductionReport(models.Model):
     Completely separate from inspection session records.
     """
     report_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    # Stable client token used to make mobile retries safe.
+    idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
     date = models.DateField(db_index=True)
     machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='production_reports')
     part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='production_reports')
     operation = models.CharField(max_length=100, blank=True, default='')
+    inventory_receipt = models.ForeignKey(
+        'inventory.InventoryReceipt', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='production_reports',
+    )
     shift = models.CharField(max_length=20, default='I', db_index=True)
     operator = models.ForeignKey('users.User', on_delete=models.PROTECT, related_name='production_reports')
 
@@ -174,6 +181,9 @@ class DailyProductionReport(models.Model):
         ordering = ['-date', '-created_at']
 
     def save(self, *args, **kwargs):
+        previous_receipt_id = None
+        previous_status = None
+
         # Auto-calculate target from available time and cycle time
         available_time = 420
         if self.machine and self.machine.plant:
@@ -203,12 +213,52 @@ class DailyProductionReport(models.Model):
             self.achievement_percentage = round((self.jobs_completed / self.production_target) * 100, 2)
         else:
             self.achievement_percentage = 0.0
-        super().save(*args, **kwargs)
+        with transaction.atomic():
+            if self.pk:
+                previous = type(self).objects.select_for_update().filter(pk=self.pk).values(
+                    'inventory_receipt_id', 'status'
+                ).first()
+                if previous:
+                    previous_receipt_id = previous['inventory_receipt_id']
+                    previous_status = previous['status']
+            super().save(*args, **kwargs)
+
+            from apps.inventory.services import reconcile_receipt_from_reports
+            receipt_ids = set()
+            if previous_status == self.Status.SUBMITTED and previous_receipt_id:
+                receipt_ids.add(previous_receipt_id)
+            if self.status == self.Status.SUBMITTED and self.inventory_receipt_id:
+                receipt_ids.add(self.inventory_receipt_id)
+            for receipt_id in receipt_ids:
+                from apps.inventory.models import InventoryReceipt
+                receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
+                if receipt:
+                    reconciled = reconcile_receipt_from_reports(receipt)
+                    if reconciled.completed_quantity < reconciled.dispatched_quantity:
+                        raise ValidationError(
+                            'This report change would reduce completed quantity below parts already dispatched.'
+                        )
 
         # Immediately ensure linked DowntimeReport is created and updated
         if self.status == self.Status.SUBMITTED:
             downtime_report, _ = DowntimeReport.objects.get_or_create(production_report=self)
             downtime_report.save()
+
+    def delete(self, *args, **kwargs):
+        receipt_id = self.inventory_receipt_id if self.status == self.Status.SUBMITTED else None
+        with transaction.atomic():
+            result = super().delete(*args, **kwargs)
+            if receipt_id:
+                from apps.inventory.models import InventoryReceipt
+                from apps.inventory.services import reconcile_receipt_from_reports
+                receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
+                if receipt:
+                    reconciled = reconcile_receipt_from_reports(receipt)
+                    if reconciled.completed_quantity < reconciled.dispatched_quantity:
+                        raise ValidationError(
+                            'This report deletion would reduce completed quantity below parts already dispatched.'
+                        )
+        return result
 
     def __str__(self):
         return f"Daily Production Report {self.date} | {self.machine.machine_code} | {self.operator.username}"
