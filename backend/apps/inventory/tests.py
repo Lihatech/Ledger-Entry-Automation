@@ -121,6 +121,12 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data['plant'], self.plant_a.id)
 
+    def test_inventory_manager_can_read_receipt_setup_data(self):
+        machines = self.client.get('/api/machines/', {'plant': self.plant_a.id, 'status': 'active'})
+        parts = self.client.get('/api/parts/', {'machine': self.machine_a.id})
+        self.assertEqual(machines.status_code, 200)
+        self.assertEqual(parts.status_code, 200)
+
     def test_user_cannot_create_receipt_for_another_plant(self):
         response = self.client.post('/api/inventory/receipts/', {
             'plant': self.plant_b.id,

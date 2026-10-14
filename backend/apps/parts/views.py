@@ -63,7 +63,7 @@ class PartListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.parts.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class PartDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -127,7 +127,7 @@ class TemplateListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.templates.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class TemplateDetailView(generics.RetrieveUpdateDestroyAPIView):

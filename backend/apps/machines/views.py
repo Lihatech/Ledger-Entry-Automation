@@ -252,7 +252,7 @@ class PlantListCreateView(generics.ListCreateAPIView):
     def get_permissions(self):
         if self.request.method == 'POST':
             return [HasAccess('quality.machines.manage')]
-        return [HasAccess(OPERATIONAL_READ)]
+        return [HasAccess(('inventory.manage', *OPERATIONAL_READ))]
 
 
 class PlantDetailView(generics.RetrieveUpdateDestroyAPIView):
