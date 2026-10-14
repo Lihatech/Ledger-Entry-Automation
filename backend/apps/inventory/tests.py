@@ -64,6 +64,14 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_b.refresh_from_db()
         self.assertEqual(self.receipt_b.dispatched_quantity, 0)
 
+    def test_dispatch_unknown_receipt_returns_not_found(self):
+        response = self.client.post(
+            '/api/inventory/receipts/999999/dispatch/',
+            {'quantity': 1}, format='json',
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['detail'], 'Receipt not found.')
+
     def test_fractional_dispatch_is_rejected(self):
         response = self.client.post(
             f'/api/inventory/receipts/{self.receipt_a.id}/dispatch/',
