@@ -15,11 +15,14 @@ import 'screens/messaging/messages_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sentryDsn = const String.fromEnvironment('SENTRY_DSN');
+  if (sentryDsn.isEmpty) {
+    runApp(const VoiceInspectionApp());
+    return;
+  }
+
   await SentryFlutter.init(
     (options) {
-      if (sentryDsn.isNotEmpty) {
-        options.dsn = sentryDsn;
-      }
+      options.dsn = sentryDsn;
       options.environment = const String.fromEnvironment('APP_ENV', defaultValue: 'production');
       options.tracesSampleRate = 0.1;
     },
