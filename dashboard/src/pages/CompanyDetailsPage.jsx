@@ -478,28 +478,27 @@ export default function CompanyDetailsPage() {
                   </div>
                 </div>
 
-                {/* Plant names */}
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
-                  {isAdmin && (
-                    <div className="plant-entry-row" style={{ display: 'flex', alignItems: 'center' }}>
-                      <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
-                    </div>
-                  )}
-                  {plants.length > 0 && (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
-                      {plants.map((plant) => (
-                        <div key={plant.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plant.name}</span>
-                          <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plant.code}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Row 2: Location & Industry Type */}
+                {/* Row 2: Plant & Location */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
+                    {isAdmin && (
+                      <div className="plant-entry-row" style={{ display: 'flex', alignItems: 'center' }}>
+                        <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
+                      </div>
+                    )}
+                    {plants.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginTop: 8 }}>
+                        {plants.map((plant) => (
+                          <div key={plant.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 6 }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{plant.name}</span>
+                            <span className="font-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{plant.code}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Factory Location / City</label>
                     <input
@@ -512,7 +511,10 @@ export default function CompanyDetailsPage() {
                       style={inputStyle()}
                     />
                   </div>
+                </div>
 
+                {/* Row 3: Industry Type */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label">Industry Type</label>
                     <input
