@@ -55,7 +55,7 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             machine_ids = [step.get('machine_id') for step in steps if isinstance(step, dict) and step.get('machine_id')]
             machines = list(Machine.objects.filter(pk__in=machine_ids).select_related('plant'))
             plant_ids = {machine.plant_id for machine in machines if machine.plant_id}
-            if len(machine_ids) != len(machines) or len(plant_ids) != 1:
+            if len(set(machine_ids)) != len(machines) or len(plant_ids) != 1:
                 raise serializers.ValidationError({'plant': 'Select a plant or add machine steps from one plant.'})
             attrs['plant'] = Plant.objects.get(pk=plant_ids.pop())
 
