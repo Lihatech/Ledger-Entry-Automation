@@ -53,7 +53,6 @@ export default function CompanyDetailsPage() {
 
   const [plants, setPlants] = useState([]);
   const [newPlantName, setNewPlantName] = useState('');
-  const [isAddingPlant, setIsAddingPlant] = useState(false);
 
   // Fetch factory and plant details on mount
   useEffect(() => {
@@ -228,20 +227,28 @@ export default function CompanyDetailsPage() {
       };
 
       let res;
+      let savedFactoryId = factoryId;
       if (!factoryId) {
         // Create new factory
         res = await createCompanyDetails(payload);
         if (res?.data?.id) {
-          setFactoryId(res.data.id);
+          savedFactoryId = res.data.id;
+          setFactoryId(savedFactoryId);
         }
       } else {
         // Update existing factory
         res = await updateCompanyDetails(factoryId, payload);
       }
-      
+
       if (res?.data) {
+        const pendingPlantName = newPlantName.trim();
+        if (pendingPlantName && savedFactoryId) {
+          const plantRes = await createCompanyPlant({ factory: savedFactoryId, name: pendingPlantName });
+          setPlants((current) => [...current, plantRes.data]);
+          setNewPlantName('');
+        }
         if (refreshCompany) refreshCompany();
-        setSuccessMsg(factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!');
+        setSuccessMsg(pendingPlantName ? 'Company details and plant saved successfully!' : (factoryId ? 'Company & Shift details saved successfully!' : 'Company record created successfully!'));
         setTimeout(() => setSuccessMsg(''), 4500);
       }
     } catch (err) {
@@ -256,25 +263,6 @@ export default function CompanyDetailsPage() {
       setError(errMsg);
     } finally {
       setIsSaving(false);
-    }
-  };
-
-  const handleAddPlant = async () => {
-    if (!factoryId || !newPlantName.trim()) return;
-    setIsAddingPlant(true);
-    setError('');
-    try {
-      const res = await createCompanyPlant({ factory: factoryId, name: newPlantName.trim() });
-      setPlants((current) => [...current, res.data]);
-      setNewPlantName('');
-      setSuccessMsg(`Plant "${res.data?.name || newPlantName.trim()}" added successfully.`);
-      setTimeout(() => setSuccessMsg(''), 4500);
-    } catch (err) {
-      const details = err.response?.data;
-      const message = Object.entries(details || {}).flatMap(([field, values]) => (Array.isArray(values) ? values : [values]).map((value) => `${field}: ${value}`)).join(' · ');
-      setError(message || 'Failed to add plant. Please try again.');
-    } finally {
-      setIsAddingPlant(false);
     }
   };
 
@@ -494,11 +482,8 @@ export default function CompanyDetailsPage() {
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label" htmlFor="plant-workshop-name">Plant / Workshop Name</label>
                   {isAdmin && (
-                    <div className="plant-entry-row" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <input id="plant-workshop-name" className="form-input" style={{ flex: 1, minWidth: 0 }} value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
-                      <button type="button" className="btn btn-secondary" onClick={handleAddPlant} disabled={isAddingPlant || !newPlantName.trim() || !factoryId}>
-                        {isAddingPlant ? 'Adding…' : 'Add plant'}
-                      </button>
+                    <div className="plant-entry-row" style={{ display: 'flex', alignItems: 'center' }}>
+                      <input id="plant-workshop-name" className="form-input" value={newPlantName} onChange={(event) => setNewPlantName(event.target.value)} placeholder="e.g. Pune Machining Plant" />
                     </div>
                   )}
                   {plants.length > 0 && (
