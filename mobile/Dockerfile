@@ -14,8 +14,10 @@ COPY . .
 
 # Build Flutter web release
 ARG API_BASE_URL=https://backend-production-d87b.up.railway.app/api
+ARG SENTRY_DSN=
 RUN flutter build web --release \
-    --dart-define=API_BASE_URL=${API_BASE_URL}
+    --dart-define=API_BASE_URL=${API_BASE_URL} \
+    --dart-define=SENTRY_DSN=${SENTRY_DSN}
 
 # -- Stage 2: Serve with nginx ----------------------------------------------
 FROM nginx:alpine

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'providers/auth_provider.dart';
 import 'providers/inspection_provider.dart';
@@ -11,9 +12,19 @@ import 'providers/notification_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/messaging/messages_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const VoiceInspectionApp());
+  final sentryDsn = const String.fromEnvironment('SENTRY_DSN');
+  await SentryFlutter.init(
+    (options) {
+      if (sentryDsn.isNotEmpty) {
+        options.dsn = sentryDsn;
+      }
+      options.environment = const String.fromEnvironment('APP_ENV', defaultValue: 'production');
+      options.tracesSampleRate = 0.1;
+    },
+    appRunner: () => runApp(const VoiceInspectionApp()),
+  );
 }
 
 class VoiceInspectionApp extends StatelessWidget {

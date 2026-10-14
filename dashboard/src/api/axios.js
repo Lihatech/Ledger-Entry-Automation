@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as Sentry from '@sentry/react';
 
 export const BASE_URL = (import.meta.env.VITE_API_URL || 'https://ledger-entry-backend.onrender.com').replace(/\/api\/?$/, '').replace(/\/$/, '');
 
@@ -35,6 +36,16 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config;
+    if (error.response?.status !== 401) {
+      Sentry.captureException(error, {
+        extra: {
+          request_url: original?.url,
+          request_method: original?.method,
+          response_status: error.response?.status,
+          response_data: error.response?.data,
+        },
+      });
+    }
     if (error.response?.status === 401 && !original._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
