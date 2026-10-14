@@ -882,6 +882,7 @@ class ClearHistoryView(APIView):
     permission_classes = [HasAccess]
     access_key = 'quality.inspections.review'
 
+    @transaction.atomic
     def delete(self, request):
         machine_code = request.query_params.get('machine_code')
         session_id   = request.query_params.get('session_id')
@@ -932,7 +933,6 @@ class ClearHistoryView(APIView):
             try:
                 for finalized_session in protected_sessions.filter(
                     inspection_type='first_piece',
-                    is_first_piece_finalized=True,
                 ).iterator():
                     _service._refresh_finalized_report_snapshots(finalized_session)
             except Exception:

@@ -97,9 +97,15 @@ export default function LiveSheetViewer({ sessionId, onClose }) {
     if (!wsEvents.length || !session) return;
     const latest = wsEvents[0];
     
+    const sameReportGroup = Boolean(
+      latest.report_group_id &&
+      session.report_group_id &&
+      latest.report_group_id === session.report_group_id
+    );
+
     if (
       latest.event === 'measurement_recorded' &&
-      (latest.session_id === sessionId || latest.parent_session_id === sessionId)
+      (latest.session_id === sessionId || latest.parent_session_id === sessionId || sameReportGroup)
     ) {
       setSession((prev) => {
         if (!prev) return prev;
