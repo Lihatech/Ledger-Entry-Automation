@@ -109,11 +109,16 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             machines = list(Machine.objects.filter(pk__in=machine_ids).select_related('plant'))
             if len(machines) != len(set(machine_ids)):
                 raise serializers.ValidationError({'machine_sequence_steps': 'One or more selected machines do not exist.'})
-            step_plant_ids = {machine.plant_id for machine in machines}
+            # Legacy machine records may not have a plant relation.  When the
+            # receipt plant was inferred from the only active plant, those
+            # machines are still valid; only reject explicitly assigned
+            # machines that point at a different plant.
+            step_plant_ids = {machine.plant_id for machine in machines if machine.plant_id}
             receipt_plant_id = (attrs.get('plant') or getattr(self.instance, 'plant', None))
             receipt_plant_id = getattr(receipt_plant_id, 'pk', receipt_plant_id)
             if len(step_plant_ids) != 1 or (receipt_plant_id and step_plant_ids != {receipt_plant_id}):
-                raise serializers.ValidationError({'machine_sequence_steps': 'All machines must belong to the receipt plant.'})
+                if step_plant_ids and (len(step_plant_ids) != 1 or step_plant_ids != {receipt_plant_id}):
+                    raise serializers.ValidationError({'machine_sequence_steps': 'All machines must belong to the receipt plant.'})
 
         if self.instance is None and not attrs.get('plant'):
             raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
