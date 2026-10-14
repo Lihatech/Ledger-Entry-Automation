@@ -73,6 +73,20 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.dispatched_quantity, 0)
 
+    def test_retried_dispatch_is_idempotent(self):
+        payload = {'quantity': 2, 'idempotency_key': 'dispatch-retry-001'}
+        first = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/dispatch/', payload, format='json',
+        )
+        retry = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/dispatch/', payload, format='json',
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(retry.status_code, 200)
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.dispatched_quantity, 2)
+        self.assertEqual(self.receipt_a.dispatch_events.count(), 1)
+
     def test_new_receipt_uses_request_users_plant(self):
         response = self.client.post('/api/inventory/receipts/', {
             'company_name': 'Customer C',

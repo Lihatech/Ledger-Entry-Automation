@@ -107,6 +107,7 @@ class InventoryReceipt(models.Model):
 class InventoryDispatch(models.Model):
     receipt = models.ForeignKey(InventoryReceipt, on_delete=models.CASCADE, related_name='dispatch_events')
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True)
     dispatched_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name='inventory_dispatch_events')
     created_at = models.DateTimeField(auto_now_add=True)
 

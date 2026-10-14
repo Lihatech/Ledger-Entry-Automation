@@ -54,6 +54,7 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
 class InventoryReceiptDispatchView(APIView):
     def post(self, request, pk):
         raw_quantity = request.data.get('quantity')
+        idempotency_key = str(request.data.get('idempotency_key') or '').strip() or None
         try:
             decimal_quantity = Decimal(str(raw_quantity))
         except (TypeError, ValueError, InvalidOperation):
@@ -71,6 +72,10 @@ class InventoryReceiptDispatchView(APIView):
                 receipt = receipts.get(pk=pk)
             except InventoryReceipt.DoesNotExist:
                 return Response({'detail': 'Receipt not found.'}, status=status.HTTP_404_NOT_FOUND)
+            if idempotency_key:
+                previous_dispatch = receipt.dispatch_events.filter(idempotency_key=idempotency_key).first()
+                if previous_dispatch:
+                    return Response(InventoryReceiptSerializer(receipt).data, status=status.HTTP_200_OK)
             ready = max(receipt.completed_quantity - receipt.dispatched_quantity, 0)
             if quantity > ready:
                 return Response({'quantity': [f'Only {ready} parts are ready to dispatch.']}, status=status.HTTP_400_BAD_REQUEST)
@@ -78,7 +83,10 @@ class InventoryReceiptDispatchView(APIView):
             receipt.last_dispatched_at = timezone.now()
             receipt.last_dispatched_by = request.user
             receipt.save(update_fields=['dispatched_quantity', 'last_dispatched_at', 'last_dispatched_by', 'updated_at'])
-            InventoryDispatch.objects.create(receipt=receipt, quantity=quantity, dispatched_by=request.user)
+            InventoryDispatch.objects.create(
+                receipt=receipt, quantity=quantity, idempotency_key=idempotency_key,
+                dispatched_by=request.user,
+            )
         return Response(InventoryReceiptSerializer(receipt).data)
 
     def get_permissions(self):
