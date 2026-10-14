@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import generics, status
@@ -51,11 +53,14 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
 
 class InventoryReceiptDispatchView(APIView):
     def post(self, request, pk):
-        quantity = request.data.get('quantity')
+        raw_quantity = request.data.get('quantity')
         try:
-            quantity = int(quantity)
-        except (TypeError, ValueError):
-            return Response({'quantity': ['Enter a valid dispatch quantity.']}, status=status.HTTP_400_BAD_REQUEST)
+            decimal_quantity = Decimal(str(raw_quantity))
+        except (TypeError, ValueError, InvalidOperation):
+            return Response({'quantity': ['Enter a valid whole-number dispatch quantity.']}, status=status.HTTP_400_BAD_REQUEST)
+        if not decimal_quantity.is_finite() or decimal_quantity != decimal_quantity.to_integral_value():
+            return Response({'quantity': ['Dispatch quantity must be a whole number.']}, status=status.HTTP_400_BAD_REQUEST)
+        quantity = int(decimal_quantity)
         if quantity < 1:
             return Response({'quantity': ['Dispatch quantity must be at least 1.']}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
