@@ -240,6 +240,7 @@ export default function MachineDetailPage() {
 
   const isValOOC = (val, lower, upper, status) => {
     if (status === 'out_of_spec' || status === 'rejected' || status === 'ooc') return true;
+    if (status === 'ok' || status === 'pass') return false;
     if (val === undefined || val === null || val === '') return false;
     const num = Number(val);
     if (isNaN(num)) return false;
@@ -340,8 +341,10 @@ export default function MachineDetailPage() {
                     if (m.upper_limit !== undefined && m.upper_limit !== null) paramMap[code].upper_limit = m.upper_limit;
                   }
 
-                  const isOOC = (m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
-                                isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit);
+                  const isOOC = (m.status === 'ok' || m.status === 'pass')
+                    ? false
+                    : ((m.status === 'out_of_spec' || m.status === 'rejected' || m.status === 'ooc') ||
+                       isValOOC(m.measured_value, m.lower_limit ?? paramMap[code].lower_limit, m.upper_limit ?? paramMap[code].upper_limit, m.status));
 
                   if (isHourlyMeas) {
                     const slot = m.hourly_slot || 1;

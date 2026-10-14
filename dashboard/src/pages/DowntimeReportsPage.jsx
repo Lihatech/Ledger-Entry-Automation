@@ -117,13 +117,9 @@ export default function DowntimeReportsPage() {
   const handleCellChange = (index, field, val) => {
     setReports((prev) => {
       const updated = [...prev];
-      let numVal = val;
-      if (field !== 'remarks') {
-        numVal = val === '' ? 0 : Math.max(0, parseInt(val, 10) || 0);
-      }
       updated[index] = {
         ...updated[index],
-        [field]: numVal,
+        [field]: val,
       };
       return updated;
     });
@@ -169,6 +165,15 @@ export default function DowntimeReportsPage() {
     }
     if (reports.length === 0) {
       setError('No downtime entries available to submit.');
+      return;
+    }
+    const downtimeFields = ['no_load', 'no_operator', 'um', 'setting', 'inspection_wait', 'tool_change', 'power_off', 'rework', 'tool_problem'];
+    const invalidRow = reports.findIndex((r) => downtimeFields.some((field) => {
+      const value = Number(r[field] ?? 0);
+      return !Number.isInteger(value) || value < 0;
+    }));
+    if (invalidRow !== -1) {
+      setError(`Row ${invalidRow + 1}: Downtime minutes must be non-negative whole numbers.`);
       return;
     }
     setSaving(true);

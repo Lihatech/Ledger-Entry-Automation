@@ -3,12 +3,36 @@ Models for Parts, Inspection Templates, and Parameters with Tolerances.
 This is the core master data that drives the entire inspection workflow.
 """
 
+import logging
+import uuid
 from decimal import Decimal
 from django.db import models, transaction
+from django.core.cache import cache
 from django.core.validators import MinValueValidator
 from django.utils import timezone
 
 from common.dcr_numbers import next_dcr_number
+
+logger = logging.getLogger(__name__)
+
+
+def _invalidate_param_cache_keys(keys_to_delete):
+    """Invalidate parameter cache keys after database transaction commits."""
+    if not keys_to_delete:
+        return
+
+    def _do_delete():
+        for key in keys_to_delete:
+            try:
+                cache.delete(key)
+            except Exception as e:
+                logger.error(f"Failed to invalidate cache key {key}: {e}")
+
+    try:
+        transaction.on_commit(_do_delete)
+    except Exception as e:
+        logger.warning(f"Could not register transaction.on_commit hook, deleting immediately: {e}")
+        _do_delete()
 
 
 class Part(models.Model):
@@ -62,6 +86,9 @@ class InspectionTemplate(models.Model):
 
     part            = models.ForeignKey(Part, on_delete=models.CASCADE, related_name='templates')
     name            = models.CharField(max_length=150, blank=True, default='', help_text='Custom Operation Name e.g. Op 10 - Rough Turning')
+    # Immutable identity shared by the First Piece and hourly templates for
+    # one operation. The display name may be edited without splitting reports.
+    operation_key   = models.UUIDField(default=uuid.uuid4, editable=False, db_index=True)
     inspection_type = models.CharField(max_length=20, choices=InspectionType.choices)
     version         = models.PositiveIntegerField(default=1)
     target_parameter_count = models.PositiveIntegerField(
@@ -234,7 +261,39 @@ class InspectionParameter(models.Model):
         else:
             self.upper_limit = nom + upper_tol
             self.lower_limit = nom + lower_tol
+
+        old_keys = set()
+        if self.pk:
+            old_inst = InspectionParameter.objects.filter(pk=self.pk).select_related('template').first()
+            if old_inst and old_inst.template_id and getattr(old_inst.template, 'part_id', None):
+                old_pid = old_inst.template.part_id
+                if old_inst.parameter_code:
+                    old_keys.add(f"param_spec_{old_pid}_{old_inst.parameter_code}")
+                if old_inst.parameter_name:
+                    old_keys.add(f"param_spec_{old_pid}_{old_inst.parameter_name}")
+
         super().save(*args, **kwargs)
+
+        new_keys = set(old_keys)
+        if self.template_id and getattr(self.template, 'part_id', None):
+            new_pid = self.template.part_id
+            if self.parameter_code:
+                new_keys.add(f"param_spec_{new_pid}_{self.parameter_code}")
+            if self.parameter_name:
+                new_keys.add(f"param_spec_{new_pid}_{self.parameter_name}")
+
+        _invalidate_param_cache_keys(new_keys)
+
+    def delete(self, *args, **kwargs):
+        keys = set()
+        if self.template_id and getattr(self.template, 'part_id', None):
+            pid = self.template.part_id
+            if self.parameter_code:
+                keys.add(f"param_spec_{pid}_{self.parameter_code}")
+            if self.parameter_name:
+                keys.add(f"param_spec_{pid}_{self.parameter_name}")
+        super().delete(*args, **kwargs)
+        _invalidate_param_cache_keys(keys)
 
     @property
     def tolerance_range(self):
@@ -332,7 +391,38 @@ class ProcessParameter(models.Model):
                 # Default (dimensional, weight, etc.): nominal ± tolerance
                 self.upper_limit = nom + upper_tol
                 self.lower_limit = nom + lower_tol
+        old_keys = set()
+        if self.pk:
+            old_inst = ProcessParameter.objects.filter(pk=self.pk).select_related('template').first()
+            if old_inst and old_inst.template_id and getattr(old_inst.template, 'part_id', None):
+                old_pid = old_inst.template.part_id
+                if old_inst.parameter_code:
+                    old_keys.add(f"proc_param_spec_{old_pid}_{old_inst.parameter_code}")
+                if old_inst.parameter_name:
+                    old_keys.add(f"proc_param_spec_{old_pid}_{old_inst.parameter_name}")
+
         super().save(*args, **kwargs)
+
+        new_keys = set(old_keys)
+        if self.template_id and getattr(self.template, 'part_id', None):
+            new_pid = self.template.part_id
+            if self.parameter_code:
+                new_keys.add(f"proc_param_spec_{new_pid}_{self.parameter_code}")
+            if self.parameter_name:
+                new_keys.add(f"proc_param_spec_{new_pid}_{self.parameter_name}")
+
+        _invalidate_param_cache_keys(new_keys)
+
+    def delete(self, *args, **kwargs):
+        keys = set()
+        if self.template_id and getattr(self.template, 'part_id', None):
+            pid = self.template.part_id
+            if self.parameter_code:
+                keys.add(f"proc_param_spec_{pid}_{self.parameter_code}")
+            if self.parameter_name:
+                keys.add(f"proc_param_spec_{pid}_{self.parameter_name}")
+        super().delete(*args, **kwargs)
+        _invalidate_param_cache_keys(keys)
 
 
 class DrawingDocument(models.Model):

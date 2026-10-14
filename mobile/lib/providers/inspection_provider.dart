@@ -10,7 +10,7 @@ class InspectionProvider with ChangeNotifier {
 
   // ── Per-operation filing cabinet ──────────────────────────────────────────
   // Key: "${templateId}_${inspectionType}"  e.g. "12_hourly", "7_first_piece"
-  Map<String, OperationSession> _sessions = {};
+  final Map<String, OperationSession> _sessions = {};
   String? _activeOperationKey;
 
   // ── Shared / global state ─────────────────────────────────────────────────
@@ -105,6 +105,13 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   // ── Part selection ────────────────────────────────────────────────────────
   void selectPart(Map<String, dynamic> part) {
     selectedPart = part;
+    saveCurrentState();
+    notifyListeners();
+  }
+
+  // ── Template selection ────────────────────────────────────────────────────
+  void selectTemplate(Map<String, dynamic> template) {
+    selectedTemplate = template;
     saveCurrentState();
     notifyListeners();
   }
@@ -419,13 +426,6 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       shiftHours = setupStatus['total_hourly_slots'];
     }
 
-    final String serverStatus = (setupStatus['status'] ?? '').toString();
-    final String serverType = (setupStatus['inspection_type'] ?? '').toString();
-    final bool isFinalizedFirstPiece = serverType == 'first_piece' &&
-        (serverStatus == 'finalized_passed' ||
-            serverStatus == 'finalized_failed' ||
-            serverStatus == 'completed');
-
     if (selectedPart == null && setupStatus['part_number'] != null) {
       selectedPart = {
         'id': setupStatus['part_id'],
@@ -437,27 +437,18 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       selectedMachine = {'id': setupStatus['machine_id']};
     }
 
-    if (isFinalizedFirstPiece) {
-      // First piece done — clear any stale first_piece drawers so hourly
-      // starts fresh, but keep the machine/part context.
-      _sessions.removeWhere((k, _) => k.endsWith('_first_piece'));
-      if (_activeOperationKey?.endsWith('_first_piece') == true) {
-        _activeOperationKey = null;
-      }
-      notifyListeners();
-      return;
-    }
-
     // Restore per-operation slot data from operations[] array.
     final List<dynamic> ops = setupStatus['operations'] ?? [];
     for (final op in ops) {
       final tid = op['template_id'];
       if (tid == null) continue;
-      final key = '${tid}_hourly';
-      if (!_sessions.containsKey(key)) {
-        _sessions[key] = OperationSession(operationKey: key, inspectionType: 'hourly');
+
+      // 1. Hourly drawer for this operation
+      final hourlyKey = '${tid}_hourly';
+      if (!_sessions.containsKey(hourlyKey)) {
+        _sessions[hourlyKey] = OperationSession(operationKey: hourlyKey, inspectionType: 'hourly');
       }
-      final opSess = _sessions[key]!;
+      final opSess = _sessions[hourlyKey]!;
       final completedList = List<int>.from(op['completed_slots'] ?? []);
       opSess.completedHourlySlots = Set<int>.from(completedList);
       final nextSlot = (op['next_unlocked_slot'] as int?) ?? 1;
@@ -466,6 +457,15 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       // Restore active session id for this op if available.
       if (op['active_session_id'] != null) {
         opSess.sessionId = op['active_session_id'].toString();
+      }
+
+      // 2. First piece drawer for this operation
+      final fpKey = '${tid}_first_piece';
+      if (op['first_piece_session_id'] != null) {
+        if (!_sessions.containsKey(fpKey)) {
+          _sessions[fpKey] = OperationSession(operationKey: fpKey, inspectionType: 'first_piece');
+        }
+        _sessions[fpKey]!.sessionId = op['first_piece_session_id'].toString();
       }
     }
 
@@ -570,7 +570,9 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   Map<String, dynamic>? get currentParameter {
     final op = _active;
     if (op == null || op.parameters.isEmpty ||
-        op.currentParamIndex >= op.parameters.length) return null;
+        op.currentParamIndex >= op.parameters.length) {
+      return null;
+    }
     return op.parameters[op.currentParamIndex];
   }
 

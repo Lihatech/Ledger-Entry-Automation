@@ -21,6 +21,7 @@ class InspectorHomeScreen extends StatefulWidget {
 class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
   bool _isLoading = true;
   List<dynamic> _fpiTemplates = [];
+  int _selectedOpIndex = 0;
 
   @override
   void initState() {
@@ -59,11 +60,23 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
         return vA.compareTo(vB);
       });
 
+      int opIdx = _selectedOpIndex;
+      if (opIdx >= sorted.length) {
+        opIdx = 0;
+      }
+
       if (mounted) {
         setState(() {
           _fpiTemplates = sorted;
+          _selectedOpIndex = opIdx;
           _isLoading = false;
         });
+      }
+
+      if (sorted.isNotEmpty) {
+        final current = sorted[opIdx];
+        provider.selectTemplate(current);
+        await provider.loadParameters(current, isFirstPiece: true);
       }
     } catch (e) {
       debugPrint('Error loading inspector templates: $e');
@@ -75,11 +88,22 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     }
   }
 
+  Future<void> _selectOperation(int index) async {
+    if (index < 0 || index >= _fpiTemplates.length) return;
+    setState(() {
+      _selectedOpIndex = index;
+    });
+    final target = _fpiTemplates[index];
+    final provider = Provider.of<InspectionProvider>(context, listen: false);
+    provider.selectTemplate(target);
+    await provider.loadParameters(target, isFirstPiece: true);
+  }
+
   Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     provider.clearPendingValues();
     if (trialNumber == 1) {
-      await provider.loadParameters(template);
+      await provider.loadParameters(template, isFirstPiece: true);
     } else {
       await provider.loadParametersForRetrial(template, trial: trialNumber);
     }
@@ -117,8 +141,9 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     final machineName = provider.selectedMachine?['name'] ?? 'CNC Turning Center 1';
     final partNumber = provider.selectedPart?['part_number'] ?? 'FBT00222';
     final partName = provider.selectedPart?['part_name'] ?? 'POLY V PULLEY';
-
-    final targetTemplate = _fpiTemplates.isNotEmpty ? _fpiTemplates.first : null;
+    final targetTemplate = _fpiTemplates.isNotEmpty
+        ? _fpiTemplates[_selectedOpIndex.clamp(0, _fpiTemplates.length - 1)]
+        : null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF070B14),
@@ -409,7 +434,82 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                 ),
               )
             else ...[
-              // 2. DISPATCHED TEMPLATE BROADCAST CARD
+              // 2. WORKSHOP OPERATION SELECTOR BAR
+              if (_fpiTemplates.length > 1) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF1E293B)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.tune_rounded, color: Color(0xFF38BDF8), size: 16),
+                              SizedBox(width: 6),
+                              Text(
+                                'WORKSHOP OPERATION SELECTOR',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            '${_fpiTemplates.length} Operations',
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: List.generate(_fpiTemplates.length, (idx) {
+                            final t = _fpiTemplates[idx];
+                            final isSelected = idx == _selectedOpIndex;
+                            final v = t['version']?.toString() ?? '${idx + 1}';
+                            final name = t['name']?.toString() ?? 'Op $v';
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(
+                                  'OP $v: $name',
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.black : Colors.white70,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                selected: isSelected,
+                                selectedColor: const Color(0xFF38BDF8),
+                                backgroundColor: const Color(0xFF1E293B),
+                                side: BorderSide(
+                                  color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
+                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                onSelected: (_) => _selectOperation(idx),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+
+              // 3. DISPATCHED TEMPLATE BROADCAST CARD
               if (targetTemplate != null) ...[
                 Container(
                   margin: const EdgeInsets.only(bottom: 20),
@@ -534,7 +634,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                               onPressed: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+                                  MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)),
                                 );
                               },
                               style: OutlinedButton.styleFrom(
@@ -587,7 +687,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
               const SizedBox(height: 24),
 
               // 6. REPORTS SECTION (PART 5 — TWO DISTINCT REPORT TYPES)
-              _buildReportsSection(context),
+              _buildReportsSection(context, targetTemplate),
               const SizedBox(height: 24),
             ],
           ],
@@ -796,7 +896,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const SetupApprovalScreen()),
+                MaterialPageRoute(builder: (_) => SetupApprovalScreen(template: targetTemplate)),
               );
             },
             style: ElevatedButton.styleFrom(
@@ -858,7 +958,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             const SizedBox(width: 8),
             ElevatedButton.icon(
               onPressed: () => targetTemplate != null
-                  ? Navigator.push(context, MaterialPageRoute(builder: (_) => const ReportSheetScreen()))
+                  ? Navigator.push(context, MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)))
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
@@ -977,7 +1077,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
   /// Displays exactly TWO distinct report options:
   ///   1. First PC Inspection & In-process Reports
   ///   2. Set Up Approval Reports
-  Widget _buildReportsSection(BuildContext context) {
+  Widget _buildReportsSection(BuildContext context, Map<String, dynamic>? targetTemplate) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -998,7 +1098,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+              MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)),
             );
           },
           child: Container(

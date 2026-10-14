@@ -29,6 +29,22 @@ class RecordMeasurementSerializer(serializers.Serializer):
     inspection_type = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
     idempotency_key = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
 
+    def validate(self, attrs):
+        raw_text = attrs.get('voice_raw_text', '')
+        meas_val = attrs.get('measured_value')
+        if raw_text and meas_val is not None:
+            from .services import parse_visual_text
+            text_ans = parse_visual_text(raw_text)
+            if text_ans is False and float(meas_val) >= 0.5:
+                raise serializers.ValidationError(
+                    {"measured_value": "Contradictory measurement: text indicates negative (NO/FAIL) but numeric value is >= 0.5."}
+                )
+            if text_ans is True and float(meas_val) == 0.0:
+                raise serializers.ValidationError(
+                    {"measured_value": "Contradictory measurement: text indicates affirmative (YES/PASS) but numeric value is 0.0."}
+                )
+        return attrs
+
 
 class SingleMeasurementSerializer(serializers.Serializer):
     """One field entry within a batch-measure submission."""
@@ -39,6 +55,22 @@ class SingleMeasurementSerializer(serializers.Serializer):
     hourly_slot     = serializers.IntegerField(required=False, allow_null=True, default=None)
     inspection_type = serializers.CharField(required=False, allow_null=True, allow_blank=True, default=None)
     trial_number    = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+    def validate(self, attrs):
+        raw_text = attrs.get('voice_raw_text', '')
+        meas_val = attrs.get('measured_value')
+        if raw_text and meas_val is not None:
+            from .services import parse_visual_text
+            text_ans = parse_visual_text(raw_text)
+            if text_ans is False and float(meas_val) >= 0.5:
+                raise serializers.ValidationError(
+                    {"measured_value": "Contradictory measurement: text indicates negative (NO/FAIL) but numeric value is >= 0.5."}
+                )
+            if text_ans is True and float(meas_val) == 0.0:
+                raise serializers.ValidationError(
+                    {"measured_value": "Contradictory measurement: text indicates affirmative (YES/PASS) but numeric value is 0.0."}
+                )
+        return attrs
 
 
 class BatchMeasureSerializer(serializers.Serializer):
@@ -87,7 +119,7 @@ class InspectionSessionSerializer(serializers.ModelSerializer):
             'operator_name', 'supervisor_name', 'inspector_name',
             'template_id', 'template_name', 'template_version',
             'inspection_type', 'shift', 'status', 'shift_hours', 'total_hourly_slots', 'shift_duration_hours', 'total_break_mins',
-            'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'rejection_reason',
+            'trial_number', 'hourly_unlocked_slot', 'hourly_slot', 'parent_session', 'report_group_id', 'rejection_reason',
             'total_parameters', 'recorded_count', 'progress_percent',
             'has_ooc', 'has_critical_fail', 'is_setup_approved', 'is_first_piece_finalized',
             'started_at', 'completed_at', 'reviewed_at', 'finalized_at',

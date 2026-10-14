@@ -7,6 +7,7 @@ InspectionService   : orchestrates session creation, measurement recording,
 """
 
 import logging
+import re
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +17,7 @@ from decimal import Decimal
 from typing import Optional
 
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import F, Q
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
@@ -82,6 +84,7 @@ def _get_cached_parameter(part_id: int, parameter_code: str):
             'parameter_code': param.parameter_code,
             'parameter_name': param.parameter_name,
             'measurement_type': param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(param, 'measurement_technique', '') or '',
             'unit': param.unit or 'mm',
             'nominal_value': float(param.nominal_value) if param.nominal_value is not None else 0.0,
             'upper_tolerance': float(param.upper_tolerance) if param.upper_tolerance is not None else 0.0,
@@ -121,6 +124,7 @@ def _get_cached_process_parameter(part_id: int, parameter_code: str):
             'parameter_name': proc_param.parameter_name,
             'data_type': proc_param.data_type or 'numeric',
             'measurement_type': proc_param.measurement_type or 'dimensional',
+            'measurement_technique': getattr(proc_param, 'measurement_technique', '') or '',
             'unit': proc_param.unit or '',
             'specification': proc_param.specification or '',
             'nominal_value': float(proc_param.nominal_value) if proc_param.nominal_value is not None else None,
@@ -148,6 +152,35 @@ class ValidationResult:
     message:        str
 
 
+
+def parse_visual_text(text: str) -> Optional[bool]:
+    """
+    Parses visual/voice confirmation text into boolean (True=Pass/Yes, False=Fail/No).
+    Explicit negative tokens ('NO', 'FAIL', 'REJECT', 'FALSE', 'NOT OK', 'NOT GOOD', etc.)
+    take strict precedence over affirmative tokens.
+    Matches normalized tokens using word boundaries, avoiding substring misclassification (e.g. 'OK' in 'NOT OK').
+    """
+    if not text:
+        return None
+    raw = str(text).strip().upper()
+    if raw in ('0', '0.0'):
+        return False
+    if raw in ('1', '1.0'):
+        return True
+
+    neg_pattern = r'\b(NO|FAIL|REJECT|FALSE|NOT\s+OK|NOT\s+GOOD|OUT\s+OF\s+SPEC|DEFECTIVE)\b'
+    aff_pattern = r'\b(YES|PASS|OK|TRUE|GOOD|ACCEPTED)\b'
+
+    has_neg = bool(re.search(neg_pattern, raw))
+    has_aff = bool(re.search(aff_pattern, raw))
+
+    if has_neg:
+        return False
+    if has_aff:
+        return True
+    return None
+
+
 # ─── Tolerance Validator ──────────────────────────────────────────────────
 class ToleranceValidator:
     """
@@ -155,7 +188,7 @@ class ToleranceValidator:
     Applies the 3 Mechanical Rules while preserving original DB spec values.
     """
 
-    def validate(self, measured_value: float, parameter: InspectionParameter) -> ValidationResult:
+    def validate(self, measured_value: float, parameter: InspectionParameter, voice_raw_text: str = '') -> ValidationResult:
         nominal      = float(parameter.nominal_value)
         upper_limit  = float(parameter.upper_limit)
         lower_limit  = float(parameter.lower_limit)
@@ -164,11 +197,48 @@ class ToleranceValidator:
         m_type = (parameter.measurement_type or '').lower()
         p_code = (parameter.parameter_code or '').upper()
         p_name = (parameter.parameter_name or '').upper()
+        p_unit = (parameter.unit or '').lower()
+        p_tech = (getattr(parameter, 'measurement_technique', '') or '').upper()
 
-        if m_type == 'visual' or (parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual']:
+        # Visual check is strictly determined by configured type, unit, or technique
+        is_visual = (
+            m_type == 'visual'
+            or p_unit in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+            or 'PLUG GAUGE' in p_name
+            or 'PLUGE GAUGE' in p_tech
+            or 'PLUG GAUGE' in p_tech
+            or 'VISUALLY' in p_tech
+            or 'COMPARE WITH MASTER' in p_tech
+        )
+
+        if is_visual:
             # Rule 2: Visual Pass/Fail Check (1.0 = PASS / YES, 0.0 = REJECT / NO)
-            is_within = measured_value >= 0.5
-            message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+            text_ans = parse_visual_text(voice_raw_text)
+            num_ans = None
+            if measured_value is not None:
+                try:
+                    num_ans = float(measured_value) >= 0.5
+                except (ValueError, TypeError):
+                    pass
+
+            if text_ans is False:
+                # Explicit negative ALWAYS fails, even if numeric was >= 0.5
+                is_within = False
+                message = 'Visual Inspection REJECTED (NO).'
+            elif text_ans is True:
+                if num_ans is False:
+                    # Contradictory: voice YES but numeric < 0.5
+                    is_within = False
+                    message = 'Contradictory visual reading (Voice: YES, Numeric: NO).'
+                else:
+                    is_within = True
+                    message = 'Visual Inspection PASSED (YES).'
+            elif num_ans is not None:
+                is_within = num_ans
+                message = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+            else:
+                is_within = False
+                message = 'Visual Inspection REJECTED (No valid input).'
         elif m_type == 'min_limit' or 'MIN' in p_name:
             # Rule 3A: Minimum Threshold (Any value >= nominal or lower_limit is OK)
             min_bound = nominal if nominal > 0 else lower_limit
@@ -293,17 +363,12 @@ class InspectionService:
             'shift': shift,
             'started_at__date': today,
             'inspection_type': actual_inspection_type,
+            'template': template,
         }
         if actual_inspection_type == 'first_piece':
             filter_kwargs['trial_number'] = trial_number
         elif actual_inspection_type == 'hourly':
             filter_kwargs['hourly_unlocked_slot'] = hourly_slot
-            # H5 FIX (per-operation session isolation): include the template so that
-            # two different operations (e.g. OP-10 and OP-02) running on the same
-            # machine+part+shift at the same slot each get their OWN InspectionSession.
-            # Without this, both operators hit the same session row and corrupt each
-            # other's measurement data (race condition / data collision).
-            filter_kwargs['template'] = template
 
         with transaction.atomic():
             # Lock any matching rows so concurrent requests queue up here
@@ -311,6 +376,12 @@ class InspectionService:
                 InspectionSession.objects
                 .select_for_update()
                 .filter(**filter_kwargs)
+                .exclude(
+                    status__in=[
+                        InspectionSession.Status.COMPLETED,
+                        InspectionSession.Status.APPROVED,
+                    ]
+                )
                 .order_by('-started_at')
                 .first()
             )
@@ -333,24 +404,76 @@ class InspectionService:
                 except (ValueError, TypeError, AttributeError):
                     parent_session = None
 
-                if parent_session:
-                    parent_doc = doc_utils.get_document(parent_session)
-                    if parent_doc:
-                        rejected_list = parent_doc.get('rejected_parameters') or []
-                        if rejected_list:
-                            rejected_codes = set(rejected_list)
-                        else:
-                            for p_sum in parent_doc.get('parameter_summary', []):
-                                if p_sum.get('status') == 'out_of_spec':
-                                    rejected_codes.add(p_sum.get('parameter_code'))
+            if parent_session:
+                parent_doc = doc_utils.get_document(parent_session)
+                if parent_doc:
+                    rejected_list = parent_doc.get('rejected_parameters') or []
+                    if rejected_list:
+                        rejected_codes = set(rejected_list)
+                    else:
+                        for p_sum in parent_doc.get('parameter_summary', []):
+                            if p_sum.get('status') == 'out_of_spec':
+                                rejected_codes.add(p_sum.get('parameter_code'))
 
-                        parent_measurements = parent_doc.get('measurements', [])
-                        for m in parent_measurements:
-                            code = m.get('parameter_code')
-                            if code and code not in rejected_codes and m.get('status') == 'ok':
-                                m_copy = dict(m)
-                                m_copy['carried_forward'] = True
-                                initial_measurements.append(m_copy)
+                    parent_measurements = parent_doc.get('measurements', [])
+                    for m in parent_measurements:
+                        code = m.get('parameter_code')
+                        if code and code not in rejected_codes and m.get('status') == 'ok':
+                            m_copy = dict(m)
+                            m_copy['carried_forward'] = True
+                            initial_measurements.append(m_copy)
+
+            # Persist one identity for every session that belongs to the same
+            # combined report. Retrials inherit their parent's identity. For
+            # hourly sessions created without a parent, reuse the latest
+            # matching First Piece identity when it is unambiguous.
+            report_group_id = None
+            if actual_inspection_type in ('first_piece', 'hourly'):
+                report_group_id = parent_session.report_group_id if parent_session else None
+                if not report_group_id:
+                    report_group_id = getattr(template, 'operation_key', None)
+
+            if actual_inspection_type in ('first_piece', 'hourly') and not report_group_id:
+                operation_name = (template.name or '').strip()
+                matching_first_piece = InspectionSession.objects.filter(
+                    machine=machine,
+                    part=part,
+                    shift=shift,
+                    started_at__date=today,
+                    inspection_type='first_piece',
+                ).order_by('-trial_number', '-started_at')
+                if operation_name:
+                    matching_first_piece = matching_first_piece.filter(
+                        Q(template__name__iexact=operation_name) |
+                        Q(document_payload__operation_name__iexact=operation_name)
+                    )
+                    first_piece = matching_first_piece.first()
+                else:
+                    # With unnamed templates there is no safe name-based
+                    # identity. Reuse a group only when exactly one distinct
+                    # First Piece group exists for this machine/part/shift.
+                    # Multiple unnamed operations remain isolated.
+                    candidates = list(matching_first_piece.only('pk', 'report_group_id'))
+                    group_ids = {item.report_group_id or item.session_id for item in candidates}
+                    if len(group_ids) == 1:
+                        first_piece = candidates[0]
+                    else:
+                        first_piece = None
+                if first_piece:
+                    report_group_id = first_piece.report_group_id or first_piece.session_id
+                    if not first_piece.report_group_id:
+                        first_piece.report_group_id = report_group_id
+                        first_piece.save(update_fields=['report_group_id'])
+                    # Backfill the same legacy report scope when a new
+                    # session reconnects to an older report created before
+                    # report_group_id existed.
+                    matching_first_piece.filter(
+                        report_group_id__isnull=True,
+                    ).update(report_group_id=report_group_id)
+
+            # Final/approval sessions are not part of the combined live
+            # First Piece + hourly report. Keep them ungrouped so their
+            # measurements cannot be classified into either column family.
 
             initial_recorded_count = len(initial_measurements)
 
@@ -367,6 +490,7 @@ class InspectionService:
                 trial_number         = trial_number,
                 hourly_unlocked_slot = hourly_slot if actual_inspection_type == 'hourly' else 0,
                 parent_session       = parent_session,
+                report_group_id      = report_group_id,
                 total_parameters     = total_params,
                 recorded_count       = initial_recorded_count,
             )
@@ -474,6 +598,7 @@ class InspectionService:
         return session
 
     # ── Record Measurement ────────────────────────────────────────────────
+    @transaction.atomic
     def record_measurement(
         self,
         session_id: str,
@@ -494,8 +619,31 @@ class InspectionService:
         """
         # Fetch session
         session = InspectionSession.objects.select_related(
-            'part', 'machine'
+            'part', 'machine', 'template'
         ).get(session_id=session_id)
+
+        # Lock every session in this report scope in a stable order. This
+        # serializes measurement writes, snapshot refreshes, and cleanup while
+        # avoiding lock-order races between different companion sessions.
+        list(
+            self._report_scope_queryset(session)
+            .select_for_update(of=('self',))
+            .order_by('pk')
+        )
+        session = InspectionSession.objects.select_related(
+            'part', 'machine', 'template'
+        ).get(pk=session.pk)
+
+        # Whole operation completion lock
+        op_name = session.template.name if session.template and session.template.name else (session.inspection_type or 'Inspection')
+        if (session.status or '').lower() in ['completed', 'approved']:
+            raise PermissionError(f"Operation '{op_name}' has been fully completed and locked against edits.")
+
+        # First piece finalize lock (protects 1st PC #1..#3 from post-finalization edits)
+        if (inspection_type == 'first_piece' or session.inspection_type == 'first_piece') and (
+            session.is_first_piece_finalized or session.status in [InspectionSession.Status.FINALIZED_PASSED, InspectionSession.Status.FINALIZED_FAILED]
+        ):
+            raise PermissionError(f"1st Piece Inspection for Operation '{op_name}' is finalized and locked.")
 
         # Fetch parameter safely from Redis cache or DB by part_id and parameter_code
         parameter = _get_cached_parameter(session.part_id, parameter_code)
@@ -547,9 +695,39 @@ class InspectionService:
                 ll = float(process_parameter.lower_limit) if process_parameter.lower_limit is not None else None
                 ul = float(process_parameter.upper_limit) if process_parameter.upper_limit is not None else None
 
-                if mtype == 'visual':
-                    is_within = num_val >= 0.5
-                    msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+                p_tech = (getattr(process_parameter, 'measurement_technique', '') or '').upper()
+                p_name = (process_parameter.parameter_name or '').upper()
+
+                is_visual_proc = (
+                    mtype == 'visual'
+                    or (process_parameter.unit or '').lower() in ['pass', 'yes/no', 'yes / no', 'visual', 'pass/fail', 'pass / fail']
+                    or 'PLUG GAUGE' in p_name
+                    or 'PLUGE GAUGE' in p_tech
+                    or 'PLUG GAUGE' in p_tech
+                    or 'VISUALLY' in p_tech
+                    or 'COMPARE WITH MASTER' in p_tech
+                )
+
+                if is_visual_proc:
+                    text_ans = parse_visual_text(voice_raw_text)
+                    num_ans = num_val >= 0.5 if measured_value is not None else None
+
+                    if text_ans is False:
+                        is_within = False
+                        msg = 'Visual Inspection REJECTED (NO).'
+                    elif text_ans is True:
+                        if num_ans is False:
+                            is_within = False
+                            msg = 'Contradictory visual reading (Voice: YES, Numeric: NO).'
+                        else:
+                            is_within = True
+                            msg = 'Visual Inspection PASSED (YES).'
+                    elif num_ans is not None:
+                        is_within = num_ans
+                        msg = 'Visual Inspection PASSED (YES).' if is_within else 'Visual Inspection REJECTED (NO).'
+                    else:
+                        is_within = False
+                        msg = 'Visual Inspection REJECTED (No valid input).'
                 elif mtype == 'min_limit' or 'MIN' in (process_parameter.parameter_name or '').upper():
                     min_bound = nom if nom > 0 else (ll if ll is not None else 0.0)
                     is_within = num_val >= min_bound
@@ -568,11 +746,31 @@ class InspectionService:
 
                 status_val = 'ok' if is_within else 'out_of_spec'
             elif dt == 'yes_no':
-                str_val = str(voice_raw_text or measured_value or '').strip().upper()
-                exp_val = (process_parameter.specification or 'YES').strip().upper()
-                if str_val not in [exp_val, 'YES', '1', 'TRUE', 'OK', 'PASS']:
+                text_ans = parse_visual_text(voice_raw_text)
+                num_ans = None
+                if measured_value is not None:
+                    try:
+                        num_ans = float(measured_value) >= 0.5
+                    except (ValueError, TypeError):
+                        pass
+
+                if text_ans is False:
+                    # Explicit negative response strictly takes precedence
                     status_val = 'out_of_spec'
-                    msg = f"Value '{str_val}' does not match expected '{exp_val}'."
+                    msg = "Visual Inspection REJECTED (NO)."
+                elif text_ans is True:
+                    if num_ans is False:
+                        status_val = 'out_of_spec'
+                        msg = "Contradictory visual reading (Voice: YES, Numeric: NO)."
+                    else:
+                        status_val = 'ok'
+                        msg = "Visual Inspection PASSED (YES)."
+                elif num_ans is not None:
+                    status_val = 'ok' if num_ans else 'out_of_spec'
+                    msg = "Visual Inspection PASSED (YES)." if num_ans else "Visual Inspection REJECTED (NO)."
+                else:
+                    status_val = 'out_of_spec'
+                    msg = "Visual Inspection REJECTED (No valid input)."
             elif dt in ['text', 'selection']:
                 str_val = str(voice_raw_text or measured_value or '').strip()
                 if process_parameter.specification:
@@ -667,6 +865,8 @@ class InspectionService:
                 meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot,
             )
 
+            self._safe_refresh_finalized_report_snapshots(session)
+
             return {
                 'parameter_code': parameter_code,
                 'measured_value': measured_value,
@@ -690,7 +890,7 @@ class InspectionService:
                 session.save(update_fields=['is_setup_approved'])
 
         # Validate
-        result = self.validator.validate(measured_value, parameter)
+        result = self.validator.validate(measured_value, parameter, voice_raw_text=voice_raw_text)
 
         # Build measurement document
         measurement = {
@@ -787,6 +987,8 @@ class InspectionService:
             voice_raw_text=voice_raw_text, method=method,
             meas_type=meas_type, meas_trial=meas_trial, meas_slot=meas_slot
         )
+
+        self._safe_refresh_finalized_report_snapshots(session)
 
         return {
             'parameter_code': parameter_code,
@@ -954,6 +1156,18 @@ class InspectionService:
             save=True
         )
 
+        # Persist the complete First Piece + hourly report before any live
+        # sessions are eligible for cleanup.
+        snapshot = self.get_session_document(
+            str(session.session_id),
+            use_finalized_snapshot=False,
+        )
+        if snapshot:
+            InspectionSession.objects.filter(pk=session.pk).update(
+                finalized_report_snapshot=snapshot,
+            )
+            session.finalized_report_snapshot = snapshot
+
         self._push_session_event(session, 'first_piece_finalized')
         return session
 
@@ -1023,6 +1237,8 @@ class InspectionService:
             save=True
         )
 
+        self._safe_refresh_finalized_report_snapshots(session)
+
         if action == 'reject':
             self._push_rejection_alert(session, remark, rejected_parameters)
         else:
@@ -1030,8 +1246,76 @@ class InspectionService:
 
         return session
 
+    def _report_scope_queryset(self, session, inspection_type=None):
+        """Return sessions belonging to the same combined inspection report.
+
+        First Piece and hourly templates can be different rows because they are
+        configured for different inspection types.  The operation name is the
+        shared identity between those templates; falling back to template_id
+        keeps older unnamed templates isolated instead of mixing operations.
+        """
+        from django.utils import timezone as django_timezone
+
+        queryset = InspectionSession.objects.filter(
+            machine_id=session.machine_id,
+            part_id=session.part_id,
+            shift=session.shift,
+        )
+        if session.started_at:
+            report_date = django_timezone.localtime(session.started_at).date()
+            queryset = queryset.filter(started_at__date=report_date)
+
+        if session.report_group_id:
+            queryset = queryset.filter(report_group_id=session.report_group_id)
+            if inspection_type:
+                queryset = queryset.filter(inspection_type=inspection_type)
+            return queryset
+
+        template_name = (getattr(session.template, 'name', '') or '').strip()
+        document_operation_name = (
+            (doc_utils.get_document(session) or {}).get('operation_name') or ''
+        ).strip()
+        generic_operation_labels = {
+            '1st Piece Cum In-Process Inspection',
+            'Hourly In-Process Inspection',
+            'Final Inspection',
+            'Setup Approval',
+        }
+        operation_names = {
+            name for name in (template_name, document_operation_name)
+            if name and name not in generic_operation_labels
+        }
+        operation_name = template_name or document_operation_name
+        if not template_name and document_operation_name in generic_operation_labels:
+            operation_name = ''
+        if operation_names and session.template_id:
+            operation_filter = Q(template_id=session.template_id)
+            for name in operation_names:
+                operation_filter |= Q(template__name__iexact=name)
+                operation_filter |= Q(
+                    template_id__isnull=True,
+                    document_payload__operation_name__iexact=name,
+                )
+            queryset = queryset.filter(operation_filter)
+        elif operation_names:
+            operation_filter = Q()
+            for name in operation_names:
+                operation_filter |= Q(template__name__iexact=name)
+                operation_filter |= Q(document_payload__operation_name__iexact=name)
+            queryset = queryset.filter(operation_filter)
+        elif session.template_id:
+            queryset = queryset.filter(template_id=session.template_id)
+        else:
+            # There is no safe shared identity. Never merge every unnamed,
+            # template-less session into one report.
+            queryset = queryset.filter(pk=session.pk)
+
+        if inspection_type:
+            queryset = queryset.filter(inspection_type=inspection_type)
+        return queryset
+
     # ── Get Full Document ─────────────────────────────────────────────────
-    def get_session_document(self, session_id: str) -> Optional[dict]:
+    def get_session_document(self, session_id: str, use_finalized_snapshot: bool = True) -> Optional[dict]:
         """Retrieve full inspection document from document_payload JSONB field."""
         session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related(
             'operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part'
@@ -1039,6 +1323,33 @@ class InspectionService:
 
         if not session_obj:
             return None
+
+        # Once live companion sessions are removed, serve the permanent combined
+        # report captured at finalization instead of rebuilding from deleted rows.
+        # While companions still exist, rebuild from PostgreSQL instead. This
+        # prevents an older snapshot from hiding a newly saved hourly or
+        # First Piece measurement when snapshot refresh was unable to complete.
+        live_companions_exist = self._report_scope_queryset(session_obj).exclude(
+            pk=session_obj.pk,
+        ).filter(
+            inspection_type__in=('first_piece', 'hourly'),
+        ).exists()
+        if use_finalized_snapshot and session_obj.finalized_report_snapshot and not live_companions_exist and (
+            session_obj.is_first_piece_finalized or
+            session_obj.status in [
+                InspectionSession.Status.APPROVED,
+                InspectionSession.Status.FINALIZED_PASSED,
+                InspectionSession.Status.FINALIZED_FAILED,
+                InspectionSession.Status.COMPLETED,
+            ]
+        ):
+            snapshot = dict(session_obj.finalized_report_snapshot)
+            # Older snapshots were created before report_group_id existed.
+            # Add the current relational identity at read time so the
+            # frontend can match this finalized report with live companions.
+            if session_obj.report_group_id and not snapshot.get('report_group_id'):
+                snapshot['report_group_id'] = str(session_obj.report_group_id)
+            return snapshot
 
         # Get document from JSONB field
         doc = doc_utils.get_document(session_obj)
@@ -1077,6 +1388,7 @@ class InspectionService:
         doc['machine_code'] = session_obj.machine.machine_code if session_obj.machine else None
         doc['template_name'] = session_obj.template.name if session_obj.template else ''
         doc['template_version'] = session_obj.template.version if session_obj.template else 1
+        doc['report_group_id'] = str(session_obj.report_group_id) if session_obj.report_group_id else None
 
         # Add user names
         if session_obj.finalized_by:
@@ -1119,14 +1431,32 @@ class InspectionService:
             code = m_item.get('parameter_code')
             if not code:
                 return
-            itype = m_item.get('inspection_type') or def_type
 
-            trial = m_item.get('trial_number')
-            if trial is None or (trial == 0 and itype == 'first_piece'):
-                trial = def_trial if def_trial is not None and def_trial > 0 else 1
+            # The owning session is authoritative for the report column. Older
+            # payloads can contain a stale/misclassified inspection_type or slot
+            # (for example a First Piece value labelled as hourly). Trusting the
+            # embedded measurement metadata moves that value into the wrong
+            # column in the merged Live Report.
+            itype = def_type if def_type in ('first_piece', 'hourly') else (
+                m_item.get('inspection_type') or def_type
+            )
 
-            slot = m_item.get('hourly_slot')
-            if slot is None or (slot == 0 and itype == 'hourly'):
+            if itype == 'first_piece':
+                if m_item.get('carried_forward'):
+                    # Preserving original trial or excluding duplicate copies:
+                    # Carried-forward measurements originated in an earlier trial.
+                    # Preserve the original trial if present, otherwise exclude the copied
+                    # measurement so it does not overwrite or appear in the retry trial's columns.
+                    orig_trial = m_item.get('trial_number')
+                    if orig_trial and orig_trial != def_trial and orig_trial > 0:
+                        trial = orig_trial
+                    else:
+                        return
+                else:
+                    trial = def_trial if def_trial is not None and def_trial > 0 else 1
+                slot = 0
+            else:
+                trial = 0
                 slot = def_slot if def_slot is not None and def_slot > 0 else 1
 
             key = (code, itype, slot if itype == 'hourly' else trial)
@@ -1148,23 +1478,13 @@ class InspectionService:
 
         # Merge measurements from same-day first piece and hourly sessions
         if session_obj:
-            from django.utils import timezone as django_tz
-            session_date = django_tz.localtime(session_obj.started_at).date() if session_obj.started_at else None
-            session_shift = session_obj.shift
-
-            # Get all first piece sessions for same machine/part/template/date/shift
-            fp_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'first_piece',
-            }
-            if session_date:
-                fp_kwargs['started_at__date'] = session_date
-            if session_shift:
-                fp_kwargs['shift'] = session_shift
-
-            fp_sessions = InspectionSession.objects.filter(**fp_kwargs).order_by('trial_number', 'started_at')
+            # Get all First Piece sessions for this report scope.  The owning
+            # session determines the trial column; measurement metadata is only
+            # a compatibility fallback for legacy payloads.
+            fp_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='first_piece',
+            ).order_by('trial_number', 'started_at')
             for fp_s in fp_sessions:
                 fp_doc = doc_utils.get_document(fp_s)
                 t_no = fp_s.trial_number or fp_doc.get('trial_number') or 1
@@ -1232,19 +1552,12 @@ class InspectionService:
                         'hourly_slot':           0,
                     }
 
-            # Get all hourly sessions for same machine/part/template/date/shift
-            hourly_kwargs = {
-                'machine': session_obj.machine,
-                'part': session_obj.part,
-                'template': session_obj.template,
-                'inspection_type': 'hourly',
-            }
-            if session_date:
-                hourly_kwargs['started_at__date'] = session_date
-            if session_shift:
-                hourly_kwargs['shift'] = session_shift
-
-            hourly_sessions = InspectionSession.objects.filter(**hourly_kwargs).order_by('hourly_unlocked_slot', 'started_at')
+            # Get all hourly sessions for this report scope.  The owning
+            # session's hourly_unlocked_slot is authoritative for 1/HR..N/HR.
+            hourly_sessions = self._report_scope_queryset(
+                session_obj,
+                inspection_type='hourly',
+            ).order_by('hourly_unlocked_slot', 'started_at')
             for h_sess in hourly_sessions:
                 h_doc = doc_utils.get_document(h_sess)
                 slot = h_sess.hourly_unlocked_slot or h_doc.get('hourly_slot') or 1
@@ -1254,11 +1567,57 @@ class InspectionService:
         doc['measurements'] = list(meas_dict.values())
         return doc
 
+    def _refresh_finalized_report_snapshots(self, session) -> None:
+        """Refresh finalized combined reports affected by a new measurement."""
+        if not session.machine_id or not session.part_id or not session.started_at:
+            return
+
+        with transaction.atomic():
+            # Lock the whole report scope before reading it. A measurement
+            # write and cleanup therefore cannot interleave with snapshot
+            # generation and replace a newer snapshot with stale data.
+            scope = list(
+                self._report_scope_queryset(session)
+                .select_for_update(of=('self',))
+                .order_by('pk')
+            )
+            protected_statuses = [
+                InspectionSession.Status.APPROVED,
+                InspectionSession.Status.FINALIZED_PASSED,
+                InspectionSession.Status.FINALIZED_FAILED,
+                InspectionSession.Status.COMPLETED,
+            ]
+            finalized_sessions = [
+                scoped for scoped in scope
+                if scoped.inspection_type == 'first_piece' and (
+                    scoped.is_first_piece_finalized or scoped.status in protected_statuses
+                )
+            ]
+            for finalized_session in finalized_sessions:
+                snapshot = self.get_session_document(
+                    str(finalized_session.session_id),
+                    use_finalized_snapshot=False,
+                )
+                if snapshot:
+                    InspectionSession.objects.filter(pk=finalized_session.pk).update(
+                        finalized_report_snapshot=snapshot,
+                    )
+
+    def _safe_refresh_finalized_report_snapshots(self, session) -> None:
+        """Refresh snapshots without turning a saved measurement into an API error."""
+        try:
+            self._refresh_finalized_report_snapshots(session)
+        except Exception:
+            logger.exception(
+                "Unable to refresh finalized report snapshots after session %s",
+                session.session_id,
+            )
+
     # ── WebSocket Push ────────────────────────────────────────────────────
     def _push_measurement_event(self, session, parameter, result, value, voice_raw_text='', method='voice',
                                 meas_type=None, meas_trial=None, meas_slot=None):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {
@@ -1266,6 +1625,7 @@ class InspectionService:
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
                 'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
+                'report_group_id':   str(session.report_group_id) if session.report_group_id else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,
@@ -1295,7 +1655,7 @@ class InspectionService:
     def _push_process_param_event(self, session, process_parameter, status_val, value, voice_raw_text='', method='voice',
                                   meas_type='first_piece', meas_trial=1, meas_slot=0):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {
@@ -1303,6 +1663,7 @@ class InspectionService:
                 'event':             'measurement_recorded',
                 'session_id':        str(session.session_id),
                 'parent_session_id': str(session.parent_session.session_id) if session.parent_session else '',
+                'report_group_id':   str(session.report_group_id) if session.report_group_id else '',
                 'machine_code':      session.machine.machine_code,
                 'part_number':       session.part.part_number,
                 'part_name':         session.part.part_name,
@@ -1332,7 +1693,7 @@ class InspectionService:
 
     def _push_session_event(self, session, event_type: str):
         group_name    = f"plant_{session.machine.plant_id}"
-        operator_name = session.operator.get_full_name() if session.operator else f"Operator #{session.operator_id}"
+        operator_name = session.operator.display_name if session.operator else f"Operator #{session.operator_id}"
         _dispatch_async_websocket(
             group_name,
             {
@@ -1415,6 +1776,9 @@ class InspectionService:
         session.has_ooc = result.status == 'out_of_spec'
         session.supervisor_override_active = True
         session.save(update_fields=['document_payload', 'has_ooc', 'supervisor_override_active'])
+
+        # Keep the permanent report aligned with supervisor corrections.
+        self._safe_refresh_finalized_report_snapshots(session)
 
         self._push_session_event(session, 'supervisor_override')
         return {

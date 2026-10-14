@@ -588,7 +588,11 @@ export default function ParametersPage() {
     try {
       setError('');
       setSuccessMsg('');
-      const targetCount = parseInt(newOpTargetCount) || 10;
+      const targetCount = Number(newOpTargetCount);
+      if (newOpTargetCount === '' || !Number.isInteger(targetCount) || targetCount < 1 || targetCount > 100) {
+        setError('Target parameter count must be a whole number between 1 and 100.');
+        return;
+      }
       const opTitle = newOpName.trim() || `${newOpType.replace('_', ' ').toUpperCase()} Sheet`;
       const res = await createTemplate(selectedPart.part_number, {
         name: opTitle,
@@ -615,7 +619,11 @@ export default function ParametersPage() {
     try {
       setError('');
       setSuccessMsg('');
-      const targetVal = parseInt(editTargetCount) || 10;
+      const targetVal = Number(editTargetCount);
+      if (editTargetCount === '' || !Number.isInteger(targetVal) || targetVal < 1 || targetVal > 100) {
+        setError('Target parameter count must be a whole number between 1 and 100.');
+        return;
+      }
       const cycleVal = parseFloat(editCycleTime) || 0.0;
       const res = await updateTemplate(selectedTemplate.id, { 
         target_parameter_count: targetVal,
@@ -1039,6 +1047,7 @@ export default function ParametersPage() {
     if (mode === 'rule2') {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'yes_no',
         measurement_type: 'visual',
         unit: 'Pass',
         nominal_value: '1.00',
@@ -1048,6 +1057,7 @@ export default function ParametersPage() {
     } else if (mode === 'rule3') {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'max_limit',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '1.60',
@@ -1057,6 +1067,7 @@ export default function ParametersPage() {
     } else {
       setParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'dimensional',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '10.00',
@@ -1132,11 +1143,13 @@ export default function ParametersPage() {
 
       const payload = {
         ...paramForm,
+        data_type: ruleMode === 'rule2' ? 'yes_no' : (paramForm.data_type || 'numeric'),
+        measurement_type: ruleMode === 'rule2' ? 'visual' : paramForm.measurement_type,
         parameter_code: autoCode,
         sequence_order: seqOrder,
         nominal_value: nominal,
-        upper_tolerance: upperT,
-        lower_tolerance: lowerT,
+        upper_tolerance: ruleMode === 'rule2' ? 0 : upperT,
+        lower_tolerance: ruleMode === 'rule2' ? 0 : lowerT,
       };
 
       if (editingParam) {
@@ -1171,6 +1184,7 @@ export default function ParametersPage() {
     if (mode === 'rule2') {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'yes_no',
         measurement_type: 'visual',
         unit: 'Pass',
         nominal_value: '1.00',
@@ -1180,6 +1194,7 @@ export default function ParametersPage() {
     } else if (mode === 'rule3') {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'max_limit',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '1.60',
@@ -1189,6 +1204,7 @@ export default function ParametersPage() {
     } else {
       setProcessParamForm(prev => ({
         ...prev,
+        data_type: 'numeric',
         measurement_type: 'dimensional',
         unit: prev.unit === 'Pass' ? 'mm' : prev.unit,
         nominal_value: prev.nominal_value || '10.00',
@@ -1269,13 +1285,13 @@ export default function ParametersPage() {
         template: selectedTemplate.id,
         parameter_name: processParamForm.parameter_name.trim(),
         parameter_code: processParamForm.parameter_code.trim() || `PR${seqOrder}`,
-        data_type: processParamForm.data_type,
-        measurement_type: processParamForm.measurement_type || 'dimensional',
+        data_type: processRuleMode === 'rule2' ? 'yes_no' : (processParamForm.data_type || 'numeric'),
+        measurement_type: processRuleMode === 'rule2' ? 'visual' : (processParamForm.measurement_type || 'dimensional'),
         unit: processParamForm.unit.trim(),
         specification: processParamForm.specification.trim(),
         nominal_value: nominal,
-        upper_tolerance: upperT,
-        lower_tolerance: lowerT,
+        upper_tolerance: processRuleMode === 'rule2' ? 0 : upperT,
+        lower_tolerance: processRuleMode === 'rule2' ? 0 : lowerT,
         is_required: processParamForm.is_required,
         is_active: processParamForm.is_active,
         sequence_order: seqOrder,
@@ -2940,7 +2956,7 @@ export default function ParametersPage() {
                       max="100"
                       className="form-input"
                       value={newOpTargetCount}
-                      onChange={(e) => setNewOpTargetCount(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setNewOpTargetCount(e.target.value)}
                       required
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>
@@ -3306,7 +3322,7 @@ export default function ParametersPage() {
             </div>
           </div>
         )}
-        {/* Modal 5: Supervisor Edit Target Parameters Count */}
+        {/* Modal 5: Supervisor Edit Target Parameters Count & Cycle Time */}
         {showEditTargetModal && selectedTemplate && (
           <div className="modal-overlay" onClick={() => setShowEditTargetModal(false)}>
             <div className="modal-content" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
@@ -3329,7 +3345,7 @@ export default function ParametersPage() {
                       max="100"
                       className="form-input"
                       value={editTargetCount}
-                      onChange={(e) => setEditTargetCount(parseInt(e.target.value) || 1)}
+                      onChange={(e) => setEditTargetCount(e.target.value)}
                       required
                     />
                     <small style={{ color: '#94A3B8', fontSize: 12, marginTop: 4, display: 'block' }}>

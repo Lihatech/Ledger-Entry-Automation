@@ -37,7 +37,7 @@ class LiveStatusView(APIView):
                 'session_id':     str(session.session_id),
                 'machine_code':   session.machine.machine_code,
                 'part_number':    session.part.part_number,
-                'operator_name':  session.operator.get_full_name(),
+                'operator_name':  session.operator.display_name,
                 'inspection_type': session.inspection_type,
                 'shift':          session.shift,
                 'progress':       session.progress_percent,
