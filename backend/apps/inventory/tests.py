@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from datetime import date
 from django.test import TestCase
 from rest_framework.test import APITestCase
@@ -86,6 +87,29 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.dispatched_quantity, 2)
         self.assertEqual(self.receipt_a.dispatch_events.count(), 1)
+
+    def test_report_correction_cannot_reduce_below_dispatched(self):
+        report = DailyProductionReport.objects.create(
+            date=date.today(), machine=self.machine_a, part=self.part_a,
+            inventory_receipt=self.receipt_a, operator=self.user_a,
+            jobs_completed=10, correct_jobs=10, incorrect_jobs=0,
+            status=DailyProductionReport.Status.SUBMITTED,
+        )
+        dispatch = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/dispatch/',
+            {'quantity': 6}, format='json',
+        )
+        self.assertEqual(dispatch.status_code, 200)
+
+        report.jobs_completed = 2
+        report.correct_jobs = 2
+        with self.assertRaises(ValidationError) as raised:
+            report.save()
+        self.assertIn('below parts already dispatched', str(raised.exception))
+        report.refresh_from_db()
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(report.correct_jobs, 10)
+        self.assertEqual(self.receipt_a.completed_quantity, 10)
 
     def test_new_receipt_uses_request_users_plant(self):
         response = self.client.post('/api/inventory/receipts/', {

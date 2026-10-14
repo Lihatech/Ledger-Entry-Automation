@@ -6,6 +6,7 @@ summaries, etc.) in a JSONB column.  MongoDB is no longer required.
 
 import uuid
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
 
@@ -222,7 +223,11 @@ class DailyProductionReport(models.Model):
                 from apps.inventory.models import InventoryReceipt
                 receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
                 if receipt:
-                    reconcile_receipt_from_reports(receipt)
+                    reconciled = reconcile_receipt_from_reports(receipt)
+                    if reconciled.completed_quantity < reconciled.dispatched_quantity:
+                        raise ValidationError(
+                            'This report change would reduce completed quantity below parts already dispatched.'
+                        )
 
         # Immediately ensure linked DowntimeReport is created and updated
         if self.status == self.Status.SUBMITTED:
@@ -238,7 +243,11 @@ class DailyProductionReport(models.Model):
                 from apps.inventory.services import reconcile_receipt_from_reports
                 receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
                 if receipt:
-                    reconcile_receipt_from_reports(receipt)
+                    reconciled = reconcile_receipt_from_reports(receipt)
+                    if reconciled.completed_quantity < reconciled.dispatched_quantity:
+                        raise ValidationError(
+                            'This report deletion would reduce completed quantity below parts already dispatched.'
+                        )
         return result
 
     def __str__(self):
