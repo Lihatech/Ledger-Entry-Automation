@@ -74,3 +74,16 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         }, format='json')
         self.assertEqual(response.status_code, 400)
         self.assertIn('plant', response.data)
+
+    def test_partial_incoming_updates_quantity_and_audit(self):
+        response = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/intake/',
+            {'quantity': 5, 'vehicle_number': 'MH-12-AA-1234', 'notes': 'Evening arrival'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.received_quantity, 15)
+        self.assertEqual(self.receipt_a.not_started_quantity, 5)
+        self.assertEqual(response.data['incoming_history'][0]['quantity'], 5)
+        self.assertEqual(response.data['incoming_history'][0]['vehicle_number'], 'MH-12-AA-1234')

@@ -101,3 +101,27 @@ class InventoryDispatch(models.Model):
     class Meta:
         db_table = 'inventory_dispatch_events'
         ordering = ['-created_at']
+
+
+class InventoryReceiptIntake(models.Model):
+    """An additional physical arrival recorded against an existing receipt."""
+
+    receipt = models.ForeignKey(
+        InventoryReceipt,
+        on_delete=models.CASCADE,
+        related_name='intake_events',
+    )
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    received_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='inventory_intake_events',
+    )
+    vehicle_number = models.CharField(max_length=40, blank=True, default='')
+    notes = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'inventory_receipt_intake_events'
+        ordering = ['-created_at']

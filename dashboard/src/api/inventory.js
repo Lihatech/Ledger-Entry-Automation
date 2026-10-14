@@ -11,3 +11,6 @@ export const updateInventoryReceipt = (id, data) =>
 
 export const dispatchInventoryReceipt = (id, quantity) =>
   axios.post(`/api/inventory/receipts/${id}/dispatch/`, { quantity });
+
+export const addIncomingInventory = (id, data) =>
+  axios.post(`/api/inventory/receipts/${id}/intake/`, data);

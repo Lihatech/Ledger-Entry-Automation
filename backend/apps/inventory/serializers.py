@@ -16,6 +16,7 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
     status_label = serializers.SerializerMethodField()
     received_by_name = serializers.SerializerMethodField()
     dispatch_history = serializers.SerializerMethodField()
+    incoming_history = serializers.SerializerMethodField()
 
     class Meta:
         model = InventoryReceipt
@@ -29,6 +30,7 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             'last_dispatched_at', 'last_dispatched_by',
             'position_summary', 'status_label', 'created_at', 'updated_at',
             'received_by_name', 'dispatch_history',
+            'incoming_history',
         ]
         read_only_fields = [
             'current_quantity', 'not_started_quantity', 'in_process_quantity',
@@ -102,4 +104,16 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                 'created_at': event.created_at,
             }
             for event in obj.dispatch_events.select_related('dispatched_by').all()
+        ]
+
+    def get_incoming_history(self, obj):
+        return [
+            {
+                'quantity': event.quantity,
+                'received_by': (event.received_by.get_full_name() or event.received_by.username) if event.received_by else 'System',
+                'vehicle_number': event.vehicle_number,
+                'notes': event.notes,
+                'created_at': event.created_at,
+            }
+            for event in obj.intake_events.select_related('received_by').all()
         ]

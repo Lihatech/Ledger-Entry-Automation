@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.users.permissions import HasAccess
-from .models import InventoryReceipt, InventoryDispatch
+from .models import InventoryReceipt, InventoryDispatch, InventoryReceiptIntake
 from .serializers import InventoryReceiptSerializer
 
 
@@ -13,7 +13,7 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
-        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by')
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by', 'intake_events__received_by')
         if getattr(self.request.user, 'plant_id', None):
             qs = qs.filter(plant_id=self.request.user.plant_id)
         search = self.request.query_params.get('search', '').strip()
@@ -40,7 +40,7 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
-        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by')
+        qs = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related('dispatch_events__dispatched_by', 'intake_events__received_by')
         if getattr(self.request.user, 'plant_id', None):
             qs = qs.filter(plant_id=self.request.user.plant_id)
         return qs
@@ -74,6 +74,47 @@ class InventoryReceiptDispatchView(APIView):
             receipt.last_dispatched_by = request.user
             receipt.save(update_fields=['dispatched_quantity', 'last_dispatched_at', 'last_dispatched_by', 'updated_at'])
             InventoryDispatch.objects.create(receipt=receipt, quantity=quantity, dispatched_by=request.user)
+        return Response(InventoryReceiptSerializer(receipt).data)
+
+    def get_permissions(self):
+        return [HasAccess('inventory.manage')]
+
+
+class InventoryReceiptIntakeView(APIView):
+    """Record another physical arrival against an existing receipt."""
+
+    def post(self, request, pk):
+        try:
+            quantity = int(request.data.get('quantity'))
+        except (TypeError, ValueError):
+            return Response({'quantity': ['Enter a valid incoming quantity.']}, status=status.HTTP_400_BAD_REQUEST)
+        if quantity < 1:
+            return Response({'quantity': ['Incoming quantity must be at least 1.']}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            receipts = InventoryReceipt.objects.select_for_update()
+            if getattr(request.user, 'plant_id', None):
+                receipts = receipts.filter(plant_id=request.user.plant_id)
+            try:
+                receipt = receipts.get(pk=pk)
+            except InventoryReceipt.DoesNotExist:
+                return Response({'detail': 'Receipt not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            receipt.received_quantity += quantity
+            accounted = receipt.completed_quantity + receipt.rework_quantity + receipt.rejected_quantity + receipt.in_process_quantity
+            receipt.not_started_quantity = max(receipt.received_quantity - accounted, 0)
+            receipt.save(update_fields=['received_quantity', 'not_started_quantity', 'updated_at'])
+            InventoryReceiptIntake.objects.create(
+                receipt=receipt,
+                quantity=quantity,
+                received_by=request.user,
+                vehicle_number=str(request.data.get('vehicle_number') or '').strip(),
+                notes=str(request.data.get('notes') or '').strip(),
+            )
+
+        receipt = InventoryReceipt.objects.select_related('plant', 'plant__factory', 'created_by').prefetch_related(
+            'dispatch_events__dispatched_by', 'intake_events__received_by'
+        ).get(pk=receipt.pk)
         return Response(InventoryReceiptSerializer(receipt).data)
 
     def get_permissions(self):
