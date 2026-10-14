@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
@@ -22,8 +23,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   final _mrController = TextEditingController(text: '0');
   final _rwController = TextEditingController(text: '0');
   final _remarksController = TextEditingController();
-  // Kept for the lifetime of this form so a retry reuses the same submission.
-  final String _submissionKey = '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
+  // Persisted until the submission succeeds so an app restart still retries
+  // the same report instead of creating a duplicate.
+  String? _submissionKey;
 
   bool _isSubmitting = false;
   bool _isLoadingContext = true;
@@ -42,6 +44,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   @override
   void initState() {
     super.initState();
+    _loadSubmissionKey();
     _initializeStationContext();
     _targetController.addListener(_validateInputs);
     _completedController.addListener(_validateInputs);
@@ -50,6 +53,16 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     _crController.addListener(_validateInputs);
     _mrController.addListener(_validateInputs);
     _rwController.addListener(_validateInputs);
+  }
+
+  Future<void> _loadSubmissionKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _submissionKey = prefs.getString('pending_daily_report_key') ??
+          '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
+    });
+    await prefs.setString('pending_daily_report_key', _submissionKey!);
   }
 
   @override
@@ -534,6 +547,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   }
 
   Future<void> _submitReport() async {
+    if (_submissionKey == null) await _loadSubmissionKey();
     _validateInputs();
     if (_validationError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -597,6 +611,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
     if (mounted) {
       if (res['success'] == true) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('pending_daily_report_key');
         showDialog(
           context: context,
           barrierDismissible: false,
