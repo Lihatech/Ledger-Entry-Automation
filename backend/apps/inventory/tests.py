@@ -132,6 +132,24 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('inventory_receipt', response.data)
 
+    def test_report_automatically_links_the_selected_company_inventory(self):
+        self.user_a.access_grants = ['inventory.view', 'inventory.manage', 'production.daily.manage']
+        self.user_a.save(update_fields=['access_grants'])
+
+        response = self.client.post('/api/inspections/daily-production-reports/', {
+            'date': date.today().isoformat(), 'machine': self.machine_a.id,
+            'part': self.part_a.id, 'operation': 'Facing', 'shift': 'I',
+            'inventory_company_name': 'Customer A',
+            'jobs_completed': 2, 'correct_jobs': 2, 'incorrect_jobs': 0,
+            'cr_count': 0, 'mr_count': 0, 'rw_count': 0,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 201, response.data)
+        report = DailyProductionReport.objects.get(pk=response.data['id'])
+        self.assertEqual(report.inventory_receipt_id, self.receipt_a.id)
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.completed_quantity, 2)
+
     def test_new_receipt_uses_request_users_plant(self):
         response = self.client.post('/api/inventory/receipts/', {
             'company_name': 'Customer C',

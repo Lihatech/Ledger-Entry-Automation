@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db import models
 from .models import (
     InspectionSession,
     DailyProductionReport,
@@ -196,13 +197,19 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
     part_number  = serializers.CharField(source='part.part_number', read_only=True)
     part_name    = serializers.CharField(source='part.part_name', read_only=True)
     operator_name = serializers.SerializerMethodField()
+    inventory_company_name = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=False,
+        trim_whitespace=True,
+    )
 
     class Meta:
         model = DailyProductionReport
         fields = [
             'id', 'report_id', 'idempotency_key', 'date', 'machine', 'machine_code', 'machine_name',
             'part', 'part_number', 'part_name', 'operation', 'shift',
-            'inventory_receipt',
+            'inventory_receipt', 'inventory_company_name',
             'operator', 'operator_name',
             'production_target', 'jobs_completed', 'correct_jobs', 'incorrect_jobs',
             'cr_count', 'mr_count', 'rw_count', 'remarks',
@@ -217,13 +224,56 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
             return name if name else obj.operator.username
         return '-'
 
+    @staticmethod
+    def _matches_route(receipt, machine, operation):
+        """Return whether a receipt can be worked at this station."""
+        steps = receipt.machine_sequence_steps or []
+        if not steps:
+            return True
+        return any(
+            isinstance(step, dict)
+            and str(step.get('machine_id')) == str(machine.id)
+            and (step.get('operation') or '').strip().casefold() == operation.casefold()
+            for step in steps
+        )
+
+    def _find_active_receipt(self, *, company_name, machine, part, operation):
+        """Find the current stock record selected through company + part."""
+        from apps.inventory.models import InventoryReceipt
+
+        candidates = InventoryReceipt.objects.filter(
+            plant_id=machine.plant_id,
+            company_name__iexact=company_name,
+            part_name__iexact=part.part_name.strip(),
+            received_quantity__gt=models.F('dispatched_quantity'),
+        ).order_by('created_at', 'id')
+        for receipt in candidates:
+            if self._matches_route(receipt, machine, operation):
+                return receipt
+        return None
+
     def validate(self, attrs):
         if 'idempotency_key' in attrs and not attrs.get('idempotency_key'):
             attrs['idempotency_key'] = None
-        receipt = attrs.get('inventory_receipt') or getattr(self.instance, 'inventory_receipt', None)
         machine = attrs.get('machine') or getattr(self.instance, 'machine', None)
         part = attrs.get('part') or getattr(self.instance, 'part', None)
         operation = (attrs.get('operation', getattr(self.instance, 'operation', '')) or '').strip()
+        company_name = attrs.pop('inventory_company_name', '').strip()
+        receipt = attrs.get('inventory_receipt') or getattr(self.instance, 'inventory_receipt', None)
+        if receipt is None and company_name and machine and part:
+            receipt = self._find_active_receipt(
+                company_name=company_name,
+                machine=machine,
+                part=part,
+                operation=operation,
+            )
+            if receipt is None:
+                raise serializers.ValidationError({
+                    'inventory_company_name': (
+                        'No active inventory record matches this company, part, machine, and operation.'
+                    )
+                })
+            attrs['inventory_receipt'] = receipt
         request_user = getattr(self.context.get('request'), 'user', None)
         if receipt and machine and part:
             if receipt.plant_id and machine.plant_id != receipt.plant_id:

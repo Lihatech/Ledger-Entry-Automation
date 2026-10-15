@@ -35,7 +35,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
   Map<String, dynamic>? _selectedMachine;
   Map<String, dynamic>? _selectedPart;
   Map<String, dynamic>? _selectedTemplate;
-  Map<String, dynamic>? _selectedReceipt;
+  String? _selectedCompany;
   List<dynamic> _allMachines = [];
 
   double _currentCycleTime = 10.0;
@@ -166,7 +166,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     Map<String, dynamic>? tempMachine = _selectedMachine;
     Map<String, dynamic>? tempPart = _selectedPart;
     Map<String, dynamic>? tempTemplate = _selectedTemplate;
-    Map<String, dynamic>? tempReceipt = _selectedReceipt;
+    String? tempCompany = _selectedCompany;
 
     List<dynamic> modalParts = [];
     List<dynamic> modalTemplates = [];
@@ -204,6 +204,31 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
+          final eligibleReceipts = tempMachine == null
+              ? <dynamic>[]
+              : modalReceipts.where((receipt) {
+                  final remaining = ((receipt['received_quantity'] as num?)?.toInt() ?? 0) -
+                      ((receipt['dispatched_quantity'] as num?)?.toInt() ?? 0);
+                  if (remaining <= 0) return false;
+                  final steps = receipt['machine_sequence_steps'];
+                  if (steps is! List || steps.isEmpty) return true;
+                  return steps.any((step) => step is Map && '${step['machine_id']}' == '${tempMachine!['id']}');
+                }).toList();
+          final companies = eligibleReceipts
+              .map((receipt) => (receipt['company_name'] ?? '').toString().trim())
+              .where((company) => company.isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+          final activeCompany = companies.contains(tempCompany) ? tempCompany : null;
+          final companyParts = activeCompany == null
+              ? <dynamic>[]
+              : modalParts.where((part) {
+                  final partName = (part['part_name'] ?? '').toString().trim().toLowerCase();
+                  return eligibleReceipts.any((receipt) =>
+                      (receipt['company_name'] ?? '').toString().trim() == activeCompany &&
+                      (receipt['part_name'] ?? '').toString().trim().toLowerCase() == partName);
+                }).toList();
           double modalCycleTime = (tempTemplate?['cycle_time_mins'] as num?)?.toDouble() ?? 10.0;
           if (modalCycleTime <= 0) modalCycleTime = 10.0;
           final modalTarget = (_currentAvailableTime / modalCycleTime).toInt();
@@ -278,6 +303,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                       final selected = _allMachines.firstWhere((m) => m['id'] == newMachineId);
                       setModalState(() {
                         tempMachine = selected;
+                        tempCompany = null;
                         tempPart = null;
                         tempTemplate = null;
                         isFetchingParts = true;
@@ -310,12 +336,12 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                   const SizedBox(height: 14),
 
-                  // 2. Company / Receipt Dropdown
-                  const Text('Company / Receipt', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  // 2. Company Dropdown — sourced only from active inventory.
+                  const Text('Company', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
-                  DropdownButtonFormField<int>(
-                    key: ValueKey('receipt_${tempReceipt?['id']}'),
-                    initialValue: tempReceipt?['id'] as int?,
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('company_$tempCompany'),
+                    initialValue: activeCompany,
                     dropdownColor: Colors.white,
                     style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
                     icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
@@ -326,20 +352,25 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                     ),
-                    hint: Text(modalReceipts.isEmpty ? 'No accepted receipts found' : 'Select company / challan', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),),
-                    items: modalReceipts.map<DropdownMenuItem<int>>((receipt) {
-                      final company = receipt['company_name'] ?? 'Company';
-                      final challan = receipt['challan_number'] ?? '';
-                      final part = receipt['part_name'] ?? '';
-                      return DropdownMenuItem<int>(value: receipt['id'] as int, child: Text('$company — $challan${part.toString().isNotEmpty ? ' · $part' : ''}', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)));
+                    hint: Text(tempMachine == null ? 'Select machine first' : companies.isEmpty ? 'No inventory available for this machine' : 'Select company', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),),
+                    items: companies.map<DropdownMenuItem<String>>((company) {
+                      return DropdownMenuItem<String>(value: company, child: Text(company, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)));
                     }).toList(),
-                    onChanged: (newReceiptId) { if (newReceiptId == null) return; setModalState(() { tempReceipt = modalReceipts.firstWhere((r) => r['id'] == newReceiptId); }); },
+                    onChanged: (company) {
+                      if (company == null) return;
+                      setModalState(() {
+                        tempCompany = company;
+                        tempPart = null;
+                        tempTemplate = null;
+                        modalTemplates = [];
+                      });
+                    },
                   ),
 
                   const SizedBox(height: 14),
 
-                  // 3. Part Dropdown (Filtered by Machine)
-                  const Text('Part (Filtered to Machine)', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  // 3. Part Dropdown (Filtered by Company and Machine)
+                  const Text('Part (Filtered to Company & Machine)', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   if (isFetchingParts)
                     const Padding(
@@ -362,8 +393,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2)),
                       ),
-                      hint: Text(modalParts.isEmpty ? 'No parts assigned to this machine' : 'Select Part', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
-                      items: modalParts.map<DropdownMenuItem<int>>((p) {
+                      hint: Text(tempCompany == null ? 'Select company first' : companyParts.isEmpty ? 'No inventory part available' : 'Select part', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+                      items: companyParts.map<DropdownMenuItem<int>>((p) {
                         final pName = p['part_name'] ?? 'Part';
                         final pNum = p['part_number'] ?? '';
                         return DropdownMenuItem<int>(
@@ -373,7 +404,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                       }).toList(),
                       onChanged: (newPartId) async {
                         if (newPartId == null) return;
-                        final selected = modalParts.firstWhere((p) => p['id'] == newPartId);
+                        final selected = companyParts.firstWhere((p) => p['id'] == newPartId);
                         setModalState(() {
                           tempPart = selected;
                           tempTemplate = null;
@@ -472,13 +503,13 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                   // Apply Button
                   ElevatedButton(
-                    onPressed: (tempMachine != null && tempPart != null && tempTemplate != null)
+                    onPressed: (tempMachine != null && activeCompany != null && tempPart != null && tempTemplate != null)
                         ? () {
                             setState(() {
                               _selectedMachine = tempMachine;
                               _selectedPart = tempPart;
                               _selectedTemplate = tempTemplate;
-                              _selectedReceipt = tempReceipt;
+                              _selectedCompany = activeCompany;
 
                               final provider = Provider.of<InspectionProvider>(context, listen: false);
                               provider.selectedMachine = tempMachine;
@@ -593,7 +624,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       'machine': machineId,
       'part': partId,
       'operation': operation,
-      if (_selectedReceipt?['id'] != null) 'inventory_receipt': _selectedReceipt!['id'],
+      if (_selectedCompany != null) 'inventory_company_name': _selectedCompany,
       'shift': shift,
       'production_target': int.tryParse(_targetController.text.trim()) ?? 0,
       'jobs_completed': int.tryParse(_completedController.text.trim()) ?? 0,
