@@ -87,9 +87,13 @@ class MachineSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if not validated_data.get('plant'):
-            default_plant = Plant.objects.first()
-            if default_plant:
-                validated_data['plant'] = default_plant
+            request = self.context.get('request')
+            assigned_plant = getattr(getattr(request, 'user', None), 'plant', None)
+            if not assigned_plant:
+                raise serializers.ValidationError({
+                    'plant': 'Assign a plant to your account before creating a machine.'
+                })
+            validated_data['plant'] = assigned_plant
         return super().create(validated_data)
 
 
