@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from .models import AccessEvent, AccessRole, User
 from .access import COMMON_ACCESS
+from apps.machines.models import Factory, Plant
 
 
 class AccessControlTests(TestCase):
@@ -77,6 +78,32 @@ class AccessControlTests(TestCase):
         }, format='json')
         self.assertEqual(response.status_code, 201, response.data)
         self.assertEqual(response.data['role'], 'operator')
+
+    def test_operator_can_change_shift_and_event_is_recorded(self):
+        self.client.force_authenticate(self.operator)
+        response = self.client.post('/api/users/me/shift/', {'shift': 'II'}, format='json')
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.operator.refresh_from_db()
+        self.assertEqual(self.operator.assigned_shift, 'II')
+        self.assertTrue(AccessEvent.objects.filter(
+            actor=self.operator,
+            target_user=self.operator,
+            action='self_shift_changed',
+        ).exists())
+
+    def test_shift_three_is_rejected_for_twelve_hour_plant(self):
+        factory = Factory.objects.create(name='Twelve Hour Factory', code='FAC-12', shift_hours=12)
+        plant = Plant.objects.create(factory=factory, name='Plant 12', code='PLT-12', shift_duration_hours=12)
+        self.operator.plant = plant
+        self.operator.save(update_fields=['plant'])
+        self.client.force_authenticate(self.operator)
+
+        response = self.client.post('/api/users/me/shift/', {'shift': 'III'}, format='json')
+
+        self.assertEqual(response.status_code, 400, response.data)
+        self.operator.refresh_from_db()
+        self.assertNotEqual(self.operator.assigned_shift, 'III')
 
     def test_custom_overrides_and_common_access(self):
         self.client.force_authenticate(self.admin)

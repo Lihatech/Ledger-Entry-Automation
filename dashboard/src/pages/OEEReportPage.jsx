@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Download, AlertCircle, FileSpreadsheet, ChevronLeft } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Download, AlertCircle, FileSpreadsheet } from 'lucide-react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import api from '../api/axios';
 
 export default function OEEReportPage() {
-  const navigate = useNavigate();
   const [machines, setMachines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchingData, setFetchingData] = useState(false);
@@ -144,22 +142,10 @@ export default function OEEReportPage() {
           
           {/* Breadcrumbs and Action */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <button 
-                onClick={() => navigate('/quality-analyzer')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '4px',
-                  background: 'none', border: 'none', color: '#4B5563', 
-                  cursor: 'pointer', fontSize: '14px', fontWeight: 600, padding: 0
-                }}
-              >
-                <ChevronLeft size={16} /> Back
-              </button>
-              <Breadcrumbs items={[
-                { label: 'Quality Analyzer', to: '/quality-analyzer' },
-                { label: 'OEE Report' }
-              ]} />
-            </div>
+            <Breadcrumbs items={[
+              { label: 'Quality Analyzer', to: '/quality-analyzer' },
+              { label: 'OEE Report' }
+            ]} />
             
             <button
               onClick={handleDownload}

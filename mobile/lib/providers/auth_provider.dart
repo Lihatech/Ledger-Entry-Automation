@@ -265,6 +265,26 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Change the official current shift for an operator or inspector.
+  Future<Map<String, dynamic>> changeAssignedShift(String shift) async {
+    final result = await ApiService.changeMyShift(shift);
+    if (result['success'] != true) return result;
+
+    final data = Map<String, dynamic>.from(result['data'] ?? {});
+    _assignedShift = data['assigned_shift']?.toString() ?? shift;
+    final prefs = await SharedPreferences.getInstance();
+    final stored = <String, dynamic>{
+      'id': _userId,
+      'role': _userRole,
+      'permissions': _permissions.toList(),
+      'assigned_shift': _assignedShift,
+      'full_name': _fullName,
+    };
+    await prefs.setString('user_info', jsonEncode(stored));
+    notifyListeners();
+    return result;
+  }
+
   /// User explicit login with username & password.
   Future<bool> login(String username, String password) async {
     final requestGeneration = ++_sessionGeneration;

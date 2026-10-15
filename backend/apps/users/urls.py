@@ -5,6 +5,7 @@ from .views import (
     LogoutView,
     RegisterView,
     ProfileView,
+    UpdateMyShiftView,
     UpdateProfilePhotoView,
     ChangePasswordView,
     UserListView,
@@ -28,6 +29,7 @@ urlpatterns = [
     path('register/',        RegisterView.as_view(),       name='user-register'),
 
     path('me/',              ProfileView.as_view(),             name='user-profile'),
+    path('me/shift/',        UpdateMyShiftView.as_view(),        name='user-shift-update'),
     path('me/photo/',        UpdateProfilePhotoView.as_view(),  name='user-profile-photo'),
     path('change-password/', ChangePasswordView.as_view(),      name='change-password'),
 
