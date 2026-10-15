@@ -1598,7 +1598,16 @@ class InspectionService:
                     str(finalized_session.session_id),
                     use_finalized_snapshot=False,
                 )
-                if snapshot:
+                # Never replace a valid finalized snapshot with an incomplete
+                # document. This can happen during cleanup or while a legacy
+                # session is missing part of its payload. A finalized report
+                # is the durable source of truth once it has been captured.
+                snapshot_measurements = snapshot.get('measurements') if snapshot else None
+                existing_snapshot = finalized_session.finalized_report_snapshot or {}
+                existing_measurements = existing_snapshot.get('measurements')
+                if snapshot and (
+                    snapshot_measurements or not existing_measurements
+                ):
                     InspectionSession.objects.filter(pk=finalized_session.pk).update(
                         finalized_report_snapshot=snapshot,
                     )

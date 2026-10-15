@@ -187,7 +187,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'profile_photo', 'profile_photo_url', 'is_active', 'date_joined', 'created_at',
         ]
         read_only_fields = ['id', 'username', 'date_joined', 'created_at', 'is_email_verified',
-                            'role', 'role_name', 'permissions', 'access_grants', 'access_denials', 'is_active']
+                            'role', 'role_name', 'permissions', 'access_grants', 'access_denials',
+                            'assigned_shift', 'is_active']
 
     def update(self, instance, validated_data):
         new_email = validated_data.get('email', instance.email)

@@ -9,6 +9,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,19 @@ from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
 # M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
+
+
+def _valid_shifts_for_machine(machine):
+    """Return the shifts supported by the machine's plant schedule."""
+    shift_hours = 8
+    if machine.plant and machine.plant.shift_duration_hours:
+        shift_hours = machine.plant.shift_duration_hours
+    elif machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
+        shift_hours = machine.plant.factory.shift_hours
+    shifts = {'I', 'II'}
+    if shift_hours == 8:
+        shifts.add('III')
+    return shift_hours, shifts
 
 
 # ─── Start Inspection ─────────────────────────────────────────────────────
@@ -114,6 +128,16 @@ class StartInspectionView(APIView):
                 effective_shift = user_shift
             else:
                 effective_shift = requested_shift
+
+            shift_hours, valid_shifts = _valid_shifts_for_machine(machine)
+            if effective_shift not in valid_shifts:
+                return Response(
+                    {
+                        'error': f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.',
+                        'available_shifts': sorted(valid_shifts),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             session = _service.create_session(
                 part              = part,
@@ -1187,6 +1211,12 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
             effective_shift = user_shift
         else:
             effective_shift = submitted_shift
+
+        shift_hours, valid_shifts = _valid_shifts_for_machine(serializer.validated_data['machine'])
+        if effective_shift not in valid_shifts:
+            raise DRFValidationError({
+                'shift': [f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.'],
+            })
 
         serializer.save(operator=operator, shift=effective_shift)
 

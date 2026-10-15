@@ -616,7 +616,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final operation = (_selectedTemplate?['name'] != null && _selectedTemplate!['name'].toString().trim().isNotEmpty)
         ? _selectedTemplate!['name'].toString().trim()
         : (_selectedTemplate?['part_operation_name'] ?? 'Facing, Bore, I.D., O.D.');
-    final shift = auth.isShiftLocked ? auth.assignedShift : provider.shift;
+    // Preserve the shift captured when the active inspection started. A later
+    // profile shift change must apply only to new reports.
+    final shift = provider.sessionId != null && provider.shift.isNotEmpty
+        ? provider.shift
+        : (auth.assignedShift != 'ALL' ? auth.assignedShift : provider.shift);
 
     final payload = {
       'idempotency_key': _submissionKey,
@@ -700,7 +704,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final operation = (_selectedTemplate?['name'] != null && _selectedTemplate!['name'].toString().trim().isNotEmpty)
         ? _selectedTemplate!['name'].toString().trim()
         : (_selectedTemplate?['part_operation_name'] ?? 'Facing, Bore, I.D., O.D.');
-    final shift = auth.isShiftLocked ? auth.assignedShift : provider.shift;
+    final shift = provider.sessionId != null && provider.shift.isNotEmpty
+        ? provider.shift
+        : (auth.assignedShift != 'ALL' ? auth.assignedShift : provider.shift);
     final operatorName = auth.fullName ?? auth.username ?? 'Operator User';
 
     final isTargetMet = _achievementPercentage >= 100;

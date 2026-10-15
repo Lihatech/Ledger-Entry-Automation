@@ -347,6 +347,27 @@ class ApiService {
     }
   }
 
+  /// POST /api/users/me/shift/ — update the current operator/inspector shift.
+  static Future<Map<String, dynamic>> changeMyShift(String shift) async {
+    try {
+      final response = await authenticatedRequest((headers) => http.post(
+        Uri.parse('$baseUrl/users/me/shift/'),
+        headers: headers,
+        body: jsonEncode({'shift': shift}),
+      ));
+      final body = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': body};
+      }
+      return {
+        'success': false,
+        'message': body['message'] ?? body['detail'] ?? 'Failed to change shift',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Network error while changing shift'};
+    }
+  }
+
   /// POST /api/users/change-password/ — change user password
   static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
     try {
