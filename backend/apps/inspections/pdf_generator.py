@@ -59,11 +59,16 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
 
     from reportlab.platypus import PageBreak
 
+    page_width, _ = landscape(A4)
+    left_margin = 15
+    right_margin = 15
+    usable_width = page_width - left_margin - right_margin
+
     doc = SimpleDocTemplate(
         file_path,
         pagesize=landscape(A4),
-        rightMargin=15,
-        leftMargin=15,
+        rightMargin=right_margin,
+        leftMargin=left_margin,
         topMargin=15,
         bottomMargin=15
     )
@@ -127,7 +132,10 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph(f"DOC REF: {safe_fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
-    header_table = Table(header_data, colWidths=[90, 580, 150])
+    # Keep every report section inside the actual landscape-A4 frame.  The
+    # previous fixed total of 820pt was wider than the available 811.89pt and
+    # caused the left/right columns to be clipped in generated PDFs.
+    header_table = Table(header_data, colWidths=[90, usable_width - 240, 150], hAlign='LEFT')
     header_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (0, 0), colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -153,7 +161,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph(f"SETUP STATUS: <font name='Helvetica-Bold'>{status_label}</font>", cell_left)
         ]
     ]
-    meta_table = Table(meta_data, colWidths=[150, 490, 180])
+    meta_table = Table(meta_data, colWidths=[150, usable_width - 330, 180], hAlign='LEFT')
     meta_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
@@ -237,14 +245,14 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph("-", cell_style),
         ])
 
-    base_widths = [18, 18, 90, 26, 65, 70, 45, 24, 24, 24] # Total base: 404pt
+    base_widths = [22, 22, 90, 26, 65, 70, 45, 24, 24, 24]
     remark_width = 24
-    remaining_slot_width = 820 - (sum(base_widths) + remark_width) # 392pt available
-    slot_width = round(remaining_slot_width / shift_hrs, 2)
+    remaining_slot_width = usable_width - (sum(base_widths) + remark_width)
+    slot_width = remaining_slot_width / shift_hrs
     
     col_widths = base_widths + [slot_width] * shift_hrs + [remark_width]
     
-    param_table = Table(table_data, colWidths=col_widths, repeatRows=1)
+    param_table = Table(table_data, colWidths=col_widths, repeatRows=1, hAlign='LEFT')
     param_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
@@ -259,7 +267,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
 
     # 4. REACTION PLAN
     reaction_data = [[Paragraph("REACTION PLAN: <font color='#4B5563'>REJECT, REWORK, SEGREGATE, INFORM SUPERVISOR OR READJUST THE PROCESS</font>", ParagraphStyle('React', fontName='Helvetica-Bold', fontSize=7))]]
-    reaction_table = Table(reaction_data, colWidths=[810])
+    reaction_table = Table(reaction_data, colWidths=[usable_width], hAlign='LEFT')
     reaction_table.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
         ('PADDING', (0, 0), (-1, -1), 3),
@@ -286,7 +294,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph("<b>SUPERVISOR SIGNATURE</b>", bold_cell)
         ]
     ]
-    footer_table = Table(footer_data, colWidths=[270, 270, 270])
+    footer_table = Table(footer_data, colWidths=[usable_width / 3] * 3, hAlign='LEFT')
     footer_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('PADDING', (0, 0), (-1, -1), 2),
