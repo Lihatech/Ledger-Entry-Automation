@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import { formatDate, fmt } from '../../utils/formatters';
 import { useCompany } from '../../context/CompanyContext';
+import api from '../../api/axios';
 
 const isValOOC = (val, lower, upper, status) => {
   if (status === 'out_of_spec' || status === 'rejected' || status === 'ooc') return true;
@@ -28,53 +29,34 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
   const reportPrefix = isSetupReport ? 'Setup_Approval_Report' : 'Form_F02_Report';
   const fileName = `${reportPrefix}_${dateStr}_Shift_${shiftStr}_${cleanMachine}_${cleanPart}.pdf`;
 
-  const handleDownloadPDF = () => {
-    const element = document.getElementById('official-form-f02-report');
-    if (!element) return;
+  const handleDownloadPDF = async () => {
+    const sessionId = session?.session_id;
+    if (!sessionId) {
+      alert('This report does not have a valid inspection session ID.');
+      return;
+    }
 
     setDownloading(true);
-
-    const scrollW = element.offsetWidth || element.scrollWidth || 1060;
-    const opt = {
-      margin:       [4, 4, 4, 4],
-      filename:     fileName,
-      image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false, width: scrollW, windowWidth: scrollW, scrollX: 0, scrollY: 0 },
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
-    };
-
-    const savePDF = () => {
-      if (window.html2pdf) {
-        try {
-          window.html2pdf().set(opt).from(element).save().then(() => {
-            element.style.width = originalWidth;
-            element.style.maxWidth = originalMaxWidth;
-            setDownloading(false);
-          }).catch(() => {
-            element.style.width = originalWidth;
-            element.style.maxWidth = originalMaxWidth;
-            setDownloading(false);
-          });
-        } catch (error) {
-          element.style.width = originalWidth;
-          element.style.maxWidth = originalMaxWidth;
-          setDownloading(false);
-        }
-      } else {
-        alert('PDF library is loading. Please try again in a moment.');
-        element.style.width = originalWidth;
-        element.style.maxWidth = originalMaxWidth;
-        setDownloading(false);
-      }
-    };
-
-    if (window.html2pdf) {
-      savePDF();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-      script.onload = savePDF;
-      document.body.appendChild(script);
+    try {
+      // Use the same server-generated PDF as the mobile app. This keeps the
+      // dashboard and mobile reports on one layout and avoids cropping caused
+      // by html2pdf capturing the scrollable report container.
+      const response = await api.get(`/api/inspections/${sessionId}/pdf/`, {
+        responseType: 'blob',
+      });
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = response.headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1] || fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Failed to download official PDF report:', error);
+      alert('Failed to download the official PDF report. Please try again.');
+    } finally {
+      setDownloading(false);
     }
   };
 
