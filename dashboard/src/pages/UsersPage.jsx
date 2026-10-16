@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -71,6 +71,13 @@ export default function UsersPage() {
     password: '',
     password2: '',
   });
+
+  // Filter out "ALL" option for operators - they must have a specific shift assigned
+  const shiftOptions = useMemo(() => {
+    return formData.role === 'operator'
+      ? availableShifts.filter(s => s.value !== 'ALL')
+      : availableShifts;
+  }, [formData.role, availableShifts, is12HourSchedule]);
 
   const sortUsers = (list) => {
     const sorted = [...list];
@@ -155,6 +162,12 @@ export default function UsersPage() {
         return;
       }
       setSelectedPermissions([...rolePermissions(e.target.value), ...catalog.common]);
+
+      // If changing to operator role and current shift is 'ALL', reset to first available shift
+      if (e.target.value === 'operator' && formData.assigned_shift === 'ALL') {
+        setFormData({ ...formData, role: e.target.value, assigned_shift: 'I' });
+        return;
+      }
     }
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -924,7 +937,7 @@ export default function UsersPage() {
                     fontWeight: 600,
                   }}
                 >
-                  {availableShifts.map((s) => (
+                  {shiftOptions.map((s) => (
                     <option key={s.value} value={s.value}>
                       {s.label}
                     </option>
