@@ -85,11 +85,14 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     doc_ref_style = ParagraphStyle('DocRef', fontName='Helvetica-Bold', fontSize=7, alignment=2)
     mmpl_style = ParagraphStyle('MMPL', fontName='Helvetica-Bold', fontSize=16, textColor=colors.white, alignment=1)
     
-    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=7, alignment=1, leading=8)
-    cell_left = ParagraphStyle('CellLeft', fontName='Helvetica', fontSize=7, alignment=0, leading=8)
-    bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8)
-    red_cell = ParagraphStyle('RedCell', fontName='Helvetica-Bold', fontSize=7, textColor=colors.red, alignment=1, leading=8)
-    header_style = ParagraphStyle('Header', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, textColor=colors.HexColor('#1E293B'))
+    # All report cells must be allowed to wrap inside their assigned column.
+    # This is especially important for the narrow hourly columns and prevents
+    # long labels from expanding the table beyond the landscape-A4 frame.
+    cell_style = ParagraphStyle('Cell', fontName='Helvetica', fontSize=7, alignment=1, leading=8, wordWrap='CJK')
+    cell_left = ParagraphStyle('CellLeft', fontName='Helvetica', fontSize=7, alignment=0, leading=8, wordWrap='CJK')
+    bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, wordWrap='CJK')
+    red_cell = ParagraphStyle('RedCell', fontName='Helvetica-Bold', fontSize=7, textColor=colors.red, alignment=1, leading=8, wordWrap='CJK')
+    header_style = ParagraphStyle('Header', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, textColor=colors.HexColor('#1E293B'), wordWrap='CJK')
 
     # Determine shift hours for layout (8 or 12)
     factory_hrs = 8
@@ -288,9 +291,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
             Paragraph("<i>Supervisor Sign</i>", cell_style)
         ],
         [
-            Paragraph("----------------------------------------------------------------------", cell_style),
-            Paragraph("----------------------------------------------------------------------", cell_style),
-            Paragraph("----------------------------------------------------------------------", cell_style)
+            '', '', ''
         ],
         [
             Paragraph("<b>OPERATOR SIGNATURE</b>", bold_cell),
@@ -302,6 +303,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     footer_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
         ('PADDING', (0, 0), (-1, -1), 2),
+        ('LINEABOVE', (0, 1), (-1, 1), 0.6, colors.black),
     ]))
     elements.append(footer_table)
 
