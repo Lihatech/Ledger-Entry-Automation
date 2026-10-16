@@ -222,6 +222,23 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('received_quantity', response.data)
 
+    def test_unused_receipt_can_be_deleted(self):
+        response = self.client.delete(f'/api/inventory/receipts/{self.receipt_a.id}/')
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(InventoryReceipt.objects.filter(pk=self.receipt_a.id).exists())
+
+    def test_receipt_with_production_history_cannot_be_deleted(self):
+        DailyProductionReport.objects.create(
+            date=date.today(), machine=self.machine_a, part=self.part_a,
+            inventory_receipt=self.receipt_a, operator=self.user_a,
+            jobs_completed=1, correct_jobs=1, incorrect_jobs=0,
+            status=DailyProductionReport.Status.SUBMITTED,
+        )
+        response = self.client.delete(f'/api/inventory/receipts/{self.receipt_a.id}/')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('cannot be deleted', response.data['detail'])
+        self.assertTrue(InventoryReceipt.objects.filter(pk=self.receipt_a.id).exists())
+
     def test_deleting_submitted_report_reconciles_former_receipt(self):
         report = DailyProductionReport.objects.create(
             date=date.today(), machine=self.machine_a, part=self.part_a,
@@ -273,6 +290,29 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.receipt_a.refresh_from_db()
         self.assertEqual(self.receipt_a.received_quantity, 10)
         self.assertEqual(self.receipt_a.completed_quantity, 10)
+
+    def test_summary_uses_jobs_completed_not_sum_of_route_positions(self):
+        receipt = InventoryReceipt.objects.create(
+            plant=self.plant_a, company_name='Customer Flow', challan_number='FLOW-001',
+            part_name='Part A', received_quantity=200,
+            machine_sequence_steps=[
+                {'machine_id': self.machine_a.id, 'machine_code': 'CNC-INV-A', 'operation': 'Facing'},
+                {'machine_id': self.machine_a.id, 'machine_code': 'CNC-INV-A', 'operation': 'Finishing'},
+            ],
+        )
+        DailyProductionReport.objects.create(
+            date=date.today(), machine=self.machine_a, part=self.part_a,
+            inventory_receipt=receipt, operator=self.user_a, operation='Facing',
+            jobs_completed=100, correct_jobs=90, incorrect_jobs=10,
+            cr_count=4, rw_count=6, status=DailyProductionReport.Status.SUBMITTED,
+        )
+
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.not_started_quantity, 100)
+        self.assertEqual(receipt.in_process_quantity, 100)
+        self.assertEqual(receipt.completed_quantity, 0)
+        self.assertEqual(receipt.position_summary['CNC-INV-A / Facing'], 110)
+        self.assertEqual(receipt.position_summary['CNC-INV-A / Finishing'], 90)
 
     def test_malformed_machine_sequence_is_rejected(self):
         response = self.client.post('/api/inventory/receipts/', {

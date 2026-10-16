@@ -29,6 +29,9 @@ export const createInventoryReceipt = (data) =>
 export const updateInventoryReceipt = (id, data) =>
   axios.patch(`/api/inventory/receipts/${id}/`, data);
 
+export const deleteInventoryReceipt = (id) =>
+  axios.delete(`/api/inventory/receipts/${id}/`);
+
 export const dispatchInventoryReceipt = (id, quantity, idempotencyKey) =>
   axios.post(`/api/inventory/receipts/${id}/dispatch/`, { quantity, idempotency_key: idempotencyKey });
 

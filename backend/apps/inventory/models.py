@@ -93,20 +93,21 @@ class InventoryReceipt(models.Model):
     def reconciled(self):
         return bool(self.last_reconciled_at)
 
-    def reconcile(self, *, completed=0, rework=0, rejected=0, dispatched=0, positions=None):
+    def reconcile(self, *, completed=0, started=None, rework=0, rejected=0, dispatched=0, positions=None):
         self.completed_quantity = max(0, int(completed))
         self.rework_quantity = max(0, int(rework))
         self.rejected_quantity = max(0, int(rejected))
         self.dispatched_quantity = max(0, int(dispatched))
-        accounted = self.completed_quantity + self.rework_quantity + self.rejected_quantity
-        # Position values represent parts waiting between route stages. Keep
-        # those parts in WIP instead of incorrectly reporting them as unstarted.
-        self.in_process_quantity = max(
-            sum(int(value or 0) for value in (positions or {}).values()),
-            0,
-        )
+        # ``started`` is the number of physical units touched by production.
+        # Route positions are a diagnostic breakdown and must not be summed
+        # into the summary card: the same units can appear at different route
+        # stages as they move through the process.
+        if started is None:
+            started = self.received_quantity
+        started = min(max(int(started), 0), self.received_quantity)
+        self.in_process_quantity = max(started - self.completed_quantity, 0)
         self.not_started_quantity = max(
-            self.received_quantity - accounted - self.in_process_quantity,
+            self.received_quantity - started,
             0,
         )
         if positions is not None:
