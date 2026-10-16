@@ -211,6 +211,7 @@ class RunChartReading(models.Model):
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='run_chart_readings'
     )
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True)
     recorded_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -219,6 +220,11 @@ class RunChartReading(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['report', 'piece_number'], name='unique_piece_per_run_chart'
+            ),
+            models.UniqueConstraint(
+                fields=['report', 'idempotency_key'],
+                condition=models.Q(idempotency_key__isnull=False),
+                name='unique_run_chart_idempotency_key',
             ),
         ]
 

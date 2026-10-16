@@ -333,6 +333,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
   bool _saving = false;
   bool _downloading = false;
   String? _error;
+  late String _submissionKey;
 
   List<Map<String, dynamic>> get _readings => List<Map<String, dynamic>>.from(
     (_report['readings'] as List? ?? const []).map(
@@ -344,6 +345,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
   void initState() {
     super.initState();
     _report = Map<String, dynamic>.from(widget.initialReport);
+    _submissionKey = _newSubmissionKey();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _focusNode.requestFocus(),
     );
@@ -380,6 +382,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         reportId: _report['report_id'].toString(),
         measuredValue: value,
         pieceNumber: (_report['next_piece_number'] as num).toInt(),
+        idempotencyKey: _submissionKey,
       );
       final readings = List<dynamic>.from(_report['readings'] ?? const []);
       readings.add(result['reading']);
@@ -388,6 +391,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         _report['readings'] = readings;
         _report['next_piece_number'] = result['next_piece_number'];
         _valueController.clear();
+        _submissionKey = _newSubmissionKey();
       });
       final alert = result['alert']?.toString();
       if (alert != null && mounted) await _showAlert(alert, result['reading']);
@@ -406,6 +410,9 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  String _newSubmissionKey() =>
+      '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 32)}';
 
   Future<void> _showAlert(String alert, dynamic reading) async {
     final stop = alert == 'stop_process';

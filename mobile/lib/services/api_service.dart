@@ -685,6 +685,7 @@ class ApiService {
     required String reportId,
     required double measuredValue,
     required int pieceNumber,
+    String? idempotencyKey,
   }) async {
     final response = await authenticatedRequest(
       (headers) => http.post(
@@ -693,6 +694,7 @@ class ApiService {
         body: jsonEncode({
           'measured_value': measuredValue,
           'piece_number': pieceNumber,
+          if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
         }),
       ).timeout(const Duration(seconds: 20)),
     );

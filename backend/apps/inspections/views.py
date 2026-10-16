@@ -319,6 +319,11 @@ class RunChartReadingCreateView(APIView):
 
     def post(self, request, report_id):
         raw_value = request.data.get('measured_value')
+        idempotency_key = str(
+            request.headers.get('Idempotency-Key')
+            or request.data.get('idempotency_key')
+            or ''
+        ).strip()[:64] or None
         try:
             measured_value = Decimal(str(raw_value))
             if not measured_value.is_finite():
@@ -338,6 +343,20 @@ class RunChartReadingCreateView(APIView):
             if not report:
                 return Response({'error': 'Active run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+            if idempotency_key:
+                existing = report.readings.filter(idempotency_key=idempotency_key).first()
+                if existing:
+                    recent = list(report.readings.order_by('-piece_number').values_list('zone', flat=True)[:5])
+                    alert = 'stop_process' if existing.zone == RunChartReading.Zone.RED else (
+                        'three_of_five_yellow' if recent.count(RunChartReading.Zone.YELLOW) >= 3 else None
+                    )
+                    return Response({
+                        'reading': _run_chart_reading_data(existing),
+                        'next_piece_number': existing.piece_number + 1,
+                        'alert': alert,
+                        'replayed': True,
+                    }, status=status.HTTP_201_CREATED)
+
             next_piece = (report.readings.aggregate(value=Max('piece_number'))['value'] or 0) + 1
             requested_piece = request.data.get('piece_number')
             if requested_piece not in (None, ''):
@@ -346,7 +365,7 @@ class RunChartReadingCreateView(APIView):
                     if not piece_decimal.is_finite() or piece_decimal != piece_decimal.to_integral_value():
                         raise ValueError
                     piece_number = int(piece_decimal)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError, InvalidOperation):
                     return Response({'error': 'piece_number must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
                 if piece_number != next_piece:
                     return Response(
@@ -385,6 +404,7 @@ class RunChartReadingCreateView(APIView):
                 deviation=measured_value - nominal,
                 zone=zone,
                 recorded_by=request.user,
+                idempotency_key=idempotency_key,
             )
 
             recent_zones = list(
