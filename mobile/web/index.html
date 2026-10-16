@@ -34,6 +34,18 @@
   <link rel="manifest" href="manifest.json?v=2">
 </head>
 <body>
+  <script>
+    // Local Flutter builds must not be held on an old service-worker cache.
+    // Keep the production PWA cache untouched on deployed hosts.
+    if (['localhost', '127.0.0.1'].includes(window.location.hostname) && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => registration.unregister());
+      });
+      if ('caches' in window) {
+        caches.keys().then((keys) => keys.forEach((key) => caches.delete(key)));
+      }
+    }
+  </script>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader

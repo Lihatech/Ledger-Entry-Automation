@@ -39,6 +39,7 @@ from .views import (
     RunChartReportDetailView,
     RunChartReadingCreateView,
     RunChartPDFView,
+    RunChartExcelView,
 )
 
 router = SimpleRouter()
@@ -59,6 +60,7 @@ urlpatterns = [
     path('run-chart/reports/<uuid:report_id>/', RunChartReportDetailView.as_view(), name='run-chart-report-detail'),
     path('run-chart/reports/<uuid:report_id>/readings/', RunChartReadingCreateView.as_view(), name='run-chart-reading-create'),
     path('run-chart/reports/<uuid:report_id>/pdf/', RunChartPDFView.as_view(), name='run-chart-pdf'),
+    path('run-chart/reports/<uuid:report_id>/xlsx/', RunChartExcelView.as_view(), name='run-chart-xlsx'),
 
     # Inspector & Setup flow
     path('first-piece-status/',             FirstPieceStatusView.as_view(),   name='first-piece-status'),
