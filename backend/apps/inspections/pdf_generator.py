@@ -4,7 +4,7 @@ from datetime import datetime
 from django.conf import settings
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, KeepInFrame
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from apps.machines.models import Factory
@@ -63,9 +63,11 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
 
     from reportlab.platypus import PageBreak
 
-    page_width, _ = landscape(A4)
+    page_width, page_height = landscape(A4)
     left_margin = 15
     right_margin = 15
+    top_margin = 15
+    bottom_margin = 15
     usable_width = page_width - left_margin - right_margin
 
     doc = SimpleDocTemplate(
@@ -73,8 +75,8 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
         pagesize=landscape(A4),
         rightMargin=right_margin,
         leftMargin=left_margin,
-        topMargin=15,
-        bottomMargin=15
+        topMargin=top_margin,
+        bottomMargin=bottom_margin
     )
 
     styles = getSampleStyleSheet()
@@ -93,6 +95,10 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     bold_cell = ParagraphStyle('BoldCell', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, wordWrap='CJK')
     red_cell = ParagraphStyle('RedCell', fontName='Helvetica-Bold', fontSize=7, textColor=colors.red, alignment=1, leading=8, wordWrap='CJK')
     header_style = ParagraphStyle('Header', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, textColor=colors.HexColor('#1E293B'), wordWrap='CJK')
+    # Measurements must remain readable as complete values. Descriptive text
+    # may wrap, but numeric cells should not split values such as -100.00.
+    numeric_cell = ParagraphStyle('NumericCell', fontName='Helvetica', fontSize=6.5, alignment=1, leading=7, splitLongWords=0)
+    numeric_red_cell = ParagraphStyle('NumericRedCell', fontName='Helvetica-Bold', fontSize=6.5, leading=7, alignment=1, textColor=colors.red, splitLongWords=0)
 
     # Determine shift hours for layout (8 or 12)
     factory_hrs = 8
@@ -219,7 +225,10 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
         sample_str = p.get('sample_size') or p.get('sample_frequency') or "5NOS/SHIFT"
 
         fmt_val = lambda m: (f"{float(m['measured_value']):.2f}" if isinstance(m.get('measured_value'), (int, float)) else str(m.get('measured_value', '-'))) if m else "-"
-        fmt_para = lambda m: Paragraph(fmt_val(m), red_cell if (m and m.get('status') == 'out_of_spec') else cell_style)
+        fmt_para = lambda m: Paragraph(
+            fmt_val(m),
+            numeric_red_cell if (m and m.get('status') == 'out_of_spec') else numeric_cell,
+        )
 
         hourly_slot_map = {}
         for hm in p_meas_list:
@@ -233,9 +242,9 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
                 h_val = hm.get('measured_value')
                 h_status = hm.get('status', 'ok')
                 h_str = f"{float(h_val):.2f}" if isinstance(h_val, (int, float)) else str(h_val)
-                hourly_cells.append(Paragraph(h_str, red_cell if h_status == 'out_of_spec' else cell_style))
+                hourly_cells.append(Paragraph(h_str, numeric_red_cell if h_status == 'out_of_spec' else numeric_cell))
             else:
-                hourly_cells.append(Paragraph("-", cell_style))
+                hourly_cells.append(Paragraph("-", numeric_cell))
 
         table_data.append([
             Paragraph("10.", bold_cell),
@@ -306,6 +315,12 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
         ('LINEABOVE', (0, 1), (-1, 1), 0.6, colors.black),
     ]))
     elements.append(footer_table)
+
+    # This official form is designed as a single-page report. Keep the
+    # measurement table, reaction plan, and signatures together and shrink
+    # only this body when unusual wrapping would otherwise create page 2.
+    body_height = page_height - top_margin - bottom_margin - 90
+    elements = elements[:2] + [KeepInFrame(usable_width, body_height, elements[2:], mode='shrink')]
 
     try:
         doc.build(elements)
