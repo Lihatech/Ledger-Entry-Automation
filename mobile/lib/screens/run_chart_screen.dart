@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/company_provider.dart';
 import '../services/api_service.dart';
 
 class RunChartScreen extends StatefulWidget {
@@ -22,7 +23,6 @@ class _RunChartScreenState extends State<RunChartScreen> {
   List<dynamic> _parameters = [];
   Map<String, dynamic>? _machine;
   Map<String, dynamic>? _operation;
-  String? _workingShift;
 
   @override
   void initState() {
@@ -101,13 +101,13 @@ class _RunChartScreenState extends State<RunChartScreen> {
     });
     try {
       final auth = context.read<AuthProvider>();
-      String? shift = _workingShift ?? auth.assignedShift;
-      if (shift == 'ALL') {
-        final selectedShift = await _chooseShift();
-        if (!mounted || selectedShift == null) return;
-        shift = selectedShift;
-        _workingShift = selectedShift;
-      }
+      final company = context.read<CompanyProvider>();
+
+      // Use the same logic as homepage to get current shift
+      String shift = company.availableShifts.contains(auth.assignedShift)
+          ? auth.assignedShift
+          : company.availableShifts.first;
+
       final report = await ApiService.openRunChart(
         machineId: _machine!['id'] as int,
         templateId: _operation!['id'] as int,
@@ -126,23 +126,6 @@ class _RunChartScreenState extends State<RunChartScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  Future<String?> _chooseShift() async {
-    return showModalBottomSheet<String>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: ['I', 'II', 'III']
-              .map((shift) => ListTile(
-                    title: Text('Shift $shift'),
-                    onTap: () => Navigator.pop(sheetContext, shift),
-                  ))
-              .toList(),
-        ),
-      ),
-    );
   }
 
   String _cleanError(Object error) =>
@@ -412,7 +395,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
   }
 
   String _newSubmissionKey() =>
-      '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 32)}';
+      '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1000000000)}';
 
   Future<void> _showAlert(String alert, dynamic reading) async {
     final stop = alert == 'stop_process';
