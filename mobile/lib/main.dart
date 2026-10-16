@@ -15,16 +15,19 @@ import 'screens/messaging/messages_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sentryDsn = const String.fromEnvironment('SENTRY_DSN');
-  await SentryFlutter.init(
-    (options) {
-      if (sentryDsn.isNotEmpty) {
+
+  if (sentryDsn.isNotEmpty) {
+    await SentryFlutter.init(
+      (options) {
         options.dsn = sentryDsn;
-      }
-      options.environment = const String.fromEnvironment('APP_ENV', defaultValue: 'production');
-      options.tracesSampleRate = 0.1;
-    },
-    appRunner: () => runApp(const VoiceInspectionApp()),
-  );
+        options.environment = const String.fromEnvironment('APP_ENV', defaultValue: 'production');
+        options.tracesSampleRate = 0.1;
+      },
+      appRunner: () => runApp(const VoiceInspectionApp()),
+    );
+  } else {
+    runApp(const VoiceInspectionApp());
+  }
 }
 
 class VoiceInspectionApp extends StatelessWidget {
