@@ -33,6 +33,12 @@ from .views import (
     JHChecklistVersionDetailView,
     JHChecklistVersionRestoreView,
     JHChecklistStatusView,
+    RunChartOperationsView,
+    RunChartParametersView,
+    RunChartOpenReportView,
+    RunChartReportDetailView,
+    RunChartReadingCreateView,
+    RunChartPDFView,
 )
 
 router = SimpleRouter()
@@ -45,6 +51,14 @@ urlpatterns = [
 
     # Daily Production Reports router
     path('', include(router.urls)),
+
+    # 100% critical-parameter run charts
+    path('run-chart/machines/<int:machine_id>/operations/', RunChartOperationsView.as_view(), name='run-chart-operations'),
+    path('run-chart/operations/<int:template_id>/parameters/', RunChartParametersView.as_view(), name='run-chart-parameters'),
+    path('run-chart/reports/open/', RunChartOpenReportView.as_view(), name='run-chart-open-report'),
+    path('run-chart/reports/<uuid:report_id>/', RunChartReportDetailView.as_view(), name='run-chart-report-detail'),
+    path('run-chart/reports/<uuid:report_id>/readings/', RunChartReadingCreateView.as_view(), name='run-chart-reading-create'),
+    path('run-chart/reports/<uuid:report_id>/pdf/', RunChartPDFView.as_view(), name='run-chart-pdf'),
 
     # Inspector & Setup flow
     path('first-piece-status/',             FirstPieceStatusView.as_view(),   name='first-piece-status'),

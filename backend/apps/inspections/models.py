@@ -139,6 +139,93 @@ class InspectionSession(models.Model):
         return round((self.recorded_count / self.total_parameters) * 100)
 
 
+class RunChartReport(models.Model):
+    """One production run chart for one critical inspection parameter."""
+
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        CLOSED = 'closed', 'Closed'
+
+    report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    machine = models.ForeignKey(
+        'machines.Machine', on_delete=models.PROTECT, related_name='run_chart_reports'
+    )
+    part = models.ForeignKey(
+        'parts.Part', on_delete=models.PROTECT, related_name='run_chart_reports'
+    )
+    template = models.ForeignKey(
+        'parts.InspectionTemplate', on_delete=models.PROTECT, related_name='run_chart_reports'
+    )
+    parameter = models.ForeignKey(
+        'parts.InspectionParameter', on_delete=models.PROTECT, related_name='run_chart_reports'
+    )
+    operator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='run_chart_reports'
+    )
+    report_date = models.DateField(db_index=True)
+    shift = models.CharField(max_length=10, default='I', db_index=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE, db_index=True)
+
+    # Snapshot the approved master-data specification so historical reports do
+    # not change when a supervisor later revises the parameter definition.
+    parameter_code = models.CharField(max_length=30)
+    parameter_name = models.CharField(max_length=150)
+    unit = models.CharField(max_length=20)
+    nominal_value = models.DecimalField(max_digits=12, decimal_places=4)
+    lower_limit = models.DecimalField(max_digits=12, decimal_places=4)
+    upper_limit = models.DecimalField(max_digits=12, decimal_places=4)
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    closed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'run_chart_reports'
+        ordering = ['-started_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['machine', 'template', 'parameter', 'report_date', 'shift'],
+                name='unique_run_chart_per_shift',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.machine.machine_code} | {self.parameter_name} | {self.report_date} {self.shift}"
+
+
+class RunChartReading(models.Model):
+    """An append-only reading for one individual produced job/piece."""
+
+    class Zone(models.TextChoices):
+        GREEN = 'green', 'Green'
+        YELLOW = 'yellow', 'Yellow'
+        RED = 'red', 'Red'
+
+    reading_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    report = models.ForeignKey(
+        RunChartReport, on_delete=models.CASCADE, related_name='readings'
+    )
+    piece_number = models.PositiveIntegerField()
+    measured_value = models.DecimalField(max_digits=14, decimal_places=6)
+    deviation = models.DecimalField(max_digits=14, decimal_places=6)
+    zone = models.CharField(max_length=10, choices=Zone.choices, db_index=True)
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='run_chart_readings'
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'run_chart_readings'
+        ordering = ['piece_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['report', 'piece_number'], name='unique_piece_per_run_chart'
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.report.parameter_code} | Piece {self.piece_number} | {self.measured_value}"
+
+
 class DailyProductionReport(models.Model):
     """
     Dedicated model for End-of-Day Daily Production Reports.

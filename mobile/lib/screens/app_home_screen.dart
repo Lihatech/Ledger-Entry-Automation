@@ -19,6 +19,7 @@ import 'messaging/messages_screen.dart';
 import 'jh_inspection_screen.dart';
 import 'document_control_screen.dart';
 import 'bug_report_screen.dart';
+import 'run_chart_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -1251,6 +1252,25 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Operator Card 7: 100% critical-parameter run chart
+                      _buildSoftPastelCard(
+                        title: 'Run Chart',
+                        description:
+                            'Record every job/piece and monitor critical parameters live',
+                        icon: Icons.show_chart_rounded,
+                        bgColor: const Color(0xFFECFEFF),
+                        borderColor: const Color(0xFFA5F3FC),
+                        iconColor: const Color(0xFF0891B2),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const RunChartScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ]
                   : [
                       // Inspector / Supervisor Card 1: Machine
@@ -1289,8 +1309,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
-
-
 
                       // Inspector / Supervisor Card 4: Resume Entry
                       _buildSoftPastelCard(
@@ -1790,8 +1808,6 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     );
   }
 
-
-
   Future<void> _resumeActiveSessionDirectly(BuildContext context) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final provider = Provider.of<InspectionProvider>(context, listen: false);
@@ -1838,10 +1854,4 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       );
     }
   }
-
-
-
-
-
-
 }

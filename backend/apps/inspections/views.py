@@ -1,10 +1,13 @@
 import time
 import logging
+from decimal import Decimal, InvalidOperation
 from django.db import IntegrityError
 from django.core.cache import cache
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django.db.models import Max
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,7 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 
 logger = logging.getLogger(__name__)
 
-from apps.parts.models import Part
+from apps.parts.models import Part, InspectionTemplate, InspectionParameter
 from apps.machines.models import Machine
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -31,6 +34,8 @@ from apps.users.permissions import (
 )
 from .models import (
     InspectionSession,
+    RunChartReport,
+    RunChartReading,
     DailyProductionReport,
     DowntimeReport,
     JHChecklistItem,
@@ -51,9 +56,303 @@ from .serializers import (
     JHInspectionSubmitSerializer,
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
+from .run_chart_pdf import generate_run_chart_pdf
 # M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
+
+
+def _run_chart_reading_data(reading):
+    return {
+        'reading_id': str(reading.reading_id),
+        'piece_number': reading.piece_number,
+        'measured_value': float(reading.measured_value),
+        'deviation': float(reading.deviation),
+        'zone': reading.zone,
+        'recorded_at': reading.recorded_at.isoformat(),
+    }
+
+
+def _run_chart_report_data(report, include_readings=True):
+    payload = {
+        'report_id': str(report.report_id),
+        'machine_id': report.machine_id,
+        'machine_code': report.machine.machine_code,
+        'machine_name': report.machine.name,
+        'part_id': report.part_id,
+        'part_number': report.part.part_number,
+        'part_name': report.part.part_name,
+        'template_id': report.template_id,
+        'operation_name': report.template.name,
+        'parameter_id': report.parameter_id,
+        'parameter_code': report.parameter_code,
+        'parameter_name': report.parameter_name,
+        'unit': report.unit,
+        'nominal_value': float(report.nominal_value),
+        'lower_limit': float(report.lower_limit),
+        'upper_limit': float(report.upper_limit),
+        'report_date': report.report_date.isoformat(),
+        'shift': report.shift,
+        'status': report.status,
+        'next_piece_number': (report.readings.aggregate(value=Max('piece_number'))['value'] or 0) + 1,
+    }
+    if include_readings:
+        payload['readings'] = [
+            _run_chart_reading_data(reading)
+            for reading in report.readings.order_by('piece_number')
+        ]
+    return payload
+
+
+class RunChartOperationsView(APIView):
+    """Published operations with at least one critical parameter.
+
+    Run Chart is a 100%-inspection workflow, so it must be available for
+    any published Master Database operation that has critical parameters.
+    It is not limited to the hourly inspection template type.
+    """
+
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def get(self, request, machine_id):
+        machine = Machine.objects.filter(pk=machine_id, is_active=True).first()
+        if not machine:
+            return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        templates = (
+            InspectionTemplate.objects.filter(
+                part__machine=machine,
+                part__is_active=True,
+                is_active=True,
+                is_published=True,
+                parameters__is_critical=True,
+            )
+            .select_related('part')
+            .prefetch_related('parameters')
+            .distinct()
+            .order_by('part__part_number', 'name', '-version')
+        )
+
+        # Only expose the latest published version of an operation.
+        seen = set()
+        operations = []
+        for template in templates:
+            key = (template.part_id, template.operation_key)
+            if key in seen:
+                continue
+            seen.add(key)
+            critical_count = sum(1 for p in template.parameters.all() if p.is_critical)
+            operations.append({
+                'id': template.id,
+                'operation_key': str(template.operation_key),
+                'name': template.name or 'Hourly Inspection',
+                'part_id': template.part_id,
+                'part_number': template.part.part_number,
+                'part_name': template.part.part_name,
+                'critical_parameter_count': critical_count,
+            })
+        return Response(operations)
+
+
+class RunChartParametersView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def get(self, request, template_id):
+        template = InspectionTemplate.objects.filter(
+            pk=template_id, is_active=True, is_published=True
+        ).first()
+        if not template:
+            return Response({'error': 'Operation not found.'}, status=status.HTTP_404_NOT_FOUND)
+        parameters = template.parameters.filter(is_critical=True).order_by('sequence_order')
+        return Response([
+            {
+                'id': parameter.id,
+                'parameter_code': parameter.parameter_code,
+                'parameter_name': parameter.parameter_name,
+                'unit': parameter.unit,
+                'nominal_value': float(parameter.nominal_value),
+                'lower_limit': float(parameter.lower_limit),
+                'upper_limit': float(parameter.upper_limit),
+                'measurement_technique': parameter.measurement_technique,
+                'sample_size': parameter.sample_size,
+                'control_method': parameter.control_method,
+            }
+            for parameter in parameters
+        ])
+
+
+class RunChartOpenReportView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def post(self, request):
+        try:
+            machine_id = int(request.data.get('machine_id'))
+            template_id = int(request.data.get('template_id'))
+            parameter_id = int(request.data.get('parameter_id'))
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'machine_id, template_id and parameter_id are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        shift = str(request.data.get('shift') or getattr(request.user, 'assigned_shift', '') or 'I')
+        if shift == 'ALL':
+            shift = 'I'
+
+        parameter = InspectionParameter.objects.select_related(
+            'template__part__machine'
+        ).filter(
+            pk=parameter_id,
+            template_id=template_id,
+            is_critical=True,
+            template__part__machine_id=machine_id,
+            template__is_active=True,
+            template__is_published=True,
+        ).first()
+        if not parameter:
+            return Response(
+                {'error': 'Critical parameter is not available for the selected machine and operation.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        defaults = {
+            'part': parameter.template.part,
+            'operator': request.user,
+            'status': RunChartReport.Status.ACTIVE,
+            'parameter_code': parameter.parameter_code,
+            'parameter_name': parameter.parameter_name,
+            'unit': parameter.unit,
+            'nominal_value': parameter.nominal_value,
+            'lower_limit': parameter.lower_limit,
+            'upper_limit': parameter.upper_limit,
+        }
+        try:
+            report, _ = RunChartReport.objects.get_or_create(
+                machine_id=machine_id,
+                template_id=template_id,
+                parameter=parameter,
+                report_date=timezone.localdate(),
+                shift=shift,
+                defaults=defaults,
+            )
+        except IntegrityError:
+            report = RunChartReport.objects.get(
+                machine_id=machine_id,
+                template_id=template_id,
+                parameter=parameter,
+                report_date=timezone.localdate(),
+                shift=shift,
+            )
+        report = RunChartReport.objects.select_related(
+            'machine', 'part', 'template', 'parameter', 'operator'
+        ).get(pk=report.pk)
+        return Response(_run_chart_report_data(report))
+
+
+class RunChartReportDetailView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def get(self, request, report_id):
+        report = RunChartReport.objects.select_related(
+            'machine', 'part', 'template', 'parameter', 'operator'
+        ).filter(pk=report_id).first()
+        if not report:
+            return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_run_chart_report_data(report))
+
+
+class RunChartReadingCreateView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def post(self, request, report_id):
+        raw_value = request.data.get('measured_value')
+        try:
+            measured_value = Decimal(str(raw_value))
+            if not measured_value.is_finite():
+                raise InvalidOperation
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'error': 'Enter a valid measured value.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            report = RunChartReport.objects.select_for_update().select_related(
+                'machine', 'part', 'template', 'parameter', 'operator'
+            ).filter(pk=report_id, status=RunChartReport.Status.ACTIVE).first()
+            if not report:
+                return Response({'error': 'Active run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+            next_piece = (report.readings.aggregate(value=Max('piece_number'))['value'] or 0) + 1
+            requested_piece = request.data.get('piece_number')
+            if requested_piece not in (None, ''):
+                try:
+                    piece_number = int(requested_piece)
+                except (TypeError, ValueError):
+                    return Response({'error': 'piece_number must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
+                if piece_number != next_piece:
+                    return Response(
+                        {'error': f'The next required piece number is {next_piece}.'},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+            else:
+                piece_number = next_piece
+
+            lower = report.lower_limit
+            upper = report.upper_limit
+            nominal = report.nominal_value
+            if measured_value < lower or measured_value > upper:
+                zone = RunChartReading.Zone.RED
+            else:
+                warning_band = (upper - lower) * Decimal('0.20')
+                if warning_band > 0 and (
+                    measured_value <= lower + warning_band
+                    or measured_value >= upper - warning_band
+                ):
+                    zone = RunChartReading.Zone.YELLOW
+                else:
+                    zone = RunChartReading.Zone.GREEN
+
+            reading = RunChartReading.objects.create(
+                report=report,
+                piece_number=piece_number,
+                measured_value=measured_value,
+                deviation=measured_value - nominal,
+                zone=zone,
+                recorded_by=request.user,
+            )
+
+            recent_zones = list(
+                report.readings.order_by('-piece_number').values_list('zone', flat=True)[:5]
+            )
+            alert = None
+            if zone == RunChartReading.Zone.RED:
+                alert = 'stop_process'
+            elif recent_zones.count(RunChartReading.Zone.YELLOW) >= 3:
+                alert = 'three_of_five_yellow'
+
+        return Response({
+            'reading': _run_chart_reading_data(reading),
+            'next_piece_number': piece_number + 1,
+            'alert': alert,
+        }, status=status.HTTP_201_CREATED)
+
+
+class RunChartPDFView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def get(self, request, report_id):
+        report = RunChartReport.objects.select_related(
+            'machine', 'part', 'template', 'parameter', 'operator'
+        ).filter(pk=report_id).first()
+        if not report:
+            return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+        pdf = generate_run_chart_pdf(report)
+        safe_parameter = ''.join(c if c.isalnum() else '-' for c in report.parameter_name).strip('-')
+        filename = f'RunChart_{report.machine.machine_code}_{safe_parameter}_{report.report_date}.pdf'
+        return FileResponse(pdf, content_type='application/pdf', filename=filename)
 
 
 # ─── Start Inspection ─────────────────────────────────────────────────────
