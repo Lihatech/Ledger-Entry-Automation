@@ -128,11 +128,13 @@ class ApiService {
       }
 
       // Try refresh endpoint (using users/token/refresh/ or auth/refresh/)
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/token/refresh/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'refresh': refresh}),
-      ).timeout(const Duration(seconds: 20));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/users/token/refresh/'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'refresh': refresh}),
+          )
+          .timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -157,7 +159,9 @@ class ApiService {
           return true;
         }
       } else if (response.statusCode == 400 || response.statusCode == 401) {
-        debugPrint('[ApiService] Refresh token rejected by server (HTTP ${response.statusCode}).');
+        debugPrint(
+          '[ApiService] Refresh token rejected by server (HTTP ${response.statusCode}).',
+        );
         _refreshCompleter!.complete(false);
         _isRefreshing = false;
         return false;
@@ -193,14 +197,20 @@ class ApiService {
     var response = await requestFn(headers);
 
     if (response.statusCode == 401) {
-      debugPrint('[ApiService] Received HTTP 401. Attempting silent token refresh...');
+      debugPrint(
+        '[ApiService] Received HTTP 401. Attempting silent token refresh...',
+      );
       final refreshStatus = await refreshToken();
       if (refreshStatus == true) {
-        debugPrint('[ApiService] Token refresh succeeded. Retrying original request.');
+        debugPrint(
+          '[ApiService] Token refresh succeeded. Retrying original request.',
+        );
         headers = await _headers();
         response = await requestFn(headers);
       } else if (refreshStatus == false) {
-        debugPrint('[ApiService] Token refresh explicitly rejected. Triggering unauthenticated logout callback.');
+        debugPrint(
+          '[ApiService] Token refresh explicitly rejected. Triggering unauthenticated logout callback.',
+        );
         await clearTokens();
         onUnauthenticated?.call();
       }
@@ -212,13 +222,18 @@ class ApiService {
   // ── Auth Endpoints ─────────────────────────────────────────────────────────
 
   // 1. Auth: Login
-  static Future<Map<String, dynamic>> login(String username, String password) async {
+  static Future<Map<String, dynamic>> login(
+    String username,
+    String password,
+  ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/login/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      ).timeout(const Duration(seconds: 35));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/users/login/'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'username': username, 'password': password}),
+          )
+          .timeout(const Duration(seconds: 35));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -227,11 +242,15 @@ class ApiService {
         final body = jsonDecode(response.body);
         return {
           'success': false,
-          'message': body['detail'] ?? 'Login failed (${response.statusCode})'
+          'message': body['detail'] ?? 'Login failed (${response.statusCode})',
         };
       }
     } catch (e) {
-      return {'success': false, 'message': 'Cannot connect to backend server ($baseUrl). Please check network connection.'};
+      return {
+        'success': false,
+        'message':
+            'Cannot connect to backend server ($baseUrl). Please check network connection.',
+      };
     }
   }
 
@@ -241,24 +260,28 @@ class ApiService {
   /// the email belongs to an account, preventing user enumeration.
   static Future<Map<String, dynamic>> requestPasswordReset(String email) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/users/password-reset/request/'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email.trim()}),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/users/password-reset/request/'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'email': email.trim()}),
+          )
+          .timeout(const Duration(seconds: 30));
 
       final body = jsonDecode(response.body);
       if (response.statusCode == 200) {
         return {
           'success': true,
-          'message': body['message'] ??
+          'message':
+              body['message'] ??
               'If an account with that email exists, a password reset link has been sent.',
         };
       }
 
       return {
         'success': false,
-        'message': body['error'] ?? body['detail'] ?? 'Unable to send reset link.',
+        'message':
+            body['error'] ?? body['detail'] ?? 'Unable to send reset link.',
       };
     } catch (_) {
       return {
@@ -291,14 +314,16 @@ class ApiService {
       final refresh = await getRefreshToken();
       if (refresh != null && refresh.isNotEmpty) {
         final token = await getToken();
-        await http.post(
-          Uri.parse('$baseUrl/users/logout/'),
-          headers: {
-            'Content-Type': 'application/json',
-            if (token != null) 'Authorization': 'Bearer $token',
-          },
-          body: jsonEncode({'refresh': refresh}),
-        ).timeout(const Duration(seconds: 10));
+        await http
+            .post(
+              Uri.parse('$baseUrl/users/logout/'),
+              headers: {
+                'Content-Type': 'application/json',
+                if (token != null) 'Authorization': 'Bearer $token',
+              },
+              body: jsonEncode({'refresh': refresh}),
+            )
+            .timeout(const Duration(seconds: 10));
       }
     } catch (e) {
       debugPrint('[ApiService] Server logout notice: $e');
@@ -315,10 +340,10 @@ class ApiService {
   /// GET /api/users/me/ — fetch logged-in user profile details
   static Future<Map<String, dynamic>?> getProfile() async {
     try {
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/users/me/'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) =>
+            http.get(Uri.parse('$baseUrl/users/me/'), headers: headers),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -329,21 +354,32 @@ class ApiService {
   }
 
   /// PATCH /api/users/me/ — update personal information (first_name, last_name, email, phone)
-  static Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
+  static Future<Map<String, dynamic>> updateProfile(
+    Map<String, dynamic> data,
+  ) async {
     try {
-      final response = await authenticatedRequest((headers) => http.patch(
-        Uri.parse('$baseUrl/users/me/'),
-        headers: headers,
-        body: jsonEncode(data),
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.patch(
+          Uri.parse('$baseUrl/users/me/'),
+          headers: headers,
+          body: jsonEncode(data),
+        ),
+      );
       if (response.statusCode == 200) {
         return {'success': true, 'data': jsonDecode(response.body)};
       } else {
         final body = jsonDecode(response.body);
-        return {'success': false, 'message': body['detail'] ?? body['message'] ?? 'Failed to update profile'};
+        return {
+          'success': false,
+          'message':
+              body['detail'] ?? body['message'] ?? 'Failed to update profile',
+        };
       }
     } catch (e) {
-      return {'success': false, 'message': 'Network error while updating profile'};
+      return {
+        'success': false,
+        'message': 'Network error while updating profile',
+      };
     }
   }
 
@@ -369,22 +405,38 @@ class ApiService {
   }
 
   /// POST /api/users/change-password/ — change user password
-  static Future<Map<String, dynamic>> changePassword(String oldPassword, String newPassword) async {
+  static Future<Map<String, dynamic>> changePassword(
+    String oldPassword,
+    String newPassword,
+  ) async {
     try {
-      final response = await authenticatedRequest((headers) => http.post(
-        Uri.parse('$baseUrl/users/change-password/'),
-        headers: headers,
-        body: jsonEncode({'old_password': oldPassword, 'new_password': newPassword}),
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/users/change-password/'),
+          headers: headers,
+          body: jsonEncode({
+            'old_password': oldPassword,
+            'new_password': newPassword,
+          }),
+        ),
+      );
       if (response.statusCode == 200) {
         return {'success': true, 'message': 'Password updated successfully'};
       } else {
         final body = jsonDecode(response.body);
-        final msg = body['old_password']?[0] ?? body['new_password']?[0] ?? body['detail'] ?? body['message'] ?? 'Failed to change password';
+        final msg =
+            body['old_password']?[0] ??
+            body['new_password']?[0] ??
+            body['detail'] ??
+            body['message'] ??
+            'Failed to change password';
         return {'success': false, 'message': msg};
       }
     } catch (e) {
-      return {'success': false, 'message': 'Network error while changing password'};
+      return {
+        'success': false,
+        'message': 'Network error while changing password',
+      };
     }
   }
 
@@ -392,10 +444,12 @@ class ApiService {
 
   // 2. Machine QR / Code Lookup
   static Future<Map<String, dynamic>?> getMachineByCode(String code) async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/machines/scan/$code/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/machines/scan/$code/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -406,17 +460,18 @@ class ApiService {
   // 2b. Get All Floor Machines
   static Future<List<dynamic>> getMachines() async {
     try {
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/machines/'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) =>
+            http.get(Uri.parse('$baseUrl/machines/'), headers: headers),
+      );
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         List<dynamic> result = [];
         if (decoded is List) result = decoded;
-        if (decoded is Map && decoded['results'] != null) result = decoded['results'];
-        
+        if (decoded is Map && decoded['results'] != null)
+          result = decoded['results'];
+
         if (result.isNotEmpty) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('cached_machines', jsonEncode(result));
@@ -424,7 +479,7 @@ class ApiService {
         return result;
       }
     } catch (_) {}
-    
+
     // Fallback to cache on network failure
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -437,17 +492,38 @@ class ApiService {
     return [];
   }
 
+  /// Machine discovery for workflows where an outage must not look like an empty master list.
+  static Future<List<dynamic>> getMachinesStrict() async {
+    final response = await authenticatedRequest(
+      (headers) => http
+          .get(Uri.parse('$baseUrl/machines/'), headers: headers)
+          .timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load machines (HTTP ${response.statusCode}).');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded['results'] is List) {
+      return List<dynamic>.from(decoded['results']);
+    }
+    return [];
+  }
+
   // 3. Get Parts by Machine
   static Future<List<dynamic>> getPartsByMachine(int machineId) async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/parts/?machine=$machineId'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/parts/?machine=$machineId'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+      if (decoded is Map && decoded['results'] != null)
+        return decoded['results'];
     }
     return [];
   }
@@ -459,17 +535,24 @@ class ApiService {
       final visited = <String>{};
       while (nextUrl.isNotEmpty && visited.add(nextUrl)) {
         final response = await authenticatedRequest(
-          (headers) => http.get(Uri.parse(nextUrl), headers: headers).timeout(const Duration(seconds: 20)),
+          (headers) => http
+              .get(Uri.parse(nextUrl), headers: headers)
+              .timeout(const Duration(seconds: 20)),
         );
         if (response.statusCode != 200) {
-          throw InventoryReceiptFetchException('Unable to load accepted receipts (HTTP ${response.statusCode}).');
+          throw InventoryReceiptFetchException(
+            'Unable to load accepted receipts (HTTP ${response.statusCode}).',
+          );
         }
         final data = jsonDecode(response.body);
         if (data is List) {
           receipts.addAll(data);
           break;
         }
-        if (data is! Map) throw InventoryReceiptFetchException('The accepted receipts response was invalid.');
+        if (data is! Map)
+          throw InventoryReceiptFetchException(
+            'The accepted receipts response was invalid.',
+          );
         receipts.addAll((data['results'] as List?) ?? const []);
         nextUrl = (data['next'] ?? '').toString();
       }
@@ -477,21 +560,26 @@ class ApiService {
     } catch (e) {
       debugPrint('[API] getInventoryReceipts error: $e');
       if (e is InventoryReceiptFetchException) rethrow;
-      throw InventoryReceiptFetchException('Unable to load accepted receipts. Please retry.');
+      throw InventoryReceiptFetchException(
+        'Unable to load accepted receipts. Please retry.',
+      );
     }
   }
 
   // 4. Get Templates by Part
   static Future<List<dynamic>> getTemplatesByPart(String partNumber) async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/parts/$partNumber/templates/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/parts/$partNumber/templates/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+      if (decoded is Map && decoded['results'] != null)
+        return decoded['results'];
       if (decoded is Map) return [decoded];
     }
     return [];
@@ -499,30 +587,186 @@ class ApiService {
 
   // 5. Get Parameters for a Template
   static Future<List<dynamic>> getParameters(int templateId) async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/parts/templates/$templateId/parameters/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/parts/templates/$templateId/parameters/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+      if (decoded is Map && decoded['results'] != null)
+        return decoded['results'];
     }
     return [];
   }
 
+  // ── 100% Critical Parameter Run Charts ──────────────────────────────────
+  static Future<List<dynamic>> getRunChartOperations(int machineId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/run-chart/machines/$machineId/operations/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) return decoded;
+    }
+    throw Exception('Unable to load run-chart operations.');
+  }
+
+  static Future<List<dynamic>> getRunChartParameters(int templateId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse(
+          '$baseUrl/inspections/run-chart/operations/$templateId/parameters/',
+        ),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode == 200) {
+      final decoded = jsonDecode(response.body);
+      if (decoded is List) return decoded;
+    }
+    throw Exception('Unable to load critical parameters.');
+  }
+
+  static Future<Map<String, dynamic>> openRunChart({
+    required int machineId,
+    required int templateId,
+    required int parameterId,
+    String? shift,
+  }) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/run-chart/reports/open/'),
+        headers: headers,
+        body: jsonEncode({
+          'machine_id': machineId,
+          'template_id': templateId,
+          'parameter_id': parameterId,
+          if (shift != null) 'shift': shift,
+        }),
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    throw Exception(
+      decoded is Map
+          ? decoded['error'] ?? 'Unable to open run chart.'
+          : 'Unable to open run chart.',
+    );
+  }
+
+  static Future<Map<String, dynamic>> getRunChart(String reportId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    throw Exception(
+      decoded is Map
+          ? decoded['error'] ?? 'Unable to refresh run chart.'
+          : 'Unable to refresh run chart.',
+    );
+  }
+
+  static Future<Map<String, dynamic>> addRunChartReading({
+    required String reportId,
+    required double measuredValue,
+    required int pieceNumber,
+    String? idempotencyKey,
+  }) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/readings/'),
+        headers: headers,
+        body: jsonEncode({
+          'measured_value': measuredValue,
+          'piece_number': pieceNumber,
+          if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
+        }),
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 201 && decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    throw Exception(
+      decoded is Map
+          ? decoded['error'] ?? 'Unable to save reading.'
+          : 'Unable to save reading.',
+    );
+  }
+
+  static Future<String?> downloadRunChartPDF(
+    String reportId, {
+    required String machineCode,
+    required String parameterName,
+  }) async {
+    try {
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/pdf/'),
+          headers: headers,
+        ).timeout(const Duration(seconds: 30)),
+      );
+      if (response.statusCode != 200) return null;
+
+      String? filename;
+      final disposition = response.headers['content-disposition'];
+      if (disposition != null) {
+        filename = RegExp(
+          r'filename="?([^";]+)',
+        ).firstMatch(disposition)?.group(1);
+      }
+      filename ??=
+          'RunChart_${machineCode}_${parameterName}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf';
+      filename = filename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
+
+      if (kIsWeb) {
+        await FileSaver.instance.saveFile(
+          name: filename.replaceAll('.pdf', ''),
+          bytes: response.bodyBytes,
+          ext: 'pdf',
+          mimeType: MimeType.pdf,
+        );
+        return 'web_downloaded';
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(response.bodyBytes);
+      return file.path;
+    } catch (e) {
+      debugPrint('[API] Run Chart PDF download error: $e');
+      return null;
+    }
+  }
+
   // 5b. Get Process Parameters for a Template (Setup Approval Only)
   static Future<List<dynamic>> getProcessParameters(int templateId) async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/parts/templates/$templateId/process-parameters/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/parts/templates/$templateId/process-parameters/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+      if (decoded is Map && decoded['results'] != null)
+        return decoded['results'];
     }
     return [];
   }
@@ -538,20 +782,22 @@ class ApiService {
     int hourlySlot = 1,
     String? parentSessionId,
   }) async {
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/inspections/start/'),
-      headers: headers,
-      body: jsonEncode({
-        'part_number': partNumber,
-        'machine_id': machineId,
-        'template_id': templateId,
-        'inspection_type': inspectionType,
-        'shift': shift,
-        'trial_number': trialNumber,
-        'hourly_slot': hourlySlot,
-        'parent_session_id': parentSessionId,
-      }),
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/start/'),
+        headers: headers,
+        body: jsonEncode({
+          'part_number': partNumber,
+          'machine_id': machineId,
+          'template_id': templateId,
+          'inspection_type': inspectionType,
+          'shift': shift,
+          'trial_number': trialNumber,
+          'hourly_slot': hourlySlot,
+          'parent_session_id': parentSessionId,
+        }),
+      ),
+    );
 
     if (response.statusCode == 201 || response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -560,12 +806,16 @@ class ApiService {
   }
 
   // Fetch session detail document
-  static Future<Map<String, dynamic>?> getSessionDetail(String sessionId) async {
+  static Future<Map<String, dynamic>?> getSessionDetail(
+    String sessionId,
+  ) async {
     try {
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/$sessionId/'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse('$baseUrl/inspections/$sessionId/'),
+          headers: headers,
+        ),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -581,17 +831,21 @@ class ApiService {
     String? shift,
   }) async {
     try {
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/$sessionId/pdf/'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse('$baseUrl/inspections/$sessionId/pdf/'),
+          headers: headers,
+        ),
+      );
 
       if (response.statusCode == 200) {
         // Check if server sent a filename in Content-Disposition
         String? filename;
         final disposition = response.headers['content-disposition'];
         if (disposition != null && disposition.contains('filename=')) {
-          final match = RegExp(r'filename="?([^";]+)"?').firstMatch(disposition);
+          final match = RegExp(
+            r'filename="?([^";]+)"?',
+          ).firstMatch(disposition);
           if (match != null && match.group(1) != null) {
             filename = match.group(1)!.trim();
           }
@@ -600,10 +854,17 @@ class ApiService {
         // Fallback to dynamic selection-aware name
         if (filename == null || filename.isEmpty) {
           final dateStr = DateTime.now().toIso8601String().substring(0, 10);
-          final cleanMc = (machineCode ?? 'MCH').replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
-          final cleanPart = (partNumber ?? 'PART').replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+          final cleanMc = (machineCode ?? 'MCH').replaceAll(
+            RegExp(r'[^a-zA-Z0-9_-]'),
+            '_',
+          );
+          final cleanPart = (partNumber ?? 'PART').replaceAll(
+            RegExp(r'[^a-zA-Z0-9_-]'),
+            '_',
+          );
           final cleanShift = shift ?? 'A';
-          filename = 'FirstPiece_Report_${dateStr}_Shift_${cleanShift}_${cleanMc}_${cleanPart}.pdf';
+          filename =
+              'FirstPiece_Report_${dateStr}_Shift_${cleanShift}_${cleanMc}_${cleanPart}.pdf';
         }
 
         if (kIsWeb) {
@@ -631,27 +892,37 @@ class ApiService {
   static Future<List<dynamic>> getSessions({String? machineCode}) async {
     try {
       final query = machineCode != null ? '?machine=$machineCode' : '';
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/$query'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse('$baseUrl/inspections/$query'),
+          headers: headers,
+        ),
+      );
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded is List) return decoded;
-        if (decoded is Map && decoded['results'] != null) return decoded['results'];
+        if (decoded is Map && decoded['results'] != null)
+          return decoded['results'];
       }
     } catch (_) {}
     return [];
   }
 
   // Fetch 1st Piece Setup Approval Status for Machine
-  static Future<Map<String, dynamic>> checkSetupApproved(int machineId, {String? date}) async {
+  static Future<Map<String, dynamic>> checkSetupApproved(
+    int machineId, {
+    String? date,
+  }) async {
     try {
       final query = date != null ? '&date=$date' : '';
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/setup-status/?machine=$machineId$query'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse(
+            '$baseUrl/inspections/setup-status/?machine=$machineId$query',
+          ),
+          headers: headers,
+        ),
+      );
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
@@ -662,15 +933,18 @@ class ApiService {
 
   // Fetch active supervisor rejections for operator
   static Future<List<dynamic>> getRejections() async {
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/inspections/rejections/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/rejections/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
       if (decoded is List) return decoded;
-      if (decoded is Map && decoded['results'] != null) return decoded['results'];
+      if (decoded is Map && decoded['results'] != null)
+        return decoded['results'];
     }
     return [];
   }
@@ -679,7 +953,9 @@ class ApiService {
   static Future<Map<String, dynamic>> transcribeVoice(String filePath) async {
     final sw = Stopwatch()..start();
     final file = File(filePath);
-    final fileSizeKb = file.existsSync() ? (file.lengthSync() / 1024).toStringAsFixed(2) : '0';
+    final fileSizeKb = file.existsSync()
+        ? (file.lengthSync() / 1024).toStringAsFixed(2)
+        : '0';
 
     final token = await getToken();
     final request = http.MultipartRequest(
@@ -690,7 +966,9 @@ class ApiService {
       request.headers['Authorization'] = 'Bearer $token';
     }
 
-    request.files.add(await http.MultipartFile.fromPath('audio_file', filePath));
+    request.files.add(
+      await http.MultipartFile.fromPath('audio_file', filePath),
+    );
     final streamedResponse = await request.send();
     var response = await http.Response.fromStream(streamedResponse);
 
@@ -698,9 +976,15 @@ class ApiService {
       final refreshed = await refreshToken();
       if (refreshed == true) {
         final newToken = await getToken();
-        final retryReq = http.MultipartRequest('POST', Uri.parse('$baseUrl/voice/transcribe/'));
-        if (newToken != null) retryReq.headers['Authorization'] = 'Bearer $newToken';
-        retryReq.files.add(await http.MultipartFile.fromPath('audio_file', filePath));
+        final retryReq = http.MultipartRequest(
+          'POST',
+          Uri.parse('$baseUrl/voice/transcribe/'),
+        );
+        if (newToken != null)
+          retryReq.headers['Authorization'] = 'Bearer $newToken';
+        retryReq.files.add(
+          await http.MultipartFile.fromPath('audio_file', filePath),
+        );
         final retryStream = await retryReq.send();
         response = await http.Response.fromStream(retryStream);
       } else {
@@ -710,8 +994,12 @@ class ApiService {
     }
 
     sw.stop();
-    print('[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)');
-    debugPrint('[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)');
+    print(
+      '[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)',
+    );
+    debugPrint(
+      '[PERF CLIENT] HTTP POST /voice/transcribe/ took ${sw.elapsedMilliseconds} ms (File size: $fileSizeKb KB)',
+    );
 
     if (response.statusCode == 202 || response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -725,36 +1013,48 @@ class ApiService {
   }
 
   // 7b. Poll transcription job status
-  static Future<Map<String, dynamic>> checkTranscriptionStatus(String jobId) async {
+  static Future<Map<String, dynamic>> checkTranscriptionStatus(
+    String jobId,
+  ) async {
     final sw = Stopwatch()..start();
-    final response = await authenticatedRequest((headers) => http.get(
-      Uri.parse('$baseUrl/voice/status/$jobId/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/voice/status/$jobId/'),
+        headers: headers,
+      ),
+    );
     sw.stop();
 
     if (response.statusCode == 200 || response.statusCode == 500) {
       final data = jsonDecode(response.body);
-      print('[PERF CLIENT] GET /voice/status/$jobId/ -> Status: ${data['status']} (${sw.elapsedMilliseconds} ms)');
+      print(
+        '[PERF CLIENT] GET /voice/status/$jobId/ -> Status: ${data['status']} (${sw.elapsedMilliseconds} ms)',
+      );
       return data;
     }
-    print('[PERF CLIENT] GET /voice/status/$jobId/ -> Status: processing (${sw.elapsedMilliseconds} ms)');
+    print(
+      '[PERF CLIENT] GET /voice/status/$jobId/ -> Status: processing (${sw.elapsedMilliseconds} ms)',
+    );
     return {'status': 'processing'};
   }
 
   // 8. Transcribe Text / Parse Measurement Directly
   static Future<Map<String, dynamic>> parseText(String text) async {
     final sw = Stopwatch()..start();
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/voice/parse/'),
-      headers: headers,
-      body: jsonEncode({'text': text}),
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/voice/parse/'),
+        headers: headers,
+        body: jsonEncode({'text': text}),
+      ),
+    );
     sw.stop();
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      print('[PERF CLIENT] POST /voice/parse/ ("$text") -> ${data['parsed_value']} (${sw.elapsedMilliseconds} ms)');
+      print(
+        '[PERF CLIENT] POST /voice/parse/ ("$text") -> ${data['parsed_value']} (${sw.elapsedMilliseconds} ms)',
+      );
       return data;
     }
     return {'is_parseable': false};
@@ -771,20 +1071,24 @@ class ApiService {
     String? inspectionType,
   }) async {
     final sw = Stopwatch()..start();
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/inspections/$sessionId/measure/'),
-      headers: headers,
-      body: jsonEncode({
-        'parameter_code': parameterCode,
-        'measured_value': value,
-        'voice_raw_text': voiceRawText,
-        'method': method,
-        'hourly_slot': hourlySlot,
-        'inspection_type': inspectionType,
-      }),
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/$sessionId/measure/'),
+        headers: headers,
+        body: jsonEncode({
+          'parameter_code': parameterCode,
+          'measured_value': value,
+          'voice_raw_text': voiceRawText,
+          'method': method,
+          'hourly_slot': hourlySlot,
+          'inspection_type': inspectionType,
+        }),
+      ),
+    );
     sw.stop();
-    print('[PERF CLIENT] POST /inspections/measure/ ($parameterCode = $value) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
+    print(
+      '[PERF CLIENT] POST /inspections/measure/ ($parameterCode = $value) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]',
+    );
 
     // Backend returns 202 Accepted for async queued measurements (fast path)
     // and 200 OK for idempotent cache hits. Both are success.
@@ -800,15 +1104,17 @@ class ApiService {
     required List<Map<String, dynamic>> measurements,
   }) async {
     final sw = Stopwatch()..start();
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/inspections/$sessionId/batch-measure/'),
-      headers: headers,
-      body: jsonEncode({
-        'measurements': measurements,
-      }),
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/$sessionId/batch-measure/'),
+        headers: headers,
+        body: jsonEncode({'measurements': measurements}),
+      ),
+    );
     sw.stop();
-    print('[PERF CLIENT] POST /inspections/batch-measure/ (${measurements.length} fields) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]');
+    print(
+      '[PERF CLIENT] POST /inspections/batch-measure/ (${measurements.length} fields) took ${sw.elapsedMilliseconds} ms [HTTP ${response.statusCode}]',
+    );
 
     // Backend returns 202 Accepted for async queued measurements (fast path)
     // and 200 OK for idempotent cache hits. Both are success.
@@ -820,20 +1126,26 @@ class ApiService {
 
   // 10. Complete Session
   static Future<bool> completeSession(String sessionId) async {
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/inspections/$sessionId/complete/'),
-      headers: headers,
-    ));
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/$sessionId/complete/'),
+        headers: headers,
+      ),
+    );
 
     return response.statusCode == 200;
   }
 
   // 11. Finalize First Piece Session (Inspector Workflow)
-  static Future<Map<String, dynamic>?> finalizeFirstPiece(String sessionId) async {
-    final response = await authenticatedRequest((headers) => http.post(
-      Uri.parse('$baseUrl/inspections/$sessionId/finalize/'),
-      headers: headers,
-    ));
+  static Future<Map<String, dynamic>?> finalizeFirstPiece(
+    String sessionId,
+  ) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/$sessionId/finalize/'),
+        headers: headers,
+      ),
+    );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -847,15 +1159,15 @@ class ApiService {
       final url = (role != null && role.isNotEmpty)
           ? '$baseUrl/users/?role=$role'
           : '$baseUrl/users/';
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse(url),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(Uri.parse(url), headers: headers),
+      );
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded is List) return decoded;
-        if (decoded is Map && decoded['results'] != null) return decoded['results'];
+        if (decoded is Map && decoded['results'] != null)
+          return decoded['results'];
       }
     } catch (_) {}
     return [];
@@ -870,17 +1182,19 @@ class ApiService {
     required String inspectorName,
   }) async {
     try {
-      final response = await authenticatedRequest((headers) => http.post(
-        Uri.parse('$baseUrl/inspections/setup-approval/'),
-        headers: headers,
-        body: jsonEncode({
-          'template_id': templateId,
-          'machine_id': machineId,
-          'part_number': partNumber,
-          'process_param_entries': processParamEntries,
-          'inspector_name': inspectorName,
-        }),
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/inspections/setup-approval/'),
+          headers: headers,
+          body: jsonEncode({
+            'template_id': templateId,
+            'machine_id': machineId,
+            'part_number': partNumber,
+            'process_param_entries': processParamEntries,
+            'inspector_name': inspectorName,
+          }),
+        ),
+      );
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
       }
@@ -891,13 +1205,21 @@ class ApiService {
   }
 
   // 14. Get Setup Approval Data
-  static Future<Map<String, dynamic>?> getSetupApprovalData(int templateId, int machineId, {String? date}) async {
+  static Future<Map<String, dynamic>?> getSetupApprovalData(
+    int templateId,
+    int machineId, {
+    String? date,
+  }) async {
     try {
       final query = date != null ? '&date=$date' : '';
-      final response = await authenticatedRequest((headers) => http.get(
-        Uri.parse('$baseUrl/inspections/setup-approval/?machine=$machineId$query'),
-        headers: headers,
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.get(
+          Uri.parse(
+            '$baseUrl/inspections/setup-approval/?machine=$machineId$query',
+          ),
+          headers: headers,
+        ),
+      );
       if (response.statusCode == 200) {
         return jsonDecode(response.body);
       }
@@ -908,13 +1230,17 @@ class ApiService {
   }
 
   // 15. Submit Daily Production Report
-  static Future<Map<String, dynamic>> submitDailyProductionReport(Map<String, dynamic> reportData) async {
+  static Future<Map<String, dynamic>> submitDailyProductionReport(
+    Map<String, dynamic> reportData,
+  ) async {
     try {
-      final response = await authenticatedRequest((headers) => http.post(
-        Uri.parse('$baseUrl/inspections/daily-production-reports/'),
-        headers: headers,
-        body: jsonEncode(reportData),
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/inspections/daily-production-reports/'),
+          headers: headers,
+          body: jsonEncode(reportData),
+        ),
+      );
       if (response.statusCode == 200 || response.statusCode == 201) {
         return {'success': true, 'data': jsonDecode(response.body)};
       } else {
@@ -1002,7 +1328,9 @@ class ApiService {
     return [];
   }
 
-  static Future<Map<String, dynamic>> submitJhInspection(Map<String, dynamic> payload) async {
+  static Future<Map<String, dynamic>> submitJhInspection(
+    Map<String, dynamic> payload,
+  ) async {
     try {
       final response = await authenticatedRequest(
         (headers) => http.post(
@@ -1026,14 +1354,21 @@ class ApiService {
     }
   }
 
-  static Future<List<dynamic>> getJhInspectionHistory({int? machineId, String? date}) async {
+  static Future<List<dynamic>> getJhInspectionHistory({
+    int? machineId,
+    String? date,
+  }) async {
     try {
       final queryParams = <String, String>{};
       if (machineId != null) queryParams['machine'] = machineId.toString();
       if (date != null) queryParams['date'] = date;
 
-      final uri = Uri.parse('$baseUrl/inspections/jh/reports/').replace(queryParameters: queryParams);
-      final response = await authenticatedRequest((headers) => http.get(uri, headers: headers));
+      final uri = Uri.parse(
+        '$baseUrl/inspections/jh/reports/',
+      ).replace(queryParameters: queryParams);
+      final response = await authenticatedRequest(
+        (headers) => http.get(uri, headers: headers),
+      );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['results'] ?? [];
@@ -1044,4 +1379,3 @@ class ApiService {
     return [];
   }
 }
-

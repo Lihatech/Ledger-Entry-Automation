@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_filex/open_filex.dart';
@@ -15,7 +16,7 @@ class AppUpdateService {
   static bool _checking = false;
 
   static Future<void> checkAndPrompt(BuildContext context) async {
-    if (_checking || !Platform.isAndroid) return;
+    if (kIsWeb || _checking || !Platform.isAndroid) return;
     _checking = true;
 
     try {
@@ -152,8 +153,8 @@ class AppUpdateService {
 
   static void _showError(BuildContext context, String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Update failed: $message')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Update failed: $message')));
   }
 }
