@@ -101,11 +101,12 @@ class _RunChartScreenState extends State<RunChartScreen> {
     });
     try {
       final auth = context.read<AuthProvider>();
-      var shift = _workingShift ?? auth.assignedShift;
+      String? shift = _workingShift ?? auth.assignedShift;
       if (shift == 'ALL') {
-        shift = await _chooseShift();
-        if (!mounted || shift == null) return;
-        _workingShift = shift;
+        final selectedShift = await _chooseShift();
+        if (!mounted || selectedShift == null) return;
+        shift = selectedShift;
+        _workingShift = selectedShift;
       }
       final report = await ApiService.openRunChart(
         machineId: _machine!['id'] as int,
