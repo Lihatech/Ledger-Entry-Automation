@@ -18,11 +18,17 @@ def reconcile_receipt_from_reports(receipt):
         good_by_machine = defaultdict(int)
         good_by_step_id = defaultdict(int)
         good_by_step_code = defaultdict(int)
+        jobs_by_machine = defaultdict(int)
+        jobs_by_step_id = defaultdict(int)
+        jobs_by_step_code = defaultdict(int)
         steps = locked_receipt.machine_sequence_steps or []
         for report in reports:
             code = report.machine.machine_code
+            jobs_by_machine[code] += report.jobs_completed or 0
             good_by_machine[code] += report.correct_jobs or 0
             operation = (report.operation or '').strip()
+            jobs_by_step_id[(report.machine_id, operation)] += report.jobs_completed or 0
+            jobs_by_step_code[(code, operation)] += report.jobs_completed or 0
             good_by_step_id[(report.machine_id, operation)] += report.correct_jobs or 0
             good_by_step_code[(code, operation)] += report.correct_jobs or 0
 
@@ -40,6 +46,7 @@ def reconcile_receipt_from_reports(receipt):
         for stage in stages:
             label_counts[stage] += 1
         positions = {}
+        stage_started = []
         previous_good = locked_receipt.received_quantity
         for index, stage in enumerate(stages):
             if steps:
@@ -48,13 +55,17 @@ def reconcile_receipt_from_reports(receipt):
                 operation = (step.get('operation') or '').strip()
                 machine_id = step.get('machine_id')
                 if machine_id:
+                    matched_jobs = jobs_by_step_id.get((machine_id, operation), 0)
                     matched_good = good_by_step_id.get((machine_id, operation), 0)
                 else:
+                    matched_jobs = jobs_by_step_code.get((machine_code, operation), 0)
                     matched_good = good_by_step_code.get((machine_code, operation), 0)
                 good = min(matched_good, previous_good)
             else:
                 machine_code = stage.split(' ', 1)[0]
+                matched_jobs = jobs_by_machine.get(machine_code, 0)
                 good = min(good_by_machine.get(machine_code, 0), previous_good)
+            stage_started.append(max(0, matched_jobs))
             position_key = stage
             if label_counts[stage] > 1:
                 position_key = f"Step {index + 1}: {stage}"
@@ -73,11 +84,22 @@ def reconcile_receipt_from_reports(receipt):
         completed = previous_good if stages else min(
             sum(good_by_machine.values()), locked_receipt.received_quantity,
         )
+        # For a sequenced receipt, use the largest stage total: parts move
+        # between stages, so summing stage totals would count the same units
+        # more than once. For an unsequenced receipt, all production reports
+        # belong to the same flow and can be summed directly.
+        started = min(
+            max(stage_started, default=0) if stages else sum(
+                report.jobs_completed or 0 for report in reports
+            ),
+            locked_receipt.received_quantity,
+        )
         defect_capacity = max(locked_receipt.received_quantity - completed, 0)
         rework = min(rework, defect_capacity)
         rejected = min(rejected, defect_capacity - rework)
         locked_receipt.reconcile(
             completed=completed,
+            started=started,
             rework=rework,
             rejected=rejected,
             dispatched=locked_receipt.dispatched_quantity,

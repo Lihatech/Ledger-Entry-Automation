@@ -3,6 +3,7 @@ import logging
 
 from django.db import transaction
 from django.db.models import Prefetch
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -71,7 +72,7 @@ class InventoryReceiptListCreateView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
-class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
+class InventoryReceiptDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = InventoryReceiptSerializer
 
     def get_queryset(self):
@@ -84,7 +85,7 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
         return qs
 
     def get_permissions(self):
-        return [HasAccess('inventory.manage' if self.request.method in ('PUT', 'PATCH') else 'inventory.view')]
+        return [HasAccess('inventory.manage' if self.request.method in ('PUT', 'PATCH', 'DELETE') else 'inventory.view')]
 
     def perform_update(self, serializer):
         # Serialize route edits with report submissions so a route cannot be
@@ -98,6 +99,29 @@ class InventoryReceiptDetailView(generics.RetrieveUpdateAPIView):
                 raise ValidationError({'machine_sequence_steps': 'The machine sequence cannot change after production or dispatch history exists.'})
             serializer.instance = locked
             serializer.save()
+
+    def destroy(self, request, *args, **kwargs):
+        # A receipt is the source record for production and logistics history.
+        # It may only be removed while it is still an unused entry mistake.
+        with transaction.atomic():
+            # Do not lock the view queryset: its nullable related-object
+            # joins make PostgreSQL reject SELECT FOR UPDATE.
+            receipts = InventoryReceipt.objects.select_for_update()
+            if getattr(request.user, 'plant_id', None):
+                receipts = receipts.filter(plant_id=request.user.plant_id)
+            receipt = get_object_or_404(receipts, pk=kwargs['pk'])
+            if receipt.production_reports.exists() or receipt.dispatch_events.exists() or receipt.intake_events.exists():
+                return Response(
+                    {
+                        'detail': (
+                            'This receipt cannot be deleted because production, incoming, or dispatch history exists. '
+                            'Keep it as the audit record.'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            receipt.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InventoryReceiptDispatchView(APIView):
