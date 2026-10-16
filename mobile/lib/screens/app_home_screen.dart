@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../providers/company_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../providers/notification_provider.dart';
 import '../models/notification_item.dart';
@@ -140,6 +141,65 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     } catch (_) {
       // Handle error silently
     }
+  }
+
+  Future<void> _selectWorkingShift(
+    BuildContext context,
+    AuthProvider auth,
+    CompanyProvider company,
+  ) async {
+    if (!auth.isOperator && !auth.isInspector) return;
+
+    final availableShifts = company.availableShifts;
+    final currentShift = availableShifts.contains(auth.assignedShift)
+        ? auth.assignedShift
+        : availableShifts.first;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 4, 24, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Select current shift',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            ...availableShifts.map(
+              (shift) => RadioListTile<String>(
+                value: shift,
+                groupValue: currentShift,
+                title: Text('Shift $shift'),
+                subtitle: Text('${company.shiftHours}-hour schedule'),
+                onChanged: (value) => Navigator.pop(sheetContext, value),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || selected == null || selected == auth.assignedShift) return;
+    final result = await auth.changeAssignedShift(selected);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result['success'] == true
+              ? 'Current shift changed to Shift $selected.'
+              : (result['message'] ?? 'Unable to change shift.'),
+        ),
+        backgroundColor: result['success'] == true
+            ? const Color(0xFF16A34A)
+            : const Color(0xFFDC2626),
+      ),
+    );
   }
 
   void _showNotificationsModal(BuildContext context) {
@@ -940,6 +1000,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
     final provider = Provider.of<InspectionProvider>(context);
+    final company = Provider.of<CompanyProvider>(context);
 
     final name = auth.fullName ?? auth.username ?? 'Operator';
     final firstName = name.split(' ').first;
@@ -1012,30 +1073,39 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF10B981),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              'Active Part: $partNumber',
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF64748B),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: (auth.isOperator || auth.isInspector)
+                                ? () => _selectWorkingShift(context, auth, company)
+                                : null,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF10B981),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Current Shift: Shift ${company.availableShifts.contains(auth.assignedShift) ? auth.assignedShift : company.availableShifts.first}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  if (auth.isOperator || auth.isInspector)
+                                    const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                                ],
                               ),
                             ),
                           ),
-                        ],
-                      ),
                     ],
                   ),
                 ),

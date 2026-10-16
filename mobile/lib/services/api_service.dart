@@ -383,6 +383,27 @@ class ApiService {
     }
   }
 
+  /// POST /api/users/me/shift/ — update the current operator/inspector shift.
+  static Future<Map<String, dynamic>> changeMyShift(String shift) async {
+    try {
+      final response = await authenticatedRequest((headers) => http.post(
+        Uri.parse('$baseUrl/users/me/shift/'),
+        headers: headers,
+        body: jsonEncode({'shift': shift}),
+      ));
+      final body = response.body.isNotEmpty ? jsonDecode(response.body) : {};
+      if (response.statusCode == 200) {
+        return {'success': true, 'data': body};
+      }
+      return {
+        'success': false,
+        'message': body['message'] ?? body['detail'] ?? 'Failed to change shift',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Network error while changing shift'};
+    }
+  }
+
   /// POST /api/users/change-password/ — change user password
   static Future<Map<String, dynamic>> changePassword(
     String oldPassword,
@@ -468,6 +489,24 @@ class ApiService {
       }
     } catch (_) {}
 
+    return [];
+  }
+
+  /// Machine discovery for workflows where an outage must not look like an empty master list.
+  static Future<List<dynamic>> getMachinesStrict() async {
+    final response = await authenticatedRequest(
+      (headers) => http
+          .get(Uri.parse('$baseUrl/machines/'), headers: headers)
+          .timeout(const Duration(seconds: 20)),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load machines (HTTP ${response.statusCode}).');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is List) return decoded;
+    if (decoded is Map && decoded['results'] is List) {
+      return List<dynamic>.from(decoded['results']);
+    }
     return [];
   }
 
@@ -568,11 +607,9 @@ class ApiService {
   static Future<List<dynamic>> getRunChartOperations(int machineId) async {
     final response = await authenticatedRequest(
       (headers) => http.get(
-        Uri.parse(
-          '$baseUrl/inspections/run-chart/machines/$machineId/operations/',
-        ),
+        Uri.parse('$baseUrl/inspections/run-chart/machines/$machineId/operations/'),
         headers: headers,
-      ),
+      ).timeout(const Duration(seconds: 20)),
     );
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -588,7 +625,7 @@ class ApiService {
           '$baseUrl/inspections/run-chart/operations/$templateId/parameters/',
         ),
         headers: headers,
-      ),
+      ).timeout(const Duration(seconds: 20)),
     );
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -613,7 +650,7 @@ class ApiService {
           'parameter_id': parameterId,
           if (shift != null) 'shift': shift,
         }),
-      ),
+      ).timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded is Map) {
@@ -631,7 +668,7 @@ class ApiService {
       (headers) => http.get(
         Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/'),
         headers: headers,
-      ),
+      ).timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded is Map) {
@@ -657,7 +694,7 @@ class ApiService {
           'measured_value': measuredValue,
           'piece_number': pieceNumber,
         }),
-      ),
+      ).timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 201 && decoded is Map) {
@@ -680,7 +717,7 @@ class ApiService {
         (headers) => http.get(
           Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/pdf/'),
           headers: headers,
-        ),
+        ).timeout(const Duration(seconds: 30)),
       );
       if (response.statusCode != 200) return null;
 

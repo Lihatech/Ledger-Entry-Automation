@@ -12,6 +12,7 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,8 @@ def _run_chart_reading_data(reading):
 
 
 def _run_chart_report_data(report, include_readings=True):
+    readings_qs = report.readings.order_by('piece_number')
+    readings = list(readings_qs) if include_readings else []
     payload = {
         'report_id': str(report.report_id),
         'machine_id': report.machine_id,
@@ -94,14 +97,49 @@ def _run_chart_report_data(report, include_readings=True):
         'report_date': report.report_date.isoformat(),
         'shift': report.shift,
         'status': report.status,
-        'next_piece_number': (report.readings.aggregate(value=Max('piece_number'))['value'] or 0) + 1,
+        'next_piece_number': (readings[-1].piece_number if readings else 0) + 1,
     }
     if include_readings:
         payload['readings'] = [
-            _run_chart_reading_data(reading)
-            for reading in report.readings.order_by('piece_number')
+            _run_chart_reading_data(reading) for reading in readings
         ]
     return payload
+
+
+def _run_chart_machine_queryset(request):
+    qs = Machine.objects.filter(is_active=True, status=Machine.Status.ACTIVE)
+    plant_id = getattr(request.user, 'plant_id', None)
+    if plant_id:
+        qs = qs.filter(plant_id=plant_id)
+    return qs
+
+
+def _run_chart_template_queryset(request):
+    qs = InspectionTemplate.objects.filter(
+        part__is_active=True,
+        part__machine__is_active=True,
+        part__machine__status=Machine.Status.ACTIVE,
+        is_active=True,
+        is_published=True,
+        status=InspectionTemplate.Status.APPROVED,
+    )
+    plant_id = getattr(request.user, 'plant_id', None)
+    if plant_id:
+        qs = qs.filter(part__machine__plant_id=plant_id)
+    return qs
+
+
+def _run_chart_shift(request, machine, requested=None):
+    _, valid_shifts = _valid_shifts_for_machine(machine)
+    assigned = str(getattr(request.user, 'assigned_shift', '') or '').upper()
+    shift = str(requested or assigned or '').upper()
+    if assigned != 'ALL' and assigned and shift != assigned:
+        return None, 'The submitted shift does not match your assigned shift.'
+    if shift == 'ALL' or not shift:
+        return None, 'Select the actual working shift before opening a run chart.'
+    if shift not in valid_shifts:
+        return None, f'Shift {shift} is not available for this plant schedule.'
+    return shift, None
 
 
 class RunChartOperationsView(APIView):
@@ -116,22 +154,19 @@ class RunChartOperationsView(APIView):
     access_key = 'quality.inspections.record'
 
     def get(self, request, machine_id):
-        machine = Machine.objects.filter(pk=machine_id, is_active=True).first()
+        machine = _run_chart_machine_queryset(request).filter(pk=machine_id).first()
         if not machine:
             return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         templates = (
-            InspectionTemplate.objects.filter(
+            _run_chart_template_queryset(request).filter(
                 part__machine=machine,
-                part__is_active=True,
-                is_active=True,
-                is_published=True,
                 parameters__is_critical=True,
             )
             .select_related('part')
             .prefetch_related('parameters')
             .distinct()
-            .order_by('part__part_number', 'name', '-version')
+            .order_by('part__part_number', 'operation_key', '-version', 'name')
         )
 
         # Only expose the latest published version of an operation.
@@ -142,7 +177,14 @@ class RunChartOperationsView(APIView):
             if key in seen:
                 continue
             seen.add(key)
-            critical_count = sum(1 for p in template.parameters.all() if p.is_critical)
+            matching = templates.filter(
+                part_id=template.part_id, operation_key=template.operation_key
+            )
+            critical_count = sum(
+                1 for p in InspectionParameter.objects.filter(
+                    template__in=matching, is_critical=True
+                )
+            )
             operations.append({
                 'id': template.id,
                 'operation_key': str(template.operation_key),
@@ -160,12 +202,17 @@ class RunChartParametersView(APIView):
     access_key = 'quality.inspections.record'
 
     def get(self, request, template_id):
-        template = InspectionTemplate.objects.filter(
-            pk=template_id, is_active=True, is_published=True
-        ).first()
+        template = _run_chart_template_queryset(request).filter(pk=template_id).first()
         if not template:
             return Response({'error': 'Operation not found.'}, status=status.HTTP_404_NOT_FOUND)
-        parameters = template.parameters.filter(is_critical=True).order_by('sequence_order')
+        parameters = InspectionParameter.objects.filter(
+            template__part_id=template.part_id,
+            template__operation_key=template.operation_key,
+            template__is_active=True,
+            template__is_published=True,
+            template__status=InspectionTemplate.Status.APPROVED,
+            is_critical=True,
+        ).distinct().order_by('sequence_order', 'id')
         return Response([
             {
                 'id': parameter.id,
@@ -197,9 +244,12 @@ class RunChartOpenReportView(APIView):
                 {'error': 'machine_id, template_id and parameter_id are required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        shift = str(request.data.get('shift') or getattr(request.user, 'assigned_shift', '') or 'I')
-        if shift == 'ALL':
-            shift = 'I'
+        machine = _run_chart_machine_queryset(request).filter(pk=machine_id).first()
+        if not machine:
+            return Response({'error': 'Machine not found or inactive.'}, status=status.HTTP_404_NOT_FOUND)
+        shift, shift_error = _run_chart_shift(request, machine, request.data.get('shift'))
+        if shift_error:
+            return Response({'error': shift_error}, status=status.HTTP_400_BAD_REQUEST)
 
         parameter = InspectionParameter.objects.select_related(
             'template__part__machine'
@@ -208,8 +258,7 @@ class RunChartOpenReportView(APIView):
             template_id=template_id,
             is_critical=True,
             template__part__machine_id=machine_id,
-            template__is_active=True,
-            template__is_published=True,
+            template__status=InspectionTemplate.Status.APPROVED,
         ).first()
         if not parameter:
             return Response(
@@ -258,7 +307,7 @@ class RunChartReportDetailView(APIView):
     def get(self, request, report_id):
         report = RunChartReport.objects.select_related(
             'machine', 'part', 'template', 'parameter', 'operator'
-        ).filter(pk=report_id).first()
+        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(_run_chart_report_data(report))
@@ -280,7 +329,12 @@ class RunChartReadingCreateView(APIView):
         with transaction.atomic():
             report = RunChartReport.objects.select_for_update().select_related(
                 'machine', 'part', 'template', 'parameter', 'operator'
-            ).filter(pk=report_id, status=RunChartReport.Status.ACTIVE).first()
+            ).filter(
+                pk=report_id,
+                status=RunChartReport.Status.ACTIVE,
+                machine__in=_run_chart_machine_queryset(request),
+                report_date=timezone.localdate(),
+            ).first()
             if not report:
                 return Response({'error': 'Active run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -288,7 +342,10 @@ class RunChartReadingCreateView(APIView):
             requested_piece = request.data.get('piece_number')
             if requested_piece not in (None, ''):
                 try:
-                    piece_number = int(requested_piece)
+                    piece_decimal = Decimal(str(requested_piece))
+                    if not piece_decimal.is_finite() or piece_decimal != piece_decimal.to_integral_value():
+                        raise ValueError
+                    piece_number = int(piece_decimal)
                 except (TypeError, ValueError):
                     return Response({'error': 'piece_number must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
                 if piece_number != next_piece:
@@ -299,13 +356,20 @@ class RunChartReadingCreateView(APIView):
             else:
                 piece_number = next_piece
 
+            if measured_value.copy_abs() > Decimal('99999999.999999'):
+                return Response({'error': 'Measured value is outside the supported numeric range.'}, status=status.HTTP_400_BAD_REQUEST)
             lower = report.lower_limit
             upper = report.upper_limit
             nominal = report.nominal_value
             if measured_value < lower or measured_value > upper:
                 zone = RunChartReading.Zone.RED
             else:
+                measurement_type = getattr(report.parameter, 'measurement_type', '')
                 warning_band = (upper - lower) * Decimal('0.20')
+                if measurement_type == InspectionParameter.MeasurementType.MIN_LIMIT:
+                    warning_band = Decimal('0')
+                elif measurement_type == InspectionParameter.MeasurementType.MAX_LIMIT:
+                    warning_band = Decimal('0')
                 if warning_band > 0 and (
                     measured_value <= lower + warning_band
                     or measured_value >= upper - warning_band
@@ -346,13 +410,24 @@ class RunChartPDFView(APIView):
     def get(self, request, report_id):
         report = RunChartReport.objects.select_related(
             'machine', 'part', 'template', 'parameter', 'operator'
-        ).filter(pk=report_id).first()
+        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
         pdf = generate_run_chart_pdf(report)
         safe_parameter = ''.join(c if c.isalnum() else '-' for c in report.parameter_name).strip('-')
         filename = f'RunChart_{report.machine.machine_code}_{safe_parameter}_{report.report_date}.pdf'
         return FileResponse(pdf, content_type='application/pdf', filename=filename)
+def _valid_shifts_for_machine(machine):
+    """Return the shifts supported by the machine's plant schedule."""
+    shift_hours = 8
+    if machine.plant and machine.plant.shift_duration_hours:
+        shift_hours = machine.plant.shift_duration_hours
+    elif machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
+        shift_hours = machine.plant.factory.shift_hours
+    shifts = {'I', 'II'}
+    if shift_hours == 8:
+        shifts.add('III')
+    return shift_hours, shifts
 
 
 # ─── Start Inspection ─────────────────────────────────────────────────────
@@ -413,6 +488,16 @@ class StartInspectionView(APIView):
                 effective_shift = user_shift
             else:
                 effective_shift = requested_shift
+
+            shift_hours, valid_shifts = _valid_shifts_for_machine(machine)
+            if effective_shift not in valid_shifts:
+                return Response(
+                    {
+                        'error': f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.',
+                        'available_shifts': sorted(valid_shifts),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             session = _service.create_session(
                 part              = part,
@@ -1486,6 +1571,12 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
             effective_shift = user_shift
         else:
             effective_shift = submitted_shift
+
+        shift_hours, valid_shifts = _valid_shifts_for_machine(serializer.validated_data['machine'])
+        if effective_shift not in valid_shifts:
+            raise DRFValidationError({
+                'shift': [f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.'],
+            })
 
         serializer.save(operator=operator, shift=effective_shift)
 

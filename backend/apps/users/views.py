@@ -23,6 +23,20 @@ from django.utils.text import slugify
 from django.db import transaction
 
 from .models import User, AccessRole, AccessEvent
+
+
+def available_shift_values(user):
+    """Return shifts valid for the user's current plant schedule."""
+    plant = getattr(user, 'plant', None)
+    shift_hours = getattr(plant, 'shift_duration_hours', None)
+    if not shift_hours and plant and getattr(plant, 'factory', None):
+        shift_hours = plant.factory.shift_hours
+    shift_hours = shift_hours or 8
+
+    shifts = [User.Shift.SHIFT_I, User.Shift.SHIFT_II]
+    if shift_hours == 8:
+        shifts.append(User.Shift.SHIFT_III)
+    return shift_hours, set(shifts)
 from .access import ACCESS_GROUPS, COMMON_ACCESS
 from .serializers import (
     CustomTokenObtainPairSerializer,
@@ -208,6 +222,67 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+class UpdateMyShiftView(APIView):
+    """POST /api/users/me/shift/ — change the current operator/inspector shift."""
+    permission_classes = [IsAuthenticated]
+
+    @transaction.atomic
+    def post(self, request):
+        user = request.user
+        if user.role not in (User.Role.OPERATOR, User.Role.INSPECTOR):
+            return Response(
+                {'message': 'Only operators and inspectors can change their own shift.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        requested_shift = str(request.data.get('shift') or '').strip().upper()
+        if requested_shift not in {
+            User.Shift.SHIFT_I,
+            User.Shift.SHIFT_II,
+            User.Shift.SHIFT_III,
+        }:
+            return Response(
+                {'message': 'A valid shift (I, II, or III) is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        shift_hours, valid_shifts = available_shift_values(user)
+        if requested_shift not in valid_shifts:
+            return Response(
+                {
+                    'message': (
+                        f'Shift {requested_shift} is not available for a {shift_hours}-hour schedule.'
+                    ),
+                    'shift_hours': shift_hours,
+                    'available_shifts': sorted(valid_shifts),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        previous_shift = user.assigned_shift
+        if previous_shift != requested_shift:
+            user.assigned_shift = requested_shift
+            user.save(update_fields=['assigned_shift', 'updated_at'])
+            AccessEvent.objects.create(
+                actor=user,
+                target_user=user,
+                action='self_shift_changed',
+                before={'assigned_shift': previous_shift},
+                after={'assigned_shift': requested_shift, 'shift_hours': shift_hours},
+            )
+
+        from .serializers import UserProfileSerializer
+        return Response({
+            'success': True,
+            'message': f'Shift changed to {user.get_assigned_shift_display()}.',
+            'assigned_shift': user.assigned_shift,
+            'assigned_shift_display': user.get_assigned_shift_display(),
+            'shift_hours': shift_hours,
+            'available_shifts': sorted(valid_shifts),
+            'user': UserProfileSerializer(user, context={'request': request}).data,
+        }, status=status.HTTP_200_OK)
+
+
 # ─── Profile Photo Upload ─────────────────────────────────────────────────────
 class UpdateProfilePhotoView(APIView):
     """
@@ -342,17 +417,32 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Direct assigned_shift update : fast shift rotation
         if 'assigned_shift' in request.data:
             shift_val = request.data['assigned_shift']
-            if shift_val in dict(User.Shift.choices):
-                user_obj.assigned_shift = shift_val
-                user_obj.save(update_fields=['assigned_shift'])
-                from .serializers import UserListSerializer
-                serializer = UserListSerializer(user_obj)
-                return Response({
-                    "success": True,
-                    "action": "shift_updated",
-                    "message": f"User account '{user_obj.username}' reassigned to {user_obj.get_assigned_shift_display()}.",
-                    "user": serializer.data
-                }, status=status.HTTP_200_OK)
+            if shift_val not in dict(User.Shift.choices):
+                return Response({'assigned_shift': ['Invalid shift value.']}, status=status.HTTP_400_BAD_REQUEST)
+            if shift_val != User.Shift.ALL:
+                shift_hours, valid_shifts = available_shift_values(user_obj)
+                if shift_val not in valid_shifts:
+                    return Response({
+                        'assigned_shift': [f'Shift {shift_val} is not valid for a {shift_hours}-hour schedule.']
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            previous_shift = user_obj.assigned_shift
+            user_obj.assigned_shift = shift_val
+            user_obj.save(update_fields=['assigned_shift', 'updated_at'])
+            AccessEvent.objects.create(
+                actor=request.user,
+                target_user=user_obj,
+                action='shift_updated',
+                before={'assigned_shift': previous_shift},
+                after={'assigned_shift': shift_val},
+            )
+            from .serializers import UserListSerializer
+            serializer = UserListSerializer(user_obj)
+            return Response({
+                "success": True,
+                "action": "shift_updated",
+                "message": f"User account '{user_obj.username}' reassigned to {user_obj.get_assigned_shift_display()}.",
+                "user": serializer.data
+            }, status=status.HTTP_200_OK)
 
         # Fallback: general partial update for other fields
         serializer = self.get_serializer(user_obj, data=request.data, partial=True)

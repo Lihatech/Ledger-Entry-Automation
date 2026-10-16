@@ -22,6 +22,7 @@ class _RunChartScreenState extends State<RunChartScreen> {
   List<dynamic> _parameters = [];
   Map<String, dynamic>? _machine;
   Map<String, dynamic>? _operation;
+  String? _workingShift;
 
   @override
   void initState() {
@@ -37,7 +38,7 @@ class _RunChartScreenState extends State<RunChartScreen> {
       _operation = null;
     });
     try {
-      final machines = await ApiService.getMachines();
+      final machines = await ApiService.getMachinesStrict();
       if (!mounted) return;
       setState(
         () => _machines = machines
@@ -100,11 +101,17 @@ class _RunChartScreenState extends State<RunChartScreen> {
     });
     try {
       final auth = context.read<AuthProvider>();
+      var shift = _workingShift ?? auth.assignedShift;
+      if (shift == 'ALL') {
+        shift = await _chooseShift();
+        if (!mounted || shift == null) return;
+        _workingShift = shift;
+      }
       final report = await ApiService.openRunChart(
         machineId: _machine!['id'] as int,
         templateId: _operation!['id'] as int,
         parameterId: parameter['id'] as int,
-        shift: auth.assignedShift == 'ALL' ? 'I' : auth.assignedShift,
+        shift: shift,
       );
       if (!mounted) return;
       await Navigator.push(
@@ -118,6 +125,23 @@ class _RunChartScreenState extends State<RunChartScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<String?> _chooseShift() async {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: ['I', 'II', 'III']
+              .map((shift) => ListTile(
+                    title: Text('Shift $shift'),
+                    onTap: () => Navigator.pop(sheetContext, shift),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
   }
 
   String _cleanError(Object error) =>
@@ -358,6 +382,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
       );
       final readings = List<dynamic>.from(_report['readings'] ?? const []);
       readings.add(result['reading']);
+      if (!mounted) return;
       setState(() {
         _report['readings'] = readings;
         _report['next_piece_number'] = result['next_piece_number'];
@@ -367,7 +392,15 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
       if (alert != null && mounted) await _showAlert(alert, result['reading']);
       _focusNode.requestFocus();
     } catch (e) {
-      setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final message = e.toString().replaceFirst('Exception: ', '');
+        setState(() => _error = message);
+        if (message.contains('next required piece')) {
+          try {
+            await _refresh();
+          } catch (_) {}
+        }
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

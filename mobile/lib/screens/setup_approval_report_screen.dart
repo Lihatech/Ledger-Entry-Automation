@@ -251,11 +251,11 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
         : DateTime.now();
     // Use shift from backend doc, then provider, then auth, then default 'I'
     final backendShift = _setupApprovalData?['shift']?.toString();
-    final effectiveShift = auth.isShiftLocked
-        ? auth.assignedShift
-        : (backendShift?.isNotEmpty == true
-            ? backendShift!
-            : (provider.shift.isNotEmpty ? provider.shift : 'I'));
+    final effectiveShift = backendShift?.isNotEmpty == true
+        ? backendShift!
+        : (provider.shift.isNotEmpty
+            ? provider.shift
+            : (auth.assignedShift != 'ALL' ? auth.assignedShift : 'I'));
     final dateStr = '${reportDate.day} ${months[reportDate.month]} ${reportDate.year} | Shift $effectiveShift';
     final status = _setupApprovalData?['status']?.toString().toUpperCase() ?? 'FINALIZED PASSED';
 

@@ -6,6 +6,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from xml.sax.saxutils import escape
 
 
 def _chart_drawing(report, readings):
@@ -80,13 +81,15 @@ def generate_run_chart_pdf(report):
     )
     styles = getSampleStyleSheet()
     readings = list(report.readings.select_related('recorded_by').order_by('piece_number'))
+    operators = sorted({reading.recorded_by.display_name for reading in readings})
+    operator_label = ', '.join(operators) if operators else report.operator.display_name
     story = [
-        Paragraph(f'<b>Run Chart: {report.parameter_name}</b>', styles['Title']),
+        Paragraph(f'<b>Run Chart: {escape(str(report.parameter_name))}</b>', styles['Title']),
         Spacer(1, 4 * mm),
         Table(
             [
                 ['Machine', report.machine.machine_code, 'Part', report.part.part_number, 'Operation', report.template.name],
-                ['Date / Shift', f'{report.report_date} / {report.shift}', 'Unit', report.unit, 'Operator', report.operator.display_name],
+                ['Date / Shift', f'{report.report_date} / {report.shift}', 'Unit', report.unit, 'Operators', operator_label],
                 ['Lower limit', str(report.lower_limit), 'Nominal', str(report.nominal_value), 'Upper limit', str(report.upper_limit)],
             ],
             colWidths=[26 * mm, 48 * mm, 24 * mm, 48 * mm, 27 * mm, 58 * mm],
