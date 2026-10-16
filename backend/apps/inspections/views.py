@@ -1219,13 +1219,27 @@ class FirstPiecePDFView(APIView):
         from django.http import FileResponse
 
         try:
-            session = InspectionSession.objects.select_related('part', 'machine', 'template').get(session_id=session_id)
-            doc = _service.get_session_document(session_id) or {}
-            
-            from .pdf_generator import generate_first_piece_pdf
-            pdf_path = generate_first_piece_pdf(session, doc)
-            session.pdf_report_path = pdf_path
-            session.save(update_fields=['pdf_report_path'])
+            session_qs = InspectionSession.objects.select_related(
+                'part', 'machine__plant', 'template', 'operator', 'supervisor', 'finalized_by'
+            ).filter(session_id=session_id)
+            # Match the plant scoping used by report-list endpoints. Users with
+            # no plant assignment (for example, global admins) retain global access.
+            if getattr(request.user, 'plant_id', None):
+                session_qs = session_qs.filter(machine__plant_id=request.user.plant_id)
+
+            # Lock the relational session while taking the document snapshot so
+            # a measurement update cannot interleave with PDF generation.
+            with transaction.atomic():
+                session = session_qs.select_for_update().first()
+                if not session:
+                    return Response({'error': 'Report not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+                doc = _service.get_session_document(session_id, session_obj=session) or {}
+
+                from .pdf_generator import generate_first_piece_pdf
+                pdf_path = generate_first_piece_pdf(session, doc)
+                session.pdf_report_path = pdf_path
+                session.save(update_fields=['pdf_report_path'])
 
             abs_pdf_path = os.path.join(settings.BASE_DIR, pdf_path)
             if not os.path.exists(abs_pdf_path):

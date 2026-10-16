@@ -51,7 +51,9 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(blobUrl);
+      // Some browsers start consuming the download asynchronously.
+      // Keep the object URL alive briefly so the download is not cancelled.
+      window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
     } catch (error) {
       console.error('Failed to download official PDF report:', error);
       alert('Failed to download the official PDF report. Please try again.');
@@ -67,7 +69,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
       }, 400);
       return () => clearTimeout(timer);
     }
-  }, [autoDownload]);
+  }, [autoDownload, session?.session_id]);
 
   // Master Data & Measurements
   const masterProductParams = session?.parameter_summary || session?.parameters || session?.template_parameters || [];
