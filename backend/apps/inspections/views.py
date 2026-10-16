@@ -342,6 +342,12 @@ class RunChartReadingCreateView(APIView):
             ).first()
             if not report:
                 return Response({'error': 'Active run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+            assigned_shift = str(getattr(request.user, 'assigned_shift', '') or '').upper()
+            if assigned_shift != 'ALL' and assigned_shift and report.shift != assigned_shift:
+                return Response(
+                    {'error': 'This run chart belongs to a different shift.'},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             if idempotency_key:
                 existing = report.readings.filter(idempotency_key=idempotency_key).first()
