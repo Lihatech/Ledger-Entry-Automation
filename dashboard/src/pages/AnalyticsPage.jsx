@@ -6,6 +6,7 @@ import { getReport, getDailyCompletedReports } from '../api/analytics';
 import { getSessionDetail } from '../api/inspections';
 import { getCompanyDetails } from '../api/company';
 import OfficialFormF02Modal from '../components/reports/OfficialFormF02Modal';
+import api from '../api/axios';
 
 export default function AnalyticsPage() {
   const [report, setReport]               = useState(null);
@@ -86,12 +87,23 @@ export default function AnalyticsPage() {
     setPdfLoadingId(sId);
     setPdfError(null);
     try {
-      const res = await getSessionDetail(sId);
-      setAutoDownload(true);
-      setSelectedSessionDetail(res.data);
+      // Download directly from the backend. Do not open the report modal first:
+      // browser capture of that popup can crop the inspection columns.
+      const res = await api.get(`/api/inspections/${sId}/pdf/`, {
+        responseType: 'blob',
+      });
+      const blobUrl = window.URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = res.headers['content-disposition']?.match(/filename="?([^";]+)"?/i)?.[1]
+        || `Inspection_Report_${sId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
     } catch (err) {
       console.error('PDF download error:', err);
-      setPdfError(`Failed to prepare PDF for report ${sId.slice(0, 8)}`);
+      setPdfError(`Failed to download PDF for report ${sId.slice(0, 8)}`);
       setTimeout(() => setPdfError(null), 4000);
     } finally {
       setPdfLoadingId(null);
