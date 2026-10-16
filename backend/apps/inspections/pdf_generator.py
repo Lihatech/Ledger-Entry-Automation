@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from django.conf import settings
 from reportlab.lib.pagesizes import A4, landscape
@@ -56,6 +57,9 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     sess_short = str(session.session_id)[:8] if getattr(session, 'session_id', None) else "00000000"
     file_name = f"{prefix}_{date_str}_{shift_str}_{mc_code}_{part_no}_{sess_short}.pdf"
     file_path = os.path.join(media_pdf_dir, file_name)
+    # Build into a unique temporary path, then publish atomically. Multiple
+    # clients may request the same report at the same time.
+    temp_file_path = f"{file_path}.{uuid.uuid4().hex}.tmp"
 
     from reportlab.platypus import PageBreak
 
@@ -65,7 +69,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     usable_width = page_width - left_margin - right_margin
 
     doc = SimpleDocTemplate(
-        file_path,
+        temp_file_path,
         pagesize=landscape(A4),
         rightMargin=right_margin,
         leftMargin=left_margin,
@@ -301,7 +305,13 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     ]))
     elements.append(footer_table)
 
-    doc.build(elements)
+    try:
+        doc.build(elements)
+        os.replace(temp_file_path, file_path)
+    except Exception:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        raise
     return f"media/pdf_reports/{file_name}"
 
 

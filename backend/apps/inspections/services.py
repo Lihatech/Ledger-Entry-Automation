@@ -1315,11 +1315,17 @@ class InspectionService:
         return queryset
 
     # ── Get Full Document ─────────────────────────────────────────────────
-    def get_session_document(self, session_id: str, use_finalized_snapshot: bool = True) -> Optional[dict]:
+    def get_session_document(
+        self,
+        session_id: str,
+        use_finalized_snapshot: bool = True,
+        session_obj: Optional[InspectionSession] = None,
+    ) -> Optional[dict]:
         """Retrieve full inspection document from document_payload JSONB field."""
-        session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related(
-            'operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part'
-        ).first()
+        if session_obj is None:
+            session_obj = InspectionSession.objects.filter(session_id=str(session_id)).select_related(
+                'operator', 'supervisor', 'finalized_by', 'machine__plant__factory', 'part', 'template'
+            ).first()
 
         if not session_obj:
             return None
