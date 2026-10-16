@@ -11,7 +11,25 @@ from apps.machines.models import Factory
 
 def _xml_escape(text: str) -> str:
     """Escape special XML characters for safe use inside ReportLab Paragraph markup."""
-    return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    return str(text if text is not None else '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+
+def _as_mapping_list(value):
+    """Return only dictionary entries from JSONB arrays.
+
+    Older inspection documents can contain null or malformed entries. ReportLab
+    expects scalar values while building a table, so ignore those entries rather
+    than failing the whole PDF download.
+    """
+    return [item for item in (value or []) if isinstance(item, dict)]
+
+
+def _number(value, default=0.0):
+    """Convert JSON numeric values without failing on blank legacy values."""
+    try:
+        return float(value) if value not in (None, '') else float(default)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def get_factory_info(session=None):
@@ -105,15 +123,23 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     if session and hasattr(session, 'machine') and session.machine and session.machine.plant and session.machine.plant.factory:
         factory_hrs = session.machine.plant.factory.shift_hours or 8
     
-    shift_hrs = factory_hrs
+    try:
+        shift_hrs = int(factory_hrs)
+    except (TypeError, ValueError):
+        shift_hrs = 8
+    # The official F02 layout supports the configured 8-hour or 12-hour mode.
+    # Keep invalid/legacy company values from causing a division-by-zero or an
+    # unbounded table during PDF generation.
+    if shift_hrs not in (8, 12):
+        shift_hrs = 8
 
     inspector_name = session.finalized_by.get_full_name() if session.finalized_by else (session.supervisor.get_full_name() if session.supervisor else "Quality Inspector")
     operator_name = session.operator.get_full_name() if session.operator else "Operator User"
     final_time_str = session.finalized_at.strftime(f"%d %b %Y | Shift {session.shift or 'A'}") if session.finalized_at else datetime.now().strftime(f"%d %b %Y | Shift {session.shift or 'A'}")
     status_label = "PASSED" if session.status in ['finalized_passed', 'approved'] or session.is_setup_approved else ("COMPLETED" if session.status == 'completed' else "PENDING REVIEW")
 
-    param_summary = doc_data.get('parameter_summary') or []
-    measurements = doc_data.get('measurements') or []
+    param_summary = _as_mapping_list(doc_data.get('parameter_summary'))
+    measurements = _as_mapping_list(doc_data.get('measurements'))
 
     meas_map = {}
     for m in measurements:
@@ -141,7 +167,7 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     header_data = [
         [
             Paragraph(safe_fac_code, mmpl_style),
-            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT : OPERATION: {op_name}", subtitle_style)],
+            [Paragraph(safe_fac_name.upper(), title_style), Paragraph(f"1ST PIECE CUM IN-PROCESS INSPECTION REPORT : OPERATION: {_xml_escape(op_name)}", subtitle_style)],
             Paragraph(f"DOC REF: {safe_fac_code}/PRD/F02<br/>REV: 02 (15.8.2013)<br/>PAGE 1 OF 1", doc_ref_style)
         ]
     ]
@@ -164,14 +190,14 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     # 2. META INFO (Process, Part, Operator, Machine, Date, Status)
     meta_data = [
         [
-            Paragraph(f"OPERATION: <font name='Helvetica-Bold'>{op_name}</font>", cell_left),
-            Paragraph(f"PART NAME & NO: <font name='Helvetica-Bold'>{session.part.part_number} ({session.part.part_name})</font>", cell_left),
-            Paragraph(f"INSPECTOR / OPERATOR: <font name='Helvetica-Bold'>{operator_name}</font>", cell_left)
+            Paragraph(f"OPERATION: <font name='Helvetica-Bold'>{_xml_escape(op_name)}</font>", cell_left),
+            Paragraph(f"PART NAME &amp; NO: <font name='Helvetica-Bold'>{_xml_escape(session.part.part_number)} ({_xml_escape(session.part.part_name)})</font>", cell_left),
+            Paragraph(f"INSPECTOR / OPERATOR: <font name='Helvetica-Bold'>{_xml_escape(operator_name)}</font>", cell_left)
         ],
         [
-            Paragraph(f"MACHINE NO: <font name='Helvetica-Bold'>{session.machine.machine_code}</font>", cell_left),
-            Paragraph(f"DATE & SHIFT: <font name='Helvetica-Bold'>{final_time_str}</font>", cell_left),
-            Paragraph(f"SETUP STATUS: <font name='Helvetica-Bold'>{status_label}</font>", cell_left)
+            Paragraph(f"MACHINE NO: <font name='Helvetica-Bold'>{_xml_escape(session.machine.machine_code)}</font>", cell_left),
+            Paragraph(f"DATE &amp; SHIFT: <font name='Helvetica-Bold'>{_xml_escape(final_time_str)}</font>", cell_left),
+            Paragraph(f"SETUP STATUS: <font name='Helvetica-Bold'>{_xml_escape(status_label)}</font>", cell_left)
         ]
     ]
     meta_table = Table(meta_data, colWidths=[150, usable_width - 330, 180], hAlign='LEFT')
@@ -209,13 +235,13 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
         fp2 = next((m for m in p_meas_list if m.get('inspection_type') == 'first_piece' and m.get('trial_number') == 2), None)
         fp3 = next((m for m in p_meas_list if m.get('inspection_type') == 'first_piece' and m.get('trial_number') == 3), None)
 
-        nom = float(p.get('nominal', 0))
+        nom = _number(p.get('nominal', 0))
         ll = p.get('lower_limit')
         ul = p.get('upper_limit')
         unit = p.get('unit', 'mm')
         
         if ll is not None and ul is not None:
-            spec = f"{nom} {unit} [{float(ll):.2f} to {float(ul):.2f}]"
+            spec = f"{nom} {unit} [{_number(ll):.2f} to {_number(ul):.2f}]"
         else:
             spec = f"{nom} {unit}"
 
@@ -249,11 +275,11 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
         table_data.append([
             Paragraph("10.", bold_cell),
             Paragraph(str(idx).zfill(2), bold_cell),
-            Paragraph(p.get('parameter_name', code), cell_left),
-            Paragraph(class_str, red_cell if is_crit else cell_style),
-            Paragraph(spec, bold_cell),
-            Paragraph(method_str, cell_style),
-            Paragraph(sample_str, cell_style),
+            Paragraph(_xml_escape(p.get('parameter_name', code)), cell_left),
+            Paragraph(_xml_escape(class_str), red_cell if is_crit else cell_style),
+            Paragraph(_xml_escape(spec), bold_cell),
+            Paragraph(_xml_escape(method_str), cell_style),
+            Paragraph(_xml_escape(sample_str), cell_style),
             fmt_para(fp1),
             fmt_para(fp2),
             fmt_para(fp3),
@@ -295,8 +321,8 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     # 5. FOOTER SIGNATURES
     footer_data = [
         [
-            Paragraph(f"<i>{operator_name}</i>", cell_style),
-            Paragraph(f"<i>{inspector_name}</i>", cell_style),
+            Paragraph(f"<i>{_xml_escape(operator_name)}</i>", cell_style),
+            Paragraph(f"<i>{_xml_escape(inspector_name)}</i>", cell_style),
             Paragraph("<i>Supervisor Sign</i>", cell_style)
         ],
         [

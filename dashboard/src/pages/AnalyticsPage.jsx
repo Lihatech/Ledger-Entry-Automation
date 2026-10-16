@@ -103,7 +103,16 @@ export default function AnalyticsPage() {
       window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
     } catch (err) {
       console.error('PDF download error:', err);
-      setPdfError(`Failed to download PDF for report ${sId.slice(0, 8)}`);
+      let detail = '';
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await err.response.data.text());
+          detail = payload?.error ? `: ${payload.error}` : '';
+        } catch { /* keep the generic message for non-JSON responses */ }
+      } else if (err?.response?.data?.error) {
+        detail = `: ${err.response.data.error}`;
+      }
+      setPdfError(`Failed to download PDF for report ${sId.slice(0, 8)}${detail}`);
       setTimeout(() => setPdfError(null), 4000);
     } finally {
       setPdfLoadingId(null);

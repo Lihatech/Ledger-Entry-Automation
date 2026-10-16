@@ -1237,7 +1237,17 @@ class FirstPiecePDFView(APIView):
                 doc = _service.get_session_document(session_id, session_obj=session) or {}
 
                 from .pdf_generator import generate_first_piece_pdf
-                pdf_path = generate_first_piece_pdf(session, doc)
+                try:
+                    pdf_path = generate_first_piece_pdf(session, doc)
+                except Exception:
+                    logger.exception(
+                        "Failed to generate inspection PDF for session %s",
+                        session_id,
+                    )
+                    return Response(
+                        {'error': 'Unable to generate the inspection PDF.'},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    )
                 session.pdf_report_path = pdf_path
                 session.save(update_fields=['pdf_report_path'])
 
@@ -1253,8 +1263,12 @@ class FirstPiecePDFView(APIView):
             download_filename = f"{prefix}_{date_str}_{shift_str}_{mc_code}_{part_no}.pdf"
 
             return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', filename=download_filename)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception("Failed to download inspection PDF for session %s", session_id)
+            return Response(
+                {'error': 'Unable to download the inspection PDF.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # ─── First Piece Authorization Status View ────────────────────────────────
