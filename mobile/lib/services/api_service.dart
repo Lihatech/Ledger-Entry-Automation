@@ -30,7 +30,7 @@ class ApiService {
           ? 'http://10.0.2.2:8000/api'
           : 'http://localhost:8000/api';
     }
-    return 'https://backend-production-d87b.up.railway.app/api';
+    return 'https://ledger-entry-automation-production-24a1.up.railway.app/api';
   }
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS
