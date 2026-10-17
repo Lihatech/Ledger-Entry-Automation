@@ -983,15 +983,18 @@ class _RunChartPainter extends CustomPainter {
       border: thin,
     );
 
-    // Derive the visual bands from this parameter's actual limits.  The
-    // outermost cells represent the red limit boundaries; yellow begins at
-    // the midpoint between nominal and each limit.  This keeps the report
-    // correct for asymmetric tolerances as well as different scales.
-    final lowerWarningBoundary = (lower + nominal) / 2;
-    final upperWarningBoundary = (nominal + upper) / 2;
+    // Use the boundaries calculated by the backend so every renderer follows
+    // the same measurement-type rules (including min/max-limit parameters).
+    final lowerWarningBoundary =
+        (report['lower_warning_boundary'] as num?)?.toDouble() ??
+        (lower + nominal) / 2;
+    final upperWarningBoundary =
+        (report['upper_warning_boundary'] as num?)?.toDouble() ??
+        (nominal + upper) / 2;
     Color zoneForRow(int row) {
       if (row == 0 || row == 29) return _red;
       final value = upper - ((row + .5) / 30) * span;
+      if (value <= lower || value >= upper) return _red;
       if (value <= lowerWarningBoundary || value >= upperWarningBoundary) {
         return _yellow;
       }
@@ -1044,7 +1047,7 @@ class _RunChartPainter extends CustomPainter {
 
     // The centre/nominal reference from the Excel report is intentionally
     // heavier than the surrounding grid so operators can read it at a glance.
-    final nominalLineY = plot.top + 15 * rowHeight;
+    final nominalLineY = y(nominal);
     canvas.drawLine(
       Offset(plot.left, nominalLineY),
       Offset(plot.right, nominalLineY),

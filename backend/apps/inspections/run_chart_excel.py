@@ -9,9 +9,11 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import ScatterChart, Reference, Series
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
+from .run_chart_logic import warning_boundaries
 
 
 JOBS_PER_SHEET = 33
+MAX_EXPORT_READINGS = 1000
 RED = 'FFFF0000'
 YELLOW = 'FFFFFF00'
 GREEN = 'FFA8D348'
@@ -42,6 +44,11 @@ def _company_name(report):
     return (getattr(factory, 'name', '') or 'SAPOTECH COMPONENTS PVT. LTD.').upper()
 
 
+def _safe_excel_text(value):
+    text = str(value or '')
+    return "'" + text if text.startswith(('=', '+', '-', '@')) else text
+
+
 def _format_number(value):
     return f'{float(value):.6f}'.rstrip('0').rstrip('.')
 
@@ -52,15 +59,17 @@ def _reading_row(report, measured_value):
     nominal = float(report.nominal_value)
     lower = float(report.lower_limit)
     upper = float(report.upper_limit)
-    if value >= nominal:
-        span = max(upper - nominal, 1e-12)
-        division = span / 15
-        steps = max(1, min(15, ceil((value - nominal) / division)))
-        return 22 - steps
-    span = max(nominal - lower, 1e-12)
-    division = span / 15
-    steps = max(1, min(15, ceil((nominal - value) / division)))
-    return 21 + steps
+    span = max(upper - lower, 1e-12)
+    # The grid is a single numeric axis from lower to upper.  This keeps
+    # asymmetric tolerances aligned with the Excel chart and mobile painter.
+    row_index = int(round((upper - value) / span * 29))
+    # Keep strictly in-spec values out of the red boundary rows.  A value on
+    # or beyond a limit is allowed to occupy the red row itself.
+    if value < upper:
+        row_index = max(1, row_index)
+    if value > lower:
+        row_index = min(28, row_index)
+    return 7 + max(0, min(29, row_index))
 
 
 def _zone_color_for_row(report, row_index):
@@ -72,8 +81,12 @@ def _zone_color_for_row(report, row_index):
     upper = float(report.upper_limit)
     span = max(upper - lower, 1e-12)
     value = upper - ((row_index + 0.5) / 30.0) * span
-    lower_mid = (lower + nominal) / 2.0
-    upper_mid = (nominal + upper) / 2.0
+    lower_mid, upper_mid = map(float, warning_boundaries(
+        report.lower_limit, report.nominal_value, report.upper_limit,
+        getattr(report.parameter, 'measurement_type', 'dimensional'),
+    ))
+    if value <= lower or value >= upper:
+        return RED
     if value <= lower_mid or value >= upper_mid:
         return YELLOW
     return GREEN
@@ -122,7 +135,6 @@ def _build_sheet(ws, report, readings, page_number, page_count):
         'B4:J4', 'K4:O4', 'P4:U4', 'V4:Z4', 'AA4:AI4',
         'B5:J5', 'K5:O5', 'P5:U5', 'V5:Z5', 'AA5:AI5',
         'A7:A36',
-        'AJ7:AJ10', 'AJ11:AJ14', 'AJ15:AJ28', 'AJ29:AJ32', 'AJ33:AJ36',
         'A37:B37', 'A38:U41', 'V38:AJ41',
         'B42:J42', 'K42:U42', 'V42:AJ42',
     ]
@@ -135,17 +147,17 @@ def _build_sheet(ws, report, readings, page_number, page_count):
     for cell_range in merges:
         ws.merge_cells(cell_range)
 
-    ws['B2'] = _company_name(report)
+    ws['B2'] = _safe_excel_text(_company_name(report))
     ws['K2'] = 'Run Chart  (Stop Light Control Chart)'
     ws['V2'] = f'Page : {page_number} / {page_count}'
-    ws['B3'] = f'Part Name : {report.part.part_number} - {report.part.part_name}'
-    ws['K3'] = f'Characteristic : {report.parameter_name}'
-    ws['V3'] = f'Machine: {report.machine.machine_code} - {report.machine.name}'
+    ws['B3'] = _safe_excel_text(f'Part Name : {report.part.part_number} - {report.part.part_name}')
+    ws['K3'] = _safe_excel_text(f'Characteristic : {report.parameter_name}')
+    ws['V3'] = _safe_excel_text(f'Machine: {report.machine.machine_code} - {report.machine.name}')
     ws['AA3'] = 'Sample Freq : 100%'
-    ws['B4'] = f'Operation : {report.template.name}'
-    ws['K4'] = f'Specification : {_format_number(report.lower_limit)} to {_format_number(report.upper_limit)} {report.unit}'
+    ws['B4'] = _safe_excel_text(f'Operation : {report.template.name}')
+    ws['K4'] = _safe_excel_text(f'Specification : {_format_number(report.lower_limit)} to {_format_number(report.upper_limit)} {report.unit}')
     ws['V4'] = f'Date/Shift: {report.report_date} / {report.shift}'
-    ws['AA4'] = f'Operator Name : {_display_name(report.operator)}'
+    ws['AA4'] = _safe_excel_text(f'Operator Name : {_display_name(report.operator)}')
     ws['B5'] = f'Lower Limit : {_format_number(report.lower_limit)} {report.unit}'
     ws['K5'] = f'Mean Size : {_format_number(report.nominal_value)} {report.unit}'
     ws['V5'] = f'Upper Limit : {_format_number(report.upper_limit)} {report.unit}'
@@ -191,15 +203,21 @@ def _build_sheet(ws, report, readings, page_number, page_count):
             for item in cell:
                 item.fill = fill
 
-    # Keep the template's merged label cells, but derive each label colour
-    # from the dynamic row that starts that merged block.
-    for start, cell_ref in ((0, 'AJ7'), (4, 'AJ11'), (8, 'AJ15'), (22, 'AJ29'), (26, 'AJ33')):
-        color = row_colors[start]
-        label = 'Red Zone' if color == RED else 'Yellow Zone' if color == YELLOW else 'Green Zone'
-        ws[cell_ref] = label
-        ws[cell_ref].fill = PatternFill('solid', fgColor=color)
-        ws[cell_ref].font = Font(name='Arial', size=9, italic=True)
-        ws[cell_ref].alignment = Alignment(horizontal='center', vertical='center')
+    # Merge and label the actual contiguous dynamic runs, not fixed template
+    # ranges that become wrong when tolerances change.
+    run_start = 0
+    for row in range(1, 31):
+        if row == 30 or row_colors[row] != row_colors[run_start]:
+            start_excel, end_excel = 7 + run_start, 7 + row - 1
+            cell_ref = f'AJ{start_excel}'
+            if start_excel != end_excel:
+                ws.merge_cells(f'AJ{start_excel}:AJ{end_excel}')
+            color = row_colors[run_start]
+            ws[cell_ref] = 'Red Zone' if color == RED else 'Yellow Zone' if color == YELLOW else 'Green Zone'
+            ws[cell_ref].fill = PatternFill('solid', fgColor=color)
+            ws[cell_ref].font = Font(name='Arial', size=9, italic=True)
+            ws[cell_ref].alignment = Alignment(horizontal='center', vertical='center')
+            run_start = row
 
     ws['A37'] = 'Job No.'
     ws['A37'].font = Font(name='Arial', size=10, bold=True)
@@ -222,7 +240,7 @@ def _build_sheet(ws, report, readings, page_number, page_count):
     ws['V38'] = 'Remarks :'
     ws['V38'].font = Font(name='Arial', size=10)
     ws['V38'].alignment = Alignment(horizontal='left', vertical='top')
-    ws['B42'] = f'Inspected By: {_display_name(report.operator)}'
+    ws['B42'] = _safe_excel_text(f'Inspected By: {_display_name(report.operator)}')
     ws['K42'] = 'SCPL/FT/PRD -  '
     ws['V42'] = 'Approved By: ____________________'
     for cell in ('B42', 'K42', 'V42'):
@@ -258,7 +276,7 @@ def _add_reading_line_chart(ws, report, readings):
     chart.y_axis.scaling.max = float(report.upper_limit)
     chart.x_axis.delete = True
     chart.y_axis.delete = True
-    chart.graphical_properties = GraphicalProperties(noFill=True)
+    chart.graphicalProperties = GraphicalProperties(noFill=True)
     chart.plot_area.spPr = GraphicalProperties(noFill=True)
 
     x_values = Reference(ws, min_col=x_column, min_row=1, max_row=len(readings))
@@ -285,6 +303,8 @@ def generate_run_chart_xlsx(report):
     readings = list(
         report.readings.select_related('recorded_by').order_by('piece_number')
     )
+    if len(readings) > MAX_EXPORT_READINGS:
+        raise ValueError(f'Run chart export is limited to {MAX_EXPORT_READINGS} readings.')
     page_count = max(1, ceil(len(readings) / JOBS_PER_SHEET))
     workbook = openpyxl.Workbook()
     for page_index in range(page_count):

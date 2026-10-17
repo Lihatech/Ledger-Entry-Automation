@@ -33,6 +33,8 @@ class RunChartAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         factory = Factory.objects.create(name='Factory', code='RC-FAC')
         plant = Plant.objects.create(factory=factory, name='Plant', code='RC-PLANT')
+        self.user.plant = plant
+        self.user.save(update_fields=['plant'])
         self.machine = Machine.objects.create(
             plant=plant, name='CNC Lathe', machine_code='RC-CNC-01'
         )
