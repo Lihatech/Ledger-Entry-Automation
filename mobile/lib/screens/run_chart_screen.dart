@@ -221,34 +221,22 @@ class _RunChartScreenState extends State<RunChartScreen> {
     final heading = machineStep
         ? '100% critical inspection'
         : operationStep
-        ? '${_machine!['machine_code']} · ${_machine!['name']}'
+        ? 'Machine Code and Name'
         : '${_operation!['name']} · ${_operation!['part_number']}';
     final help = machineStep
-        ? 'Choose a machine to record every job/piece against its critical parameters.'
+        ? 'Choose a Machine for recording a critical parameters'
         : operationStep
-        ? 'Choose the operation and part currently running on this machine.'
+        ? 'Choose part and operation currently running on this machine'
         : 'Choose one parameter. Each parameter opens its own report and live graph.';
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.show_chart_rounded,
-            color: Color(0xFF93C5FD),
-            size: 30,
-          ),
-          const SizedBox(height: 10),
           Text(
             heading,
             style: const TextStyle(
-              color: Colors.white,
+              color: Color(0xFF111827),
               fontSize: 18,
               fontWeight: FontWeight.w800,
             ),
@@ -257,7 +245,7 @@ class _RunChartScreenState extends State<RunChartScreen> {
           Text(
             help,
             style: const TextStyle(
-              color: Color(0xFFCBD5E1),
+              color: Color(0xFF64748B),
               height: 1.35,
               fontSize: 12.5,
             ),
