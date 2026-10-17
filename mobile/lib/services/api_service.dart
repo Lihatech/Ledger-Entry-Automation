@@ -386,21 +386,27 @@ class ApiService {
   /// POST /api/users/me/shift/ — update the current operator/inspector shift.
   static Future<Map<String, dynamic>> changeMyShift(String shift) async {
     try {
-      final response = await authenticatedRequest((headers) => http.post(
-        Uri.parse('$baseUrl/users/me/shift/'),
-        headers: headers,
-        body: jsonEncode({'shift': shift}),
-      ));
+      final response = await authenticatedRequest(
+        (headers) => http.post(
+          Uri.parse('$baseUrl/users/me/shift/'),
+          headers: headers,
+          body: jsonEncode({'shift': shift}),
+        ),
+      );
       final body = response.body.isNotEmpty ? jsonDecode(response.body) : {};
       if (response.statusCode == 200) {
         return {'success': true, 'data': body};
       }
       return {
         'success': false,
-        'message': body['message'] ?? body['detail'] ?? 'Failed to change shift',
+        'message':
+            body['message'] ?? body['detail'] ?? 'Failed to change shift',
       };
     } catch (e) {
-      return {'success': false, 'message': 'Network error while changing shift'};
+      return {
+        'success': false,
+        'message': 'Network error while changing shift',
+      };
     }
   }
 
@@ -606,10 +612,14 @@ class ApiService {
   // ── 100% Critical Parameter Run Charts ──────────────────────────────────
   static Future<List<dynamic>> getRunChartOperations(int machineId) async {
     final response = await authenticatedRequest(
-      (headers) => http.get(
-        Uri.parse('$baseUrl/inspections/run-chart/machines/$machineId/operations/'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 20)),
+      (headers) => http
+          .get(
+            Uri.parse(
+              '$baseUrl/inspections/run-chart/machines/$machineId/operations/',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 20)),
     );
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -620,12 +630,14 @@ class ApiService {
 
   static Future<List<dynamic>> getRunChartParameters(int templateId) async {
     final response = await authenticatedRequest(
-      (headers) => http.get(
-        Uri.parse(
-          '$baseUrl/inspections/run-chart/operations/$templateId/parameters/',
-        ),
-        headers: headers,
-      ).timeout(const Duration(seconds: 20)),
+      (headers) => http
+          .get(
+            Uri.parse(
+              '$baseUrl/inspections/run-chart/operations/$templateId/parameters/',
+            ),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 20)),
     );
     if (response.statusCode == 200) {
       final decoded = jsonDecode(response.body);
@@ -641,16 +653,18 @@ class ApiService {
     String? shift,
   }) async {
     final response = await authenticatedRequest(
-      (headers) => http.post(
-        Uri.parse('$baseUrl/inspections/run-chart/reports/open/'),
-        headers: headers,
-        body: jsonEncode({
-          'machine_id': machineId,
-          'template_id': templateId,
-          'parameter_id': parameterId,
-          if (shift != null) 'shift': shift,
-        }),
-      ).timeout(const Duration(seconds: 20)),
+      (headers) => http
+          .post(
+            Uri.parse('$baseUrl/inspections/run-chart/reports/open/'),
+            headers: headers,
+            body: jsonEncode({
+              'machine_id': machineId,
+              'template_id': templateId,
+              'parameter_id': parameterId,
+              if (shift != null) 'shift': shift,
+            }),
+          )
+          .timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded is Map) {
@@ -665,10 +679,12 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getRunChart(String reportId) async {
     final response = await authenticatedRequest(
-      (headers) => http.get(
-        Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/'),
-        headers: headers,
-      ).timeout(const Duration(seconds: 20)),
+      (headers) => http
+          .get(
+            Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 200 && decoded is Map) {
@@ -688,15 +704,19 @@ class ApiService {
     String? idempotencyKey,
   }) async {
     final response = await authenticatedRequest(
-      (headers) => http.post(
-        Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/readings/'),
-        headers: headers,
-        body: jsonEncode({
-          'measured_value': measuredValue,
-          'piece_number': pieceNumber,
-          if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
-        }),
-      ).timeout(const Duration(seconds: 20)),
+      (headers) => http
+          .post(
+            Uri.parse(
+              '$baseUrl/inspections/run-chart/reports/$reportId/readings/',
+            ),
+            headers: headers,
+            body: jsonEncode({
+              'measured_value': measuredValue,
+              'piece_number': pieceNumber,
+              if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
+            }),
+          )
+          .timeout(const Duration(seconds: 20)),
     );
     final decoded = jsonDecode(response.body);
     if (response.statusCode == 201 && decoded is Map) {
@@ -709,17 +729,21 @@ class ApiService {
     );
   }
 
-  static Future<String?> downloadRunChartPDF(
+  static Future<String?> downloadRunChartExcel(
     String reportId, {
     required String machineCode,
     required String parameterName,
   }) async {
     try {
       final response = await authenticatedRequest(
-        (headers) => http.get(
-          Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/pdf/'),
-          headers: headers,
-        ).timeout(const Duration(seconds: 30)),
+        (headers) => http
+            .get(
+              Uri.parse(
+                '$baseUrl/inspections/run-chart/reports/$reportId/xlsx/',
+              ),
+              headers: headers,
+            )
+            .timeout(const Duration(seconds: 30)),
       );
       if (response.statusCode != 200) return null;
 
@@ -731,15 +755,15 @@ class ApiService {
         ).firstMatch(disposition)?.group(1);
       }
       filename ??=
-          'RunChart_${machineCode}_${parameterName}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf';
+          'RunChart_${machineCode}_${parameterName}_${DateTime.now().toIso8601String().substring(0, 10)}.xlsx';
       filename = filename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: filename.replaceAll('.pdf', ''),
+          name: filename.replaceAll('.xlsx', ''),
           bytes: response.bodyBytes,
-          ext: 'pdf',
-          mimeType: MimeType.pdf,
+          ext: 'xlsx',
+          mimeType: MimeType.microsoftExcel,
         );
         return 'web_downloaded';
       }
@@ -748,7 +772,7 @@ class ApiService {
       await file.writeAsBytes(response.bodyBytes);
       return file.path;
     } catch (e) {
-      debugPrint('[API] Run Chart PDF download error: $e');
+      debugPrint('[API] Run Chart Excel download error: $e');
       return null;
     }
   }

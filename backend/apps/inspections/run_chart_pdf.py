@@ -7,6 +7,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from xml.sax.saxutils import escape
+from .run_chart_logic import warning_boundaries
 
 
 def _chart_drawing(report, readings):
@@ -29,11 +30,13 @@ def _chart_drawing(report, readings):
     def y(value):
         return bottom + ((value - min_y) / (max_y - min_y)) * plot_h
 
-    green_low = lower + (upper - lower) * 0.20
-    green_high = upper - (upper - lower) * 0.20
-    drawing.add(Rect(left, y(lower), plot_w, y(green_low) - y(lower), fillColor=colors.HexColor('#FEF3C7'), strokeColor=None))
-    drawing.add(Rect(left, y(green_low), plot_w, y(green_high) - y(green_low), fillColor=colors.HexColor('#DCFCE7'), strokeColor=None))
-    drawing.add(Rect(left, y(green_high), plot_w, y(upper) - y(green_high), fillColor=colors.HexColor('#FEF3C7'), strokeColor=None))
+    warning_low, warning_high = map(float, warning_boundaries(
+        report.lower_limit, report.nominal_value, report.upper_limit,
+        getattr(report.parameter, 'measurement_type', 'dimensional'),
+    ))
+    drawing.add(Rect(left, y(lower), plot_w, y(warning_low) - y(lower), fillColor=colors.HexColor('#FEF3C7'), strokeColor=None))
+    drawing.add(Rect(left, y(warning_low), plot_w, y(warning_high) - y(warning_low), fillColor=colors.HexColor('#DCFCE7'), strokeColor=None))
+    drawing.add(Rect(left, y(warning_high), plot_w, y(upper) - y(warning_high), fillColor=colors.HexColor('#FEF3C7'), strokeColor=None))
 
     for value, label, color in [
         (lower, 'LSL', '#DC2626'),

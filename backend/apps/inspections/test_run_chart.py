@@ -1,4 +1,7 @@
 from decimal import Decimal
+from io import BytesIO
+
+import openpyxl
 
 from django.urls import reverse
 from rest_framework.test import APITestCase
@@ -30,6 +33,8 @@ class RunChartAPITests(APITestCase):
         self.client.force_authenticate(self.user)
         factory = Factory.objects.create(name='Factory', code='RC-FAC')
         plant = Plant.objects.create(factory=factory, name='Plant', code='RC-PLANT')
+        self.user.plant = plant
+        self.user.save(update_fields=['plant'])
         self.machine = Machine.objects.create(
             plant=plant, name='CNC Lathe', machine_code='RC-CNC-01'
         )
@@ -99,9 +104,19 @@ class RunChartAPITests(APITestCase):
         self.assertEqual(first.status_code, 201)
         self.assertEqual(first.data['reading']['zone'], RunChartReading.Zone.GREEN)
 
+        # Warning zones begin at the midpoint between nominal and each limit.
+        # With a 19.985–20.015 tolerance, 20.008 is in the upper yellow zone.
+        warning = self.client.post(
+            reverse('run-chart-reading-create', kwargs={'report_id': report_id}),
+            {'piece_number': 2, 'measured_value': 20.008},
+            format='json',
+        )
+        self.assertEqual(warning.status_code, 201)
+        self.assertEqual(warning.data['reading']['zone'], RunChartReading.Zone.YELLOW)
+
         second = self.client.post(
             reverse('run-chart-reading-create', kwargs={'report_id': report_id}),
-            {'piece_number': 2, 'measured_value': 20.020},
+            {'piece_number': 3, 'measured_value': 20.020},
             format='json',
         )
         self.assertEqual(second.status_code, 201)
@@ -109,10 +124,10 @@ class RunChartAPITests(APITestCase):
         self.assertEqual(second.data['alert'], 'stop_process')
 
         self.assertEqual(RunChartReport.objects.count(), 1)
-        self.assertEqual(RunChartReading.objects.count(), 2)
+        self.assertEqual(RunChartReading.objects.count(), 3)
         self.assertEqual(
             list(RunChartReading.objects.values_list('piece_number', flat=True)),
-            [1, 2],
+            [1, 2, 3],
         )
 
     def test_piece_sequence_cannot_be_skipped_or_overwritten(self):
@@ -151,3 +166,42 @@ class RunChartAPITests(APITestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/pdf')
+
+    def test_excel_download_matches_official_run_chart_layout(self):
+        opened = self.client.post(
+            reverse('run-chart-open-report'),
+            {
+                'machine_id': self.machine.id,
+                'template_id': self.template.id,
+                'parameter_id': self.parameter.id,
+                'shift': 'I',
+            },
+            format='json',
+        )
+        report_id = opened.data['report_id']
+        self.client.post(
+            reverse('run-chart-reading-create', kwargs={'report_id': report_id}),
+            {'piece_number': 1, 'measured_value': 20.000},
+            format='json',
+        )
+        response = self.client.get(
+            reverse('run-chart-xlsx', kwargs={'report_id': report_id})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        content = b''.join(response.streaming_content)
+        workbook = openpyxl.load_workbook(BytesIO(content), data_only=False)
+        sheet = workbook['Run Chart']
+        self.assertEqual(sheet['K2'].value, 'Run Chart  (Stop Light Control Chart)')
+        self.assertIn('RC-PART-01', sheet['B3'].value)
+        self.assertIn('Bore Diameter', sheet['K3'].value)
+        self.assertEqual(sheet['C37'].value, 1)
+        self.assertEqual(sheet['C21'].value, '●')
+        self.assertEqual(sheet['C7'].fill.fgColor.rgb, 'FFFF0000')
+        self.assertEqual(sheet['C11'].fill.fgColor.rgb, 'FFFFFF00')
+        self.assertEqual(sheet['C15'].fill.fgColor.rgb, 'FFA8D348')
+        self.assertIn('Sample Freq : 100%', sheet['AA3'].value)
+        workbook.close()

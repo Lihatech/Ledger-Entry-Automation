@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -431,7 +432,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
 
   Future<void> _download() async {
     setState(() => _downloading = true);
-    final path = await ApiService.downloadRunChartPDF(
+    final path = await ApiService.downloadRunChartExcel(
       _report['report_id'].toString(),
       machineCode: _report['machine_code'].toString(),
       parameterName: _report['parameter_name'].toString(),
@@ -442,8 +443,8 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
       SnackBar(
         content: Text(
           path == null
-              ? 'Could not download the run chart.'
-              : 'Run chart downloaded successfully.',
+              ? 'Could not download the Excel report.'
+              : 'Excel report downloaded successfully.',
         ),
         backgroundColor: path == null
             ? const Color(0xFFDC2626)
@@ -487,12 +488,12 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Maximize graph',
+            tooltip: 'Maximize report',
             onPressed: _openFullscreen,
             icon: const Icon(Icons.fullscreen_rounded),
           ),
           IconButton(
-            tooltip: 'Download PDF',
+            tooltip: 'Download Excel report',
             onPressed: _downloading ? null : _download,
             icon: _downloading
                 ? const SizedBox.square(
@@ -662,8 +663,8 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
           children: [
             const Expanded(
               child: Text(
-                'Live run chart',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                'Run Chart (Stop Light Control Chart)',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
               ),
             ),
             IconButton(
@@ -678,33 +679,21 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         ),
         LayoutBuilder(
           builder: (context, constraints) {
-            // Keep the plot wide enough to match the production run-chart
-            // format. On narrow phones the user can scroll horizontally;
-            // the y-axis remains visible at the left edge of the chart.
+            final columnCount = math.max(33, readings.length);
             final width = math.max(
-              math.max(constraints.maxWidth, 620.0),
-              math.max(1, readings.length) * 52.0 + 100,
+              constraints.maxWidth,
+              70.0 + columnCount * 36.0 + 92.0,
             );
             return SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               physics: const AlwaysScrollableScrollPhysics(),
               child: SizedBox(
                 width: width,
-                height: 250,
+                height: 760,
                 child: RunChartPlot(report: _report),
               ),
             );
           },
-        ),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _LegendDot(color: Color(0xFF16A34A), label: 'Green'),
-            SizedBox(width: 12),
-            _LegendDot(color: Color(0xFFD97706), label: 'Warning'),
-            SizedBox(width: 12),
-            _LegendDot(color: Color(0xFFDC2626), label: 'Out of spec'),
-          ],
         ),
       ],
     ),
@@ -791,9 +780,10 @@ class _RunChartFullscreenScreenState extends State<RunChartFullscreenScreen> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
+          final columnCount = math.max(33, readings.length);
           final width = math.max(
             constraints.maxWidth,
-            math.max(1, readings.length) * 52.0 + 100,
+            70.0 + columnCount * 36.0 + 92.0,
           );
           return InteractiveViewer(
             constrained: false,
@@ -802,8 +792,7 @@ class _RunChartFullscreenScreenState extends State<RunChartFullscreenScreen> {
             boundaryMargin: const EdgeInsets.all(120),
             child: Container(
               width: width,
-              height: constraints.maxHeight,
-              padding: const EdgeInsets.all(12),
+              height: math.max(constraints.maxHeight, 760.0),
               color: Colors.white,
               child: RunChartPlot(report: widget.report),
             ),
@@ -827,6 +816,17 @@ class _RunChartPainter extends CustomPainter {
   final Map<String, dynamic> report;
   _RunChartPainter(this.report);
 
+  static const _red = Color(0xFFFF0000);
+  static const _yellow = Color(0xFFFFFF00);
+  static const _green = Color(0xFFA8D348);
+  static const _rules =
+      'प्रोसेस कंट्रोल बाबतचे नियम (प्रोसेस कंट्रोल चार्ट रेग्युलेशन)\n'
+      '1. First Piece ची साइज मिनिमम असावी. तसे नसल्यास साइज सेट करून प्रोसेस correct करून साइज मिन जॉब सेट करा.\n'
+      '2. कोणत्याही एका जॉबच्या साइज लाल झोनमध्ये गेल्यास प्रोडक्शन थांबवा व सुपरवायझर कडून प्रोसेस correct करून घ्या.\n'
+      '3. सलग पाच जॉब पैकी कोणतीही तीन जॉब पिवळ्या झोनमध्ये गेल्यास प्रोडक्शन थांबवा व सुपरवायझर कडून प्रोसेस correct करून घ्या.\n'
+      '4. मशीन सेटिंग्स व टूल बदलानंतर साइज तीन जॉब तपासा. साइज कंट्रोल दिसेपर्यंत जॉब चालू ठेवू नका.\n'
+      '5. एका प्लेटमध्ये एका पेक्षा अधिक जॉब असले तरी वरील नियम पाळणे.';
+
   @override
   void paint(Canvas canvas, Size size) {
     final readings = List<Map<String, dynamic>>.from(
@@ -835,168 +835,550 @@ class _RunChartPainter extends CustomPainter {
       ),
     );
     final lower = (report['lower_limit'] as num).toDouble();
-    final upper = (report['upper_limit'] as num).toDouble();
     final nominal = (report['nominal_value'] as num).toDouble();
-    final values = readings
-        .map((r) => (r['measured_value'] as num).toDouble())
-        .toList();
-    final all = <double>[lower, upper, nominal, ...values];
-    var minY = all.reduce(math.min);
-    var maxY = all.reduce(math.max);
-    var span = maxY - minY;
-    if (span == 0) span = math.max(nominal.abs() * .001, .001);
-    minY -= span * .15;
-    maxY += span * .15;
+    final upper = (report['upper_limit'] as num).toDouble();
+    final span = math.max(upper - lower, .000001);
+    final columnCount = math.max(33, readings.length);
 
-    const left = 58.0, right = 16.0, top = 14.0, bottom = 34.0;
+    const left = 70.0, right = 92.0;
+    const headerTop = 8.0, headerBottom = 128.0;
+    const plotBottom = 568.0, jobBottom = 596.0;
+    const notesBottom = 716.0, footerBottom = 754.0;
     final plot = Rect.fromLTRB(
       left,
-      top,
+      headerBottom,
       size.width - right,
-      size.height - bottom,
+      plotBottom,
     );
-    double y(double v) =>
-        plot.bottom - ((v - minY) / (maxY - minY)) * plot.height;
-    double x(int index) =>
-        plot.left + (index / math.max(readings.length - 1, 1)) * plot.width;
+    final rowHeight = plot.height / 30;
+    final columnWidth = plot.width / columnCount;
+    double y(double value) =>
+        plot.bottom - ((value - lower) / span) * plot.height;
+    double x(int index) => plot.left + columnWidth * (index + .5);
 
-    final band = (upper - lower) * .20;
-    final greenLow = lower + band;
-    final greenHigh = upper - band;
     final fill = Paint()..style = PaintingStyle.fill;
-    fill.color = const Color(0xFFFEE2E2);
-    canvas.drawRect(
-      Rect.fromLTRB(plot.left, plot.top, plot.right, y(upper)),
-      fill,
+
+    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    final thin = Paint()
+      ..color = Colors.black
+      ..strokeWidth = .75
+      ..style = PaintingStyle.stroke;
+    final outline = Paint()
+      ..color = Colors.black
+      ..strokeWidth = 1.4
+      ..style = PaintingStyle.stroke;
+
+    final totalWidth = size.width;
+    final third = totalWidth / 3;
+    _cell(
+      canvas,
+      Rect.fromLTRB(0, headerTop, third, 42),
+      (report['company_name'] ?? 'SAPOTECH COMPONENTS PVT. LTD.').toString(),
+      13,
+      bold: true,
+      border: outline,
     );
-    canvas.drawRect(
-      Rect.fromLTRB(plot.left, y(lower), plot.right, plot.bottom),
-      fill,
+    _cell(
+      canvas,
+      Rect.fromLTRB(third, headerTop, third * 2, 42),
+      'Run Chart  (Stop Light Control Chart)',
+      13,
+      bold: true,
+      align: TextAlign.center,
+      border: outline,
     );
-    fill.color = const Color(0xFFFEF3C7);
-    canvas.drawRect(
-      Rect.fromLTRB(plot.left, y(upper), plot.right, y(greenHigh)),
-      fill,
+    _cell(
+      canvas,
+      Rect.fromLTRB(third * 2, headerTop, totalWidth, 42),
+      'Page : 1',
+      10,
+      border: outline,
     );
-    canvas.drawRect(
-      Rect.fromLTRB(plot.left, y(greenLow), plot.right, y(lower)),
-      fill,
+
+    final half = totalWidth / 2;
+    final quarter = totalWidth / 4;
+    _cell(
+      canvas,
+      Rect.fromLTRB(0, 42, quarter, 70),
+      'Part Name : ${report['part_number']} - ${report['part_name']}',
+      9,
+      border: thin,
     );
-    fill.color = const Color(0xFFDCFCE7);
-    canvas.drawRect(
-      Rect.fromLTRB(plot.left, y(greenHigh), plot.right, y(greenLow)),
-      fill,
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter, 42, half, 70),
+      'Characteristic : ${report['parameter_name']}',
+      9,
+      border: thin,
     );
+    _cell(
+      canvas,
+      Rect.fromLTRB(half, 42, quarter * 3, 70),
+      'Machine : ${report['machine_code']} - ${report['machine_name']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter * 3, 42, totalWidth, 70),
+      'Sample Freq : 100%',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(0, 70, quarter, 98),
+      'Operation : ${report['operation_name']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter, 70, half, 98),
+      'Specification : ${_number(report['lower_limit'])} to ${_number(report['upper_limit'])} ${report['unit']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(half, 70, quarter * 3, 98),
+      'Date/Shift : ${report['report_date']} / ${report['shift']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter * 3, 70, totalWidth, 98),
+      'Operator Name : ${report['operator_name'] ?? ''}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(0, 98, quarter, headerBottom),
+      'Lower Limit : ${_number(report['lower_limit'])} ${report['unit']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter, 98, half, headerBottom),
+      'Mean Size : ${_number(report['nominal_value'])} ${report['unit']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(half, 98, quarter * 3, headerBottom),
+      'Upper Limit : ${_number(report['upper_limit'])} ${report['unit']}',
+      9,
+      border: thin,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(quarter * 3, 98, totalWidth, headerBottom),
+      '1Div. = ${_number(report['division_value'] ?? span / 30)} ${report['unit']}',
+      9,
+      bold: true,
+      border: thin,
+    );
+
+    // Use the boundaries calculated by the backend so every renderer follows
+    // the same measurement-type rules (including min/max-limit parameters).
+    final lowerWarningBoundary =
+        (report['lower_warning_boundary'] as num?)?.toDouble() ??
+        (lower + nominal) / 2;
+    final upperWarningBoundary =
+        (report['upper_warning_boundary'] as num?)?.toDouble() ??
+        (nominal + upper) / 2;
+    Color zoneForRow(int row) {
+      if (row == 0 || row == 29) return _red;
+      final value = upper - ((row + .5) / 30) * span;
+      if (value <= lower || value >= upper) return _red;
+      if (value <= lowerWarningBoundary || value >= upperWarningBoundary) {
+        return _yellow;
+      }
+      return _green;
+    }
+
+    for (var row = 0; row < 30; row++) {
+      fill.color = zoneForRow(row);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          plot.left,
+          plot.top + row * rowHeight,
+          plot.right,
+          plot.top + (row + 1) * rowHeight,
+        ),
+        fill,
+      );
+    }
 
     final grid = Paint()
-      ..color = const Color(0xFFCBD5E1)
-      ..strokeWidth = 1;
-    for (var i = 0; i <= 4; i++) {
-      final gy = plot.top + plot.height * i / 4;
+      ..color = const Color(0xFF1F2937)
+      ..strokeWidth = .85
+      ..style = PaintingStyle.stroke;
+
+    for (var row = 0; row <= 30; row++) {
+      final gy = plot.top + row * rowHeight;
       canvas.drawLine(Offset(plot.left, gy), Offset(plot.right, gy), grid);
-      final value = maxY - (maxY - minY) * i / 4;
-      _text(
-        canvas,
-        _shortNumber(value),
-        Offset(2, gy - 6),
-        const Color(0xFF64748B),
-        9,
-      );
     }
-    canvas.drawLine(
-      plot.bottomLeft,
-      plot.bottomRight,
-      Paint()..color = const Color(0xFF64748B),
-    );
-    canvas.drawLine(
-      plot.topLeft,
-      plot.bottomLeft,
-      Paint()..color = const Color(0xFF64748B),
-    );
+    for (var column = 0; column <= columnCount; column++) {
+      final gx = plot.left + column * columnWidth;
+      canvas.drawLine(Offset(gx, plot.top), Offset(gx, plot.bottom), grid);
+    }
 
-    void limitLine(double value, Color color, String label) {
-      final py = y(value);
+    // The Excel template also borders the division-number column. Keep that
+    // frame and its row separators visible instead of leaving a white gap
+    // between the labels and the plotted cells.
+    final labelFrame = Rect.fromLTRB(24, plot.top, plot.left, plot.bottom);
+    canvas.drawRect(labelFrame, outline);
+    for (var row = 0; row <= 30; row++) {
+      final gy = plot.top + row * rowHeight;
       canvas.drawLine(
-        Offset(plot.left, py),
-        Offset(plot.right, py),
-        Paint()
-          ..color = color
-          ..strokeWidth = 1.2,
+        Offset(labelFrame.left, gy),
+        Offset(labelFrame.right, gy),
+        grid,
       );
-      _text(
+    }
+    // Join the upper and lower points into one continuous unit column.
+    final unitFrame = Rect.fromLTRB(0, plot.top, 24, plot.bottom);
+    canvas.drawRect(unitFrame, outline);
+
+    // The centre/nominal reference from the Excel report is intentionally
+    // heavier than the surrounding grid so operators can read it at a glance.
+    final nominalLineY = y(nominal);
+    canvas.drawLine(
+      Offset(plot.left, nominalLineY),
+      Offset(plot.right, nominalLineY),
+      Paint()
+        ..color = Colors.black
+        ..strokeWidth = 2.8
+        ..style = PaintingStyle.stroke,
+    );
+
+    canvas.drawRect(plot, outline);
+
+    for (var row = 0; row < 30; row++) {
+      final division = row < 15 ? 15 - row : row - 14;
+      _centeredText(
         canvas,
-        '$label ${_shortNumber(value)}',
-        Offset(plot.left + 4, py - 14),
-        color,
+        division.toString(),
+        Rect.fromLTWH(32, plot.top + row * rowHeight, 34, rowHeight),
+        Colors.black,
         9,
-        bold: true,
       );
     }
 
-    limitLine(lower, const Color(0xFFDC2626), 'LSL');
-    limitLine(nominal, const Color(0xFF2563EB), 'NOM');
-    limitLine(upper, const Color(0xFFDC2626), 'USL');
+    _verticalText(canvas, 'IN MICRONS', unitFrame, Colors.black, 8.5);
+
+    void zoneLabel(String text, int firstRow, int lastRow) {
+      _centeredText(
+        canvas,
+        text,
+        Rect.fromLTRB(
+          plot.right,
+          plot.top + firstRow * rowHeight,
+          size.width,
+          plot.top + lastRow * rowHeight,
+        ),
+        Colors.black,
+        9,
+        italic: true,
+      );
+    }
+
+    for (var row = 0; row < 30; row++) {
+      fill.color = zoneForRow(row);
+      canvas.drawRect(
+        Rect.fromLTRB(
+          plot.right,
+          plot.top + row * rowHeight,
+          size.width,
+          plot.top + (row + 1) * rowHeight,
+        ),
+        fill,
+      );
+    }
+    canvas.drawRect(
+      Rect.fromLTRB(plot.right, plot.top, size.width, plot.bottom),
+      outline,
+    );
+    // Merged zone cells still need a visible boundary at each colour change.
+    for (var boundary = 1; boundary < 30; boundary++) {
+      if (zoneForRow(boundary) != zoneForRow(boundary - 1)) {
+        final gy = plot.top + boundary * rowHeight;
+        canvas.drawLine(
+          Offset(plot.right, gy),
+          Offset(size.width, gy),
+          outline,
+        );
+      }
+    }
+    var runStart = 0;
+    var runColor = zoneForRow(0);
+    for (var row = 1; row <= 30; row++) {
+      final nextColor = row < 30 ? zoneForRow(row) : null;
+      if (nextColor != runColor) {
+        zoneLabel(
+          runColor == _red
+              ? 'Red Zone'
+              : runColor == _yellow
+              ? 'Yellow Zone'
+              : 'Green Zone',
+          runStart,
+          row,
+        );
+        if (row < 30) {
+          runStart = row;
+          runColor = nextColor!;
+        }
+      }
+    }
+
+    final jobRow = Rect.fromLTRB(0, plot.bottom, plot.right, jobBottom);
+    canvas.drawRect(jobRow, Paint()..color = Colors.white);
+    canvas.drawRect(jobRow, outline);
+    canvas.drawRect(
+      Rect.fromLTRB(plot.right, plot.bottom, size.width, jobBottom),
+      outline,
+    );
+    canvas.drawLine(
+      Offset(plot.left, plot.bottom),
+      Offset(plot.left, jobBottom),
+      outline,
+    );
+    _centeredText(
+      canvas,
+      'Job No.',
+      Rect.fromLTRB(0, plot.bottom, plot.left, jobBottom),
+      Colors.black,
+      10,
+      bold: true,
+    );
+    for (var column = 0; column <= columnCount; column++) {
+      final gx = plot.left + column * columnWidth;
+      canvas.drawLine(Offset(gx, plot.bottom), Offset(gx, jobBottom), grid);
+    }
+    for (var index = 0; index < readings.length; index++) {
+      _centeredText(
+        canvas,
+        '${readings[index]['piece_number']}',
+        Rect.fromLTWH(
+          plot.left + index * columnWidth,
+          plot.bottom,
+          columnWidth,
+          jobBottom - plot.bottom,
+        ),
+        Colors.black,
+        8,
+      );
+    }
 
     if (readings.isEmpty) {
       _text(
         canvas,
         'No readings yet',
-        Offset(plot.center.dx - 44, plot.center.dy - 8),
-        const Color(0xFF64748B),
-        13,
+        Offset(plot.left + 14, plot.center.dy - 8),
+        Colors.black87,
+        12,
         bold: true,
       );
-      return;
-    }
-    final path = Path();
-    for (var i = 0; i < readings.length; i++) {
-      final point = Offset(
-        x(i),
-        y((readings[i]['measured_value'] as num).toDouble()),
-      );
-      if (i == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
+    } else {
+      final path = Path();
+      for (var i = 0; i < readings.length; i++) {
+        final point = Offset(
+          x(i),
+          y(
+            ((readings[i]['measured_value'] as num).toDouble())
+                .clamp(lower, upper)
+                .toDouble(),
+          ),
+        );
+        i == 0
+            ? path.moveTo(point.dx, point.dy)
+            : path.lineTo(point.dx, point.dy);
       }
-    }
-    canvas.drawPath(
-      path,
-      Paint()
-        ..color = const Color(0xFF0F172A)
-        ..strokeWidth = 2
-        ..style = PaintingStyle.stroke,
-    );
-    final labelEvery = math.max(1, (readings.length / 8).ceil());
-    for (var i = 0; i < readings.length; i++) {
-      final reading = readings[i];
-      final point = Offset(
-        x(i),
-        y((reading['measured_value'] as num).toDouble()),
-      );
-      canvas.drawCircle(
-        point,
-        5,
-        Paint()..color = _zoneColor(reading['zone']?.toString()),
-      );
-      canvas.drawCircle(
-        point,
-        5,
+      canvas.drawPath(
+        path,
         Paint()
-          ..color = Colors.white
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1,
+          ..color = Colors.black
+          ..strokeWidth = 1.6
+          ..style = PaintingStyle.stroke,
       );
-      if (i % labelEvery == 0 || i == readings.length - 1) {
-        _text(
-          canvas,
-          '${reading['piece_number']}',
-          Offset(point.dx - 7, plot.bottom + 7),
-          const Color(0xFF475569),
-          9,
+      for (var i = 0; i < readings.length; i++) {
+        final point = Offset(
+          x(i),
+          y(
+            ((readings[i]['measured_value'] as num).toDouble())
+                .clamp(lower, upper)
+                .toDouble(),
+          ),
+        );
+        canvas.drawCircle(point, 4.5, Paint()..color = Colors.black);
+        canvas.drawCircle(
+          point,
+          4.5,
+          Paint()
+            ..color = Colors.white
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
         );
       }
     }
+
+    final rulesRect = Rect.fromLTRB(
+      0,
+      jobBottom,
+      totalWidth * .62,
+      notesBottom,
+    );
+    final remarksRect = Rect.fromLTRB(
+      totalWidth * .62,
+      jobBottom,
+      totalWidth,
+      notesBottom,
+    );
+    _cell(
+      canvas,
+      rulesRect,
+      _rules,
+      8.2,
+      border: outline,
+      verticalTop: true,
+      maxLines: 7,
+    );
+    _cell(
+      canvas,
+      remarksRect,
+      'Remarks :',
+      10,
+      border: outline,
+      verticalTop: true,
+      maxLines: 3,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(0, notesBottom, third, footerBottom),
+      'Inspected By: ${report['operator_name'] ?? ''}',
+      9,
+      align: TextAlign.center,
+      border: outline,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(third, notesBottom, third * 2, footerBottom),
+      'SCPL/FT/PRD -',
+      9,
+      align: TextAlign.center,
+      border: outline,
+    );
+    _cell(
+      canvas,
+      Rect.fromLTRB(third * 2, notesBottom, totalWidth, footerBottom),
+      'Approved By: ____________________',
+      9,
+      align: TextAlign.center,
+      border: outline,
+    );
+  }
+
+  String _number(dynamic value) {
+    final number = value is num ? value.toDouble() : double.tryParse('$value');
+    if (number == null) return '$value';
+    return number
+        .toStringAsFixed(6)
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+  }
+
+  void _cell(
+    Canvas canvas,
+    Rect rect,
+    String text,
+    double fontSize, {
+    bool bold = false,
+    TextAlign align = TextAlign.left,
+    Paint? border,
+    bool verticalTop = false,
+    int maxLines = 2,
+  }) {
+    canvas.drawRect(rect, Paint()..color = Colors.white);
+    if (border != null) canvas.drawRect(rect, border);
+    final baseStyle = TextStyle(
+      color: Colors.black,
+      fontSize: fontSize,
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+      height: 1.18,
+    );
+    final textStyle = text == _rules
+        ? GoogleFonts.notoSansDevanagari(textStyle: baseStyle)
+        : baseStyle;
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: textStyle),
+      textAlign: align,
+      maxLines: maxLines,
+      ellipsis: maxLines <= 2 ? '…' : null,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: math.max(0, rect.width - 10));
+    final yOffset = verticalTop ? 5.0 : (rect.height - painter.height) / 2;
+    painter.paint(canvas, Offset(rect.left + 5, rect.top + yOffset));
+  }
+
+  void _centeredText(
+    Canvas canvas,
+    String text,
+    Rect bounds,
+    Color color,
+    double size, {
+    bool bold = false,
+    bool italic = false,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+        ),
+      ),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: bounds.width);
+    painter.paint(
+      canvas,
+      Offset(
+        bounds.left + (bounds.width - painter.width) / 2,
+        bounds.top + (bounds.height - painter.height) / 2,
+      ),
+    );
+  }
+
+  void _verticalText(
+    Canvas canvas,
+    String text,
+    Rect bounds,
+    Color color,
+    double size,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          color: color,
+          fontSize: size,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    canvas.save();
+    canvas.translate(bounds.center.dx, bounds.center.dy);
+    canvas.rotate(-math.pi / 2);
+    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    canvas.restore();
   }
 
   void _text(
@@ -1121,28 +1503,6 @@ class _MessageCard extends StatelessWidget {
         fontWeight: FontWeight.w600,
       ),
     ),
-  );
-}
-
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  const _LegendDot({required this.color, required this.label});
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-      ),
-      const SizedBox(width: 4),
-      Text(
-        label,
-        style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
-      ),
-    ],
   );
 }
 

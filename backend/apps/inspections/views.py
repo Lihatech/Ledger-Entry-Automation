@@ -58,6 +58,8 @@ from .serializers import (
 )
 from .pdf_generator import generate_daily_production_pdf, generate_downtime_pdf
 from .run_chart_pdf import generate_run_chart_pdf
+from .run_chart_excel import generate_run_chart_xlsx
+from .run_chart_logic import classify_value, warning_boundaries
 # M4 FIX: Import shared singleton : do NOT instantiate InspectionService() here.
 # One instance is shared across views.py, tasks.py, and any future modules.
 from .services import inspection_service as _service
@@ -94,8 +96,27 @@ def _run_chart_report_data(report, include_readings=True):
         'nominal_value': float(report.nominal_value),
         'lower_limit': float(report.lower_limit),
         'upper_limit': float(report.upper_limit),
+        'measurement_type': getattr(report.parameter, 'measurement_type', 'dimensional'),
+        'lower_warning_boundary': float(warning_boundaries(
+            report.lower_limit, report.nominal_value, report.upper_limit,
+            getattr(report.parameter, 'measurement_type', 'dimensional'),
+        )[0]),
+        'upper_warning_boundary': float(warning_boundaries(
+            report.lower_limit, report.nominal_value, report.upper_limit,
+            getattr(report.parameter, 'measurement_type', 'dimensional'),
+        )[1]),
         'report_date': report.report_date.isoformat(),
         'shift': report.shift,
+        'operator_name': (
+            getattr(report.operator, 'display_name', '')
+            or report.operator.get_full_name()
+            or report.operator.username
+        ),
+        'company_name': (
+            getattr(getattr(getattr(report.machine, 'plant', None), 'factory', None), 'name', '')
+            or 'SAPOTECH COMPONENTS PVT. LTD.'
+        ).upper(),
+        'division_value': float((report.upper_limit - report.lower_limit) / Decimal('30')),
         'status': report.status,
         'next_piece_number': (readings[-1].piece_number if readings else 0) + 1,
     }
@@ -109,8 +130,9 @@ def _run_chart_report_data(report, include_readings=True):
 def _run_chart_machine_queryset(request):
     qs = Machine.objects.filter(is_active=True, status=Machine.Status.ACTIVE)
     plant_id = getattr(request.user, 'plant_id', None)
-    if plant_id:
-        qs = qs.filter(plant_id=plant_id)
+    if not plant_id:
+        return qs.none()
+    qs = qs.filter(plant_id=plant_id)
     return qs
 
 
@@ -223,6 +245,7 @@ class RunChartParametersView(APIView):
                 'lower_limit': float(parameter.lower_limit),
                 'upper_limit': float(parameter.upper_limit),
                 'measurement_technique': parameter.measurement_technique,
+                'measurement_type': parameter.measurement_type,
                 'sample_size': parameter.sample_size,
                 'control_method': parameter.control_method,
             }
@@ -386,22 +409,13 @@ class RunChartReadingCreateView(APIView):
             lower = report.lower_limit
             upper = report.upper_limit
             nominal = report.nominal_value
-            if measured_value < lower or measured_value > upper:
-                zone = RunChartReading.Zone.RED
-            else:
-                measurement_type = getattr(report.parameter, 'measurement_type', '')
-                warning_band = (upper - lower) * Decimal('0.20')
-                if measurement_type == InspectionParameter.MeasurementType.MIN_LIMIT:
-                    warning_band = Decimal('0')
-                elif measurement_type == InspectionParameter.MeasurementType.MAX_LIMIT:
-                    warning_band = Decimal('0')
-                if warning_band > 0 and (
-                    measured_value <= lower + warning_band
-                    or measured_value >= upper - warning_band
-                ):
-                    zone = RunChartReading.Zone.YELLOW
-                else:
-                    zone = RunChartReading.Zone.GREEN
+            # The specification limits themselves are the start of the red
+            # zones.  Values outside the limits (or exactly on a limit) are
+            # therefore out of specification.
+            zone = classify_value(
+                measured_value, lower, nominal, upper,
+                getattr(report.parameter, 'measurement_type', 'dimensional'),
+            )
 
             reading = RunChartReading.objects.create(
                 report=report,
@@ -439,10 +453,36 @@ class RunChartPDFView(APIView):
         ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if report.readings.count() > 1000:
+            return Response({'error': 'This report is too large to export. Export it in smaller date or piece ranges.'}, status=413)
         pdf = generate_run_chart_pdf(report)
         safe_parameter = ''.join(c if c.isalnum() else '-' for c in report.parameter_name).strip('-')
         filename = f'RunChart_{report.machine.machine_code}_{safe_parameter}_{report.report_date}.pdf'
         return FileResponse(pdf, content_type='application/pdf', filename=filename)
+
+
+class RunChartExcelView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def get(self, request, report_id):
+        report = RunChartReport.objects.select_related(
+            'machine__plant__factory', 'part', 'template', 'parameter', 'operator'
+        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
+        if not report:
+            return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if report.readings.count() > 1000:
+            return Response({'error': 'This report is too large to export. Export it in smaller date or piece ranges.'}, status=413)
+        workbook = generate_run_chart_xlsx(report)
+        safe_parameter = ''.join(c if c.isalnum() else '-' for c in report.parameter_name).strip('-')
+        filename = f'RunChart_{report.machine.machine_code}_{safe_parameter}_{report.report_date}.xlsx'
+        return FileResponse(
+            workbook,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            filename=filename,
+        )
+
+
 def _valid_shifts_for_machine(machine):
     """Return the shifts supported by the machine's plant schedule."""
     shift_hours = 8
