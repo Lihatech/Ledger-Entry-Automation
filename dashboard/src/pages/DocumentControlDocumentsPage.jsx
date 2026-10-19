@@ -84,7 +84,8 @@ function UploadModal({ onClose, onSuccess, userRole }) {
     effective_date: today,
     reviewed_by: '',
     approved_by: '',
-    status: 'approved', // 'approved' = Active Master, 'under_review' = Send for Review
+    // Every newly uploaded document must go through review and approval.
+    status: 'under_review',
   });
   const [users, setUsers] = useState([]);
   const [file, setFile] = useState(null);
@@ -211,7 +212,8 @@ function UploadModal({ onClose, onSuccess, userRole }) {
       if (form.revision.trim()) fd.append('revision', form.revision.trim());
       if (form.revision_date) fd.append('revision_date', form.revision_date);
       if (form.effective_date) fd.append('effective_date', form.effective_date);
-      fd.append('status', form.status);
+      // Keep the new-document upload flow locked to the approval workflow.
+      fd.append('status', 'under_review');
       if (form.reviewed_by) fd.append('reviewed_by', form.reviewed_by);
       if (form.approved_by) fd.append('approved_by', form.approved_by);
       fd.append('allowed_role_slugs', JSON.stringify([])); // no role restriction — access managed per-user
@@ -385,135 +387,23 @@ function UploadModal({ onClose, onSuccess, userRole }) {
 
           {/* ── Release Workflow Status ── */}
           <div style={{
-            background: '#f8fafc', border: `1px solid ${isReview ? '#c7d2fe' : '#e2e8f0'}`,
-            borderRadius: '12px', padding: '14px 16px', marginBottom: '14px',
-            transition: 'border-color 0.2s ease'
+            background: '#fefce8', border: '1px solid #f59e0b',
+            borderRadius: '12px', padding: '14px 16px', marginBottom: '14px'
           }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '10px' }}>
-              Release Workflow Status
+              Release Workflow
             </label>
-
-            {/* 1. Active Master Card */}
-            <div
-              onClick={() => setForm(p => ({ ...p, status: 'approved' }))}
-              style={{
-                padding: '12px 14px', borderRadius: '10px', marginBottom: '10px',
-                background: !isReview ? '#f0f4ff' : '#fff',
-                border: `1.5px solid ${!isReview ? '#6366f1' : '#e2e8f0'}`,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: !isReview ? '0 2px 8px rgba(99,102,241,0.08)' : 'none'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <input
-                  type="radio"
-                  name="doc_status"
-                  value="approved"
-                  checked={!isReview}
-                  onChange={() => setForm(p => ({ ...p, status: 'approved' }))}
-                  style={{ accentColor: '#4f46e5', marginTop: '3px', cursor: 'pointer' }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Active Master</span>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>(Already approved procedure)</span>
-                  </div>
-                  {!isReview && (
-                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#4f46e5', fontWeight: 500 }}>
-                      Document will be immediately registered and active in the Document Library.
-                    </p>
-                  )}
-                </div>
+            <div style={{ flex: 1, marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>
+                  New Document — Send for Review and Approval
+                </span>
               </div>
-
-              {/* Nested Reviewer & Approver for Active Master */}
-              {!isReview && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  style={{
-                    marginTop: '12px', padding: '12px 14px',
-                    background: '#fff', border: '1px solid #c7d2fe', borderRadius: '8px',
-                    animation: 'fadeIn 0.2s ease'
-                  }}
-                >
-                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#4338ca', fontWeight: 600 }}>
-                    Select Reviewer and Approver for this active master (both will be notified via email & bell):
-                  </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                        Reviewer <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                      </label>
-                      <Select
-                        value={userSelectOptions.find(opt => String(opt.value) === String(form.reviewed_by)) || null}
-                        onChange={(selected) => setForm(p => ({ ...p, reviewed_by: selected ? selected.value : '' }))}
-                        options={userSelectOptions}
-                        filterOption={customFilterOption}
-                        placeholder="Search reviewer by name, username..."
-                        isClearable
-                        isSearchable
-                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                        styles={makeSelectStyles(false)}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: '12px', fontWeight: '700', color: '#374151', marginBottom: '4px' }}>
-                        Approver <span style={{ color: '#94a3b8', fontWeight: 400 }}>(Optional)</span>
-                      </label>
-                      <Select
-                        value={userSelectOptions.find(opt => String(opt.value) === String(form.approved_by)) || null}
-                        onChange={(selected) => setForm(p => ({ ...p, approved_by: selected ? selected.value : '' }))}
-                        options={userSelectOptions}
-                        filterOption={customFilterOption}
-                        placeholder="Search approver by name, username..."
-                        isClearable
-                        isSearchable
-                        menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
-                        styles={makeSelectStyles(false)}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#92400e', fontWeight: 500 }}>
+                The document will be reviewed and approved before it becomes active in the Document Library.
+              </p>
             </div>
-
-            {/* 2. Send for Review & Approval Card */}
-            <div
-              onClick={() => setForm(p => ({ ...p, status: 'under_review' }))}
-              style={{
-                padding: '12px 14px', borderRadius: '10px',
-                background: isReview ? '#fefce8' : '#fff',
-                border: `1.5px solid ${isReview ? '#f59e0b' : '#e2e8f0'}`,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: isReview ? '0 2px 8px rgba(245,158,11,0.08)' : 'none'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                <input
-                  type="radio"
-                  name="doc_status"
-                  value="under_review"
-                  checked={isReview}
-                  onChange={() => setForm(p => ({ ...p, status: 'under_review' }))}
-                  style={{ accentColor: '#4f46e5', marginTop: '3px', cursor: 'pointer' }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontWeight: '700', fontSize: '13px', color: '#1e293b' }}>Send for Review & Approval</span>
-                    <span style={{ fontSize: '11px', color: '#64748b' }}>(Triggers notifications)</span>
-                  </div>
-                  {isReview && (
-                    <p style={{ margin: '3px 0 0', fontSize: '11px', color: '#92400e', fontWeight: 500 }}>
-                      Assigned Reviewer will be notified via email and in-app bell to review and recommend.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Nested Reviewer & Approver for Review & Approval */}
-              {isReview && (
+            {isReview && (
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
@@ -561,7 +451,6 @@ function UploadModal({ onClose, onSuccess, userRole }) {
                   </div>
                 </div>
               )}
-            </div>
           </div>
 
           {/* ── Scope / Notes (Optional) ── */}
