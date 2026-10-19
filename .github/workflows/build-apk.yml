@@ -67,7 +67,7 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile
-        run: flutter build apk --release --dart-define=API_BASE_URL=https://ledger-entry-automation-production-24a1.up.railway.app/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
+        run: flutter build apk --release --dart-define=API_BASE_URL=https://backend-production-d87b.up.railway.app/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
 
       - name: Copy APK to repo root
         run: cp mobile/build/app/outputs/flutter-apk/app-release.apk Inspection_Hub.apk
