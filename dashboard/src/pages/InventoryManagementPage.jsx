@@ -415,7 +415,6 @@ export default function InventoryManagementPage() {
       <style>{`.page-content table tbody > tr > td:last-child > button:not(:first-of-type) { display: none; }`}</style>
       <Header
         title="Inventory Management"
-        subtitle="Client job-work parts and workshop quantities"
       />
       <div
         className="page-content bg-gradient-animated"

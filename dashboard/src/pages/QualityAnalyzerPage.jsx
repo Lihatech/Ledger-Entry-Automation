@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, FileSpreadsheet } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, FileSpreadsheet, LineChart } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { canOpenPath } from '../utils/access';
 
@@ -89,6 +89,22 @@ export default function QualityAnalyzerPage() {
       link: '/reports/oee',
       disabled: false,
     },
+    {
+      id: 'run-chart-reports',
+      title: 'Run Chart Reports',
+      badge: '● Completed Shift Reports',
+      badgeBg: '#DCFCE7',
+      badgeColor: '#166534',
+      icon: LineChart,
+      iconBg: '#ECFDF5',
+      iconColor: '#059669',
+      description:
+        'Review completed critical-parameter run charts with saved readings, machine, part, operation, operator, and shift details.',
+      details: ['Saved Graph Readings', 'Shift-Wise Archive', 'Red / Yellow / Green Zones'],
+      actionText: 'Open Run Chart Reports',
+      link: '/reports/run-chart',
+      disabled: false,
+    },
   ];
 
   const reportCards = allReportCards.filter((card) => canOpenPath(user, card.link));
@@ -97,7 +113,6 @@ export default function QualityAnalyzerPage() {
     <>
       <Header
         title="Reports"
-        subtitle="Select a report option below to access live station monitoring or historical quality inspection records"
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '24px' }}>

@@ -44,7 +44,6 @@ export default function DevelopmentModulePage() {
     <>
       <Header
         title="Development"
-        subtitle="Engineering Repository : CAD Drawings & Process Control Plans"
       />
 
       <div

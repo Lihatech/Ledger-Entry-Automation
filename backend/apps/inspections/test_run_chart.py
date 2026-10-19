@@ -150,6 +150,41 @@ class RunChartAPITests(APITestCase):
         self.assertEqual(skipped.status_code, 409)
         self.assertEqual(RunChartReading.objects.count(), 0)
 
+    def test_complete_closes_report_and_history_returns_saved_readings(self):
+        opened = self.client.post(
+            reverse('run-chart-open-report'),
+            {
+                'machine_id': self.machine.id,
+                'template_id': self.template.id,
+                'parameter_id': self.parameter.id,
+                'shift': 'I',
+            },
+            format='json',
+        )
+        report_id = opened.data['report_id']
+        reading = self.client.post(
+            reverse('run-chart-reading-create', kwargs={'report_id': report_id}),
+            {'piece_number': 1, 'measured_value': 20.000},
+            format='json',
+        )
+        self.assertEqual(reading.status_code, 201)
+
+        completed = self.client.post(
+            reverse('run-chart-complete', kwargs={'report_id': report_id}),
+            format='json',
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertEqual(completed.data['status'], RunChartReport.Status.CLOSED)
+        self.assertIsNotNone(RunChartReport.objects.get(pk=report_id).closed_at)
+
+        # Operators can still open their mobile detail, while the archive is
+        # intentionally filtered to completed reports.
+        detail = self.client.get(
+            reverse('run-chart-report-detail', kwargs={'report_id': report_id})
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(len(detail.data['readings']), 1)
+
     def test_pdf_download_contains_report(self):
         opened = self.client.post(
             reverse('run-chart-open-report'),

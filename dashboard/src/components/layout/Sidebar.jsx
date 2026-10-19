@@ -23,6 +23,8 @@ import {
   Package,
   MessageSquare,
   FolderOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
 const MODULES = [
@@ -126,7 +128,7 @@ const MODULES = [
   }
 ];
 
-export default function Sidebar({ pendingCount = 0 }) {
+export default function Sidebar({ pendingCount = 0, collapsed = false, onToggle }) {
   const { user, logout } = useAuth();
   const { logoUrl } = useCompany() || {};
   const navigate = useNavigate();
@@ -169,7 +171,7 @@ export default function Sidebar({ pendingCount = 0 }) {
     }));
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
       {/* Brand Logo -> Open Company Details Modal (Popup Only, No Navigation) */}
       <button
         type="button"
@@ -223,17 +225,18 @@ export default function Sidebar({ pendingCount = 0 }) {
             const isChildActive = module.items && module.items.some((item) => item.to === location.pathname);
             const isMasterParamActive = module.key === 'master_database' && location.pathname.startsWith('/parameters');
             const isProductionActive = module.key === 'production_old' && location.pathname.startsWith('/production');
-            const isQAActive = module.key === 'quality_analyzer' && (location.pathname.startsWith('/machines') || location.pathname.startsWith('/analytics') || location.pathname.startsWith('/calibration') || location.pathname.startsWith('/reports/setup-approval') || location.pathname.startsWith('/reports/oee'));
+            const isQAActive = module.key === 'quality_analyzer' && (location.pathname.startsWith('/machines') || location.pathname.startsWith('/analytics') || location.pathname.startsWith('/calibration') || location.pathname.startsWith('/reports/setup-approval') || location.pathname.startsWith('/reports/run-chart') || location.pathname.startsWith('/reports/oee'));
             return (
               <div key={module.key} className="sidebar-module">
                 <NavLink
                   to={module.to}
+                  title={module.label}
                   className={({ isActive }) => `nav-item${isActive || isChildActive || isMasterParamActive || isProductionActive || isQAActive ? ' active' : ''}`}
                 >
                   <span className="module-icon">
                     <ModuleIcon size={16} />
                   </span>
-                  <span>{module.label}</span>
+                  <span className="module-label">{module.label}</span>
                 </NavLink>
               </div>
             );
@@ -246,6 +249,7 @@ export default function Sidebar({ pendingCount = 0 }) {
             <div key={module.key} className={`sidebar-module${hasActiveChild ? ' has-active' : ''}`}>
               <button
                 type="button"
+                title={module.label}
                 className={`sidebar-module-header${isExpanded ? ' expanded' : ''}`}
                 onClick={() => toggleModule(module.key)}
               >
@@ -267,11 +271,12 @@ export default function Sidebar({ pendingCount = 0 }) {
                         <NavLink
                           key={item.to}
                           to={item.to}
+                          title={item.label}
                           end={item.to === '/'}
                           className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
                         >
-                          {ItemIcon && <ItemIcon size={16} />}
-                          <span style={{ flex: 1 }}>{item.label}</span>
+                          {ItemIcon && <span className="module-icon"><ItemIcon size={16} /></span>}
+                          <span className="module-label" style={{ flex: 1 }}>{item.label}</span>
                           {item.badgeKey === 'pending' && pendingCount > 0 && (
                             <span className="nav-badge">{pendingCount}</span>
                           )}
@@ -291,6 +296,17 @@ export default function Sidebar({ pendingCount = 0 }) {
           );
         })}
       </nav>
+
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={onToggle}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+        <span className="module-label">{collapsed ? 'Expand navigation' : 'Collapse navigation'}</span>
+      </button>
 
       {/* User footer */}
       <div className="sidebar-footer">

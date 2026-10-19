@@ -11,6 +11,7 @@ import InspectionsPage from './pages/InspectionsPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ReportsHubPage from './pages/ReportsHubPage';
 import SetupApprovalReportsPage from './pages/SetupApprovalReportsPage';
+import RunChartReportsPage from './pages/RunChartReportsPage';
 import DailyProductionReportsPage from './pages/DailyProductionReportsPage';
 import DowntimeReportsPage from './pages/DowntimeReportsPage';
 import ProductionModulePage from './pages/ProductionModulePage';
@@ -53,14 +54,28 @@ const CalibrationPage = lazy(() => import('./pages/CalibrationPage'));
 function ProtectedLayout({ children, pendingCount }) {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 1100
+  );
+
+  useEffect(() => {
+    const updateSidebarMode = () => setSidebarCollapsed(window.innerWidth < 1100);
+    window.addEventListener('resize', updateSidebarMode);
+    updateSidebarMode();
+    return () => window.removeEventListener('resize', updateSidebarMode);
+  }, []);
 
   if (loading) return <LoadingSpinner message="Checking authentication..." />;
   if (!user) return <Navigate to="/login" replace />;
   if (!canOpenPath(user, location.pathname)) return <Navigate to="/" replace />;
 
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => !current);
+  };
+
   const layout = (
-    <div className="app-layout">
-      <Sidebar pendingCount={pendingCount} />
+    <div className={`app-layout${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <Sidebar pendingCount={pendingCount} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
       <main className="main-content">
         <Suspense fallback={<LoadingSpinner message="Loading module..." />}>
           {children}
@@ -157,6 +172,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <SetupApprovalReportsPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/reports/run-chart"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <RunChartReportsPage />
           </ProtectedLayout>
         }
       />

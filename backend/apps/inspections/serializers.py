@@ -15,7 +15,7 @@ class StartInspectionSerializer(serializers.Serializer):
     machine_id        = serializers.IntegerField()
     template_id       = serializers.IntegerField(required=False)
     inspection_type   = serializers.CharField(required=False, default='first_piece')
-    shift             = serializers.ChoiceField(choices=['A', 'B', 'C', 'I', 'II', 'III'], default='A')
+    shift             = serializers.ChoiceField(choices=['A', 'B', 'C', 'I', 'II', 'III'], required=False, allow_null=True, default=None)
     trial_number      = serializers.IntegerField(required=False, default=1)
     hourly_slot       = serializers.IntegerField(required=False, default=1)
     parent_session_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
@@ -216,7 +216,10 @@ class DailyProductionReportSerializer(serializers.ModelSerializer):
             'achievement_percentage', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'report_id', 'achievement_percentage', 'created_at', 'updated_at']
-        extra_kwargs = {'operator': {'required': False, 'allow_null': True}}
+        extra_kwargs = {
+            'operator': {'required': False, 'allow_null': True},
+            'date': {'required': False, 'allow_null': True},
+        }
 
     def get_operator_name(self, obj):
         if obj.operator:
@@ -448,8 +451,8 @@ class JHSubmitItemResultInputSerializer(serializers.Serializer):
 
 class JHInspectionSubmitSerializer(serializers.Serializer):
     machine_id = serializers.IntegerField()
-    date = serializers.DateField()
-    shift = serializers.ChoiceField(choices=['I', 'II', 'III'])
+    date = serializers.DateField(required=False, allow_null=True)
+    shift = serializers.ChoiceField(choices=['I', 'II', 'III'], required=False, allow_null=True)
     overall_remarks = serializers.CharField(required=False, allow_blank=True, default='')
     results = JHSubmitItemResultInputSerializer(many=True)
 

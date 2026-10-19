@@ -96,7 +96,6 @@ export default function DocumentControlPage() {
     <>
       <Header
         title="Document Control Management"
-        subtitle="ISO 9001 / IATF 16949 compliant document hierarchy, direct viewer, and Form DKI/MR/F/05 workflow"
       />
 
       <div className="page-content bg-gradient-animated">
