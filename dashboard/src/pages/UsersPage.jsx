@@ -462,7 +462,6 @@ export default function UsersPage() {
 
       <Header
         title="User & Account Management"
-        subtitle="Manage accounts for Supervisors, Quality Inspectors, Calibrators, and Machine Operators"
       />
 
       <div className="page-content bg-gradient-animated">

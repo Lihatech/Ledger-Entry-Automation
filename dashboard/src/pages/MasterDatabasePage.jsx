@@ -80,7 +80,6 @@ export default function MasterDatabasePage() {
     <>
       <Header
         title="Master Database"
-        subtitle="Master Data Management : Central repository for inspection parameters, nominal dimensions, tolerances, and quality standards"
       />
 
       <div

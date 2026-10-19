@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Activity, CheckCircle2, BarChart3, Clock } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Activity, CheckCircle2, BarChart3, Clock, LineChart } from 'lucide-react';
 
 export default function ReportsHubPage() {
   const navigate = useNavigate();
@@ -52,6 +52,21 @@ export default function ReportsHubPage() {
       details: ['Official Setup Approval PDF Exports', 'Product & Process Parameter Logs', 'Date, Machine & Part Archive'],
       actionText: 'Open Setup Approval Reports',
       link: '/reports/setup-approval',
+      disabled: false,
+    },
+    {
+      id: 'run-chart-reports',
+      title: 'Run Chart Reports',
+      badge: '● Completed Shift Reports',
+      badgeBg: '#DCFCE7',
+      badgeColor: '#166534',
+      icon: LineChart,
+      iconBg: '#ECFDF5',
+      iconColor: '#059669',
+      description: 'Review completed critical-parameter run charts with saved readings, machine, part, operation, operator and shift details.',
+      details: ['Saved Graph Readings', 'Shift-Wise Archive', 'Red / Yellow / Green Zones'],
+      actionText: 'Open Run Chart Reports',
+      link: '/reports/run-chart',
       disabled: false,
     },
   ];

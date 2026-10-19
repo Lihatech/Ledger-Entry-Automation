@@ -643,7 +643,7 @@ export default function TasksPage() {
 
   return (
     <div className="page-container">
-      <Header title="Tasks Management" subtitle="Allocate and track operational tasks" />
+      <Header title="Tasks Management" />
       
       <div className="page-content" style={{ padding: '24px' }}>
         <Breadcrumbs items={[{ label: 'Tasks' }]} />

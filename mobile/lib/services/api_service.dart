@@ -24,11 +24,8 @@ class ApiService {
     const envUrl = String.fromEnvironment('API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
     if (kDebugMode) {
-      // kIsWeb guards Platform.isAndroid — dart:io Platform is unsupported on web.
-      if (kIsWeb) return 'http://localhost:8000/api';
-      return Platform.isAndroid
-          ? 'http://10.0.2.2:8000/api'
-          : 'http://localhost:8000/api';
+      // Defaults to localhost:8000 (compatible with `adb reverse tcp:8000 tcp:8000` for physical devices, web, and desktop)
+      return 'http://localhost:8000/api';
     }
     return 'https://ledger-entry-automation-production-24a1.up.railway.app/api';
   }
@@ -729,6 +726,27 @@ class ApiService {
     );
   }
 
+  static Future<Map<String, dynamic>> completeRunChart(String reportId) async {
+    final response = await authenticatedRequest(
+      (headers) => http
+          .post(
+            Uri.parse('$baseUrl/inspections/run-chart/reports/$reportId/complete/'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded is Map) {
+      return Map<String, dynamic>.from(decoded);
+    }
+    throw Exception(
+      decoded is Map
+          ? decoded['error'] ?? 'Unable to complete run chart.'
+          : 'Unable to complete run chart.',
+    );
+  }
+
   static Future<String?> downloadRunChartExcel(
     String reportId, {
     required String machineCode,
@@ -755,19 +773,27 @@ class ApiService {
         ).firstMatch(disposition)?.group(1);
       }
       filename ??=
-          'RunChart_${machineCode}_${parameterName}_${DateTime.now().toIso8601String().substring(0, 10)}.xlsx';
+          'RunChart_${machineCode}_${parameterName}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf';
       filename = filename.replaceAll(RegExp(r'[^a-zA-Z0-9_.-]'), '_');
 
       if (kIsWeb) {
         await FileSaver.instance.saveFile(
-          name: filename.replaceAll('.xlsx', ''),
+          name: filename.replaceAll('.pdf', ''),
           bytes: response.bodyBytes,
-          ext: 'xlsx',
-          mimeType: MimeType.microsoftExcel,
+          ext: 'pdf',
+          mimeType: MimeType.pdf,
         );
         return 'web_downloaded';
       }
-      final dir = await getApplicationDocumentsDirectory();
+      // Save outside the app-private directory so Android Files can show it
+      // in Downloads. Fall back only when the platform does not expose it.
+      Directory dir;
+      try {
+        dir = await getDownloadsDirectory() ??
+            await getApplicationDocumentsDirectory();
+      } catch (_) {
+        dir = await getApplicationDocumentsDirectory();
+      }
       final file = File('${dir.path}/$filename');
       await file.writeAsBytes(response.bodyBytes);
       return file.path;

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
@@ -221,7 +222,7 @@ class _RunChartScreenState extends State<RunChartScreen> {
     final heading = machineStep
         ? '100% critical inspection'
         : operationStep
-        ? 'Machine Code and Name'
+        ? '${_machine!['machine_code']} · ${_machine!['name']}'
         : '${_operation!['name']} · ${_operation!['part_number']}';
     final help = machineStep
         ? 'Choose a Machine for recording a critical parameters'
@@ -303,6 +304,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
   final _valueController = TextEditingController();
   final _focusNode = FocusNode();
   bool _saving = false;
+  bool _completing = false;
   bool _downloading = false;
   String? _error;
   late String _submissionKey;
@@ -439,6 +441,43 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
             : const Color(0xFF059669),
       ),
     );
+    if (path != null && path != 'web_downloaded') {
+      await OpenFilex.open(path);
+    }
+  }
+
+  Future<void> _complete() async {
+    if (_completing || _readings.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Complete run chart?'),
+        content: const Text(
+          'This closes the current shift report. Its readings and graph will be available in the web Reports archive.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCEL')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('COMPLETE')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _completing = true);
+    try {
+      final completed = await ApiService.completeRunChart(_report['report_id'].toString());
+      if (!mounted) return;
+      setState(() => _report = completed);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Run chart completed and saved.')),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => _completing = false);
+    }
   }
 
   void _openFullscreen() {
@@ -456,6 +495,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
     final unit = _report['unit']?.toString() ?? '';
     final nextPiece = _report['next_piece_number'];
     final readings = _readings;
+    final isClosed = _report['status']?.toString() == 'closed';
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -502,7 +542,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
             const SizedBox(height: 12),
             _chartCard(readings),
             const SizedBox(height: 12),
-            Container(
+            if (!isClosed) Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -585,6 +625,37 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
                 ],
               ),
             ),
+            if (isClosed) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFECFDF5),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF86EFAC)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Color(0xFF059669)),
+                    SizedBox(width: 10),
+                    Expanded(child: Text('Completed run chart. This report is now available in the web Reports archive.')),
+                  ],
+                ),
+              ),
+            ] else if (readings.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: _completing ? null : _complete,
+                  icon: _completing
+                      ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.check_circle_outline_rounded),
+                  label: Text(_completing ? 'COMPLETING...' : 'COMPLETE RUN CHART'),
+                ),
+              ),
+            ],
             if (readings.isNotEmpty) ...[
               const SizedBox(height: 14),
               const Text(

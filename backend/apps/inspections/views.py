@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 
 from apps.parts.models import Part, InspectionTemplate, InspectionParameter
 from apps.machines.models import Machine
+from apps.machines.utils import (
+    get_shift_configuration,
+    get_valid_shifts,
+    resolve_shift_context,
+)
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from django.conf import settings
@@ -136,6 +141,19 @@ def _run_chart_machine_queryset(request):
     return qs
 
 
+def _run_chart_history_queryset(request):
+    """Return reports belonging to the signed-in user's plant.
+
+    History deliberately does not require the machine to remain active. A
+    completed report is an immutable quality record and must remain visible
+    after a machine is retired or deactivated.
+    """
+    plant_id = getattr(request.user, 'plant_id', None)
+    if not plant_id:
+        return RunChartReport.objects.none()
+    return RunChartReport.objects.filter(machine__plant_id=plant_id)
+
+
 def _run_chart_template_queryset(request):
     qs = InspectionTemplate.objects.filter(
         part__is_active=True,
@@ -152,16 +170,12 @@ def _run_chart_template_queryset(request):
 
 
 def _run_chart_shift(request, machine, requested=None):
-    _, valid_shifts = _valid_shifts_for_machine(machine)
-    assigned = str(getattr(request.user, 'assigned_shift', '') or '').upper()
-    shift = str(requested or assigned or '').upper()
-    if assigned != 'ALL' and assigned and shift != assigned:
-        return None, 'The submitted shift does not match your assigned shift.'
-    if shift == 'ALL' or not shift:
-        return None, 'Select the actual working shift before opening a run chart.'
-    if shift not in valid_shifts:
-        return None, f'Shift {shift} is not available for this plant schedule.'
-    return shift, None
+    context = resolve_shift_context(
+        requested_shift=requested,
+        assigned_shift=getattr(request.user, 'assigned_shift', ''),
+        machine=machine,
+    )
+    return context['shift'], context['production_date'], context['error']
 
 
 class RunChartOperationsView(APIView):
@@ -270,7 +284,7 @@ class RunChartOpenReportView(APIView):
         machine = _run_chart_machine_queryset(request).filter(pk=machine_id).first()
         if not machine:
             return Response({'error': 'Machine not found or inactive.'}, status=status.HTTP_404_NOT_FOUND)
-        shift, shift_error = _run_chart_shift(request, machine, request.data.get('shift'))
+        shift, production_date, shift_error = _run_chart_shift(request, machine, request.data.get('shift'))
         if shift_error:
             return Response({'error': shift_error}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -305,7 +319,7 @@ class RunChartOpenReportView(APIView):
                 machine_id=machine_id,
                 template_id=template_id,
                 parameter=parameter,
-                report_date=timezone.localdate(),
+                report_date=production_date,
                 shift=shift,
                 defaults=defaults,
             )
@@ -314,7 +328,7 @@ class RunChartOpenReportView(APIView):
                 machine_id=machine_id,
                 template_id=template_id,
                 parameter=parameter,
-                report_date=timezone.localdate(),
+                report_date=production_date,
                 shift=shift,
             )
         report = RunChartReport.objects.select_related(
@@ -324,15 +338,90 @@ class RunChartOpenReportView(APIView):
 
 
 class RunChartReportDetailView(APIView):
-    permission_classes = [MobileInspectionAccess]
-    access_key = 'quality.inspections.record'
+    permission_classes = [HasAccess]
+    access_key = {
+        'GET': ('quality.inspections.record', 'quality.reports.view'),
+    }
 
     def get(self, request, report_id):
         report = RunChartReport.objects.select_related(
             'machine', 'part', 'template', 'parameter', 'operator'
-        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
+        ).filter(
+            pk=report_id,
+            machine__plant_id=getattr(request.user, 'plant_id', None),
+        ).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_run_chart_report_data(report))
+
+
+class RunChartReportHistoryView(APIView):
+    """Completed run-chart archive for the dashboard Reports module."""
+
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
+
+    def get(self, request):
+        reports = _run_chart_history_queryset(request).select_related(
+            'machine', 'part', 'template', 'parameter', 'operator'
+        ).filter(status=RunChartReport.Status.CLOSED)
+
+        for field, lookup in (
+            ('from_date', 'report_date__gte'),
+            ('to_date', 'report_date__lte'),
+        ):
+            value = request.query_params.get(field)
+            if value:
+                reports = reports.filter(**{lookup: value})
+        for field in ('shift', 'machine_id', 'part_id', 'template_id', 'operator_id'):
+            value = request.query_params.get(field)
+            if value:
+                reports = reports.filter(**{field: value})
+        search = request.query_params.get('search')
+        if search:
+            reports = reports.filter(
+                Q(machine__machine_code__icontains=search)
+                | Q(machine__name__icontains=search)
+                | Q(part__part_number__icontains=search)
+                | Q(part__part_name__icontains=search)
+                | Q(template__name__icontains=search)
+                | Q(parameter_name__icontains=search)
+                | Q(operator__username__icontains=search)
+            )
+
+        payload = []
+        for report in reports.order_by('-report_date', '-closed_at', '-started_at')[:500]:
+            item = _run_chart_report_data(report, include_readings=False)
+            item['reading_count'] = report.readings.count()
+            item['closed_at'] = report.closed_at.isoformat() if report.closed_at else None
+            payload.append(item)
+        return Response(payload)
+
+
+class RunChartCompleteView(APIView):
+    permission_classes = [MobileInspectionAccess]
+    access_key = 'quality.inspections.record'
+
+    def post(self, request, report_id):
+        with transaction.atomic():
+            report = RunChartReport.objects.select_for_update().select_related(
+                'machine', 'part', 'template', 'parameter', 'operator'
+            ).filter(
+                pk=report_id,
+                machine__in=_run_chart_machine_queryset(request),
+            ).first()
+            if not report:
+                return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
+            if report.status == RunChartReport.Status.CLOSED:
+                return Response(_run_chart_report_data(report))
+            if not report.readings.exists():
+                return Response(
+                    {'error': 'Record at least one reading before completing the run chart.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            report.status = RunChartReport.Status.CLOSED
+            report.closed_at = timezone.now()
+            report.save(update_fields=['status', 'closed_at'])
         return Response(_run_chart_report_data(report))
 
 
@@ -361,7 +450,6 @@ class RunChartReadingCreateView(APIView):
                 pk=report_id,
                 status=RunChartReport.Status.ACTIVE,
                 machine__in=_run_chart_machine_queryset(request),
-                report_date=timezone.localdate(),
             ).first()
             if not report:
                 return Response({'error': 'Active run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -444,13 +532,15 @@ class RunChartReadingCreateView(APIView):
 
 
 class RunChartPDFView(APIView):
-    permission_classes = [MobileInspectionAccess]
-    access_key = 'quality.inspections.record'
+    permission_classes = [HasAccess]
+    access_key = {
+        'GET': ('quality.inspections.record', 'quality.reports.view'),
+    }
 
     def get(self, request, report_id):
         report = RunChartReport.objects.select_related(
             'machine', 'part', 'template', 'parameter', 'operator'
-        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
+        ).filter(pk=report_id, machine__plant_id=getattr(request.user, 'plant_id', None)).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
         if report.readings.count() > 1000:
@@ -462,13 +552,15 @@ class RunChartPDFView(APIView):
 
 
 class RunChartExcelView(APIView):
-    permission_classes = [MobileInspectionAccess]
-    access_key = 'quality.inspections.record'
+    permission_classes = [HasAccess]
+    access_key = {
+        'GET': ('quality.inspections.record', 'quality.reports.view'),
+    }
 
     def get(self, request, report_id):
         report = RunChartReport.objects.select_related(
             'machine__plant__factory', 'part', 'template', 'parameter', 'operator'
-        ).filter(pk=report_id, machine__in=_run_chart_machine_queryset(request)).first()
+        ).filter(pk=report_id, machine__plant_id=getattr(request.user, 'plant_id', None)).first()
         if not report:
             return Response({'error': 'Run chart not found.'}, status=status.HTTP_404_NOT_FOUND)
         if report.readings.count() > 1000:
@@ -485,15 +577,8 @@ class RunChartExcelView(APIView):
 
 def _valid_shifts_for_machine(machine):
     """Return the shifts supported by the machine's plant schedule."""
-    shift_hours = 8
-    if machine.plant and machine.plant.shift_duration_hours:
-        shift_hours = machine.plant.shift_duration_hours
-    elif machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
-        shift_hours = machine.plant.factory.shift_hours
-    shifts = {'I', 'II'}
-    if shift_hours == 8:
-        shifts.add('III')
-    return shift_hours, shifts
+    config = get_shift_configuration(machine=machine)
+    return config['shift_hours'], get_valid_shifts(machine=machine)
 
 
 # ─── Start Inspection ─────────────────────────────────────────────────────
@@ -543,25 +628,16 @@ class StartInspectionView(APIView):
 
         try:
             # Determine effective shift based on user's assigned_shift
-            requested_shift = d.get('shift') or 'I'
-            if requested_shift in ('A', 'B', 'C'):
-                shift_alias_map = {'A': 'I', 'B': 'II', 'C': 'III'}
-                requested_shift = shift_alias_map.get(requested_shift, 'I')
-
-            # If user has an assigned shift other than ALL, enforce it
-            user_shift = getattr(request.user, 'assigned_shift', 'ALL')
-            if user_shift and user_shift != 'ALL':
-                effective_shift = user_shift
-            else:
-                effective_shift = requested_shift
-
+            context = resolve_shift_context(
+                requested_shift=d.get('shift'),
+                assigned_shift=getattr(request.user, 'assigned_shift', 'ALL'),
+                machine=machine,
+            )
+            effective_shift = context['shift']
             shift_hours, valid_shifts = _valid_shifts_for_machine(machine)
-            if effective_shift not in valid_shifts:
+            if context['error']:
                 return Response(
-                    {
-                        'error': f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.',
-                        'available_shifts': sorted(valid_shifts),
-                    },
+                    {'error': context['error'], 'available_shifts': sorted(valid_shifts)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1655,24 +1731,24 @@ class DailyProductionReportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Set operator to current user if not explicitly passed
         operator = serializer.validated_data.get('operator') or self.request.user
-        submitted_shift = serializer.validated_data.get('shift') or 'I'
-        if submitted_shift in ('A', 'B', 'C'):
-            submitted_shift = {'A': 'I', 'B': 'II', 'C': 'III'}.get(submitted_shift, 'I')
-
-        # If operator has an assigned shift other than ALL, enforce it
-        user_shift = getattr(operator, 'assigned_shift', 'ALL')
-        if user_shift and user_shift != 'ALL':
-            effective_shift = user_shift
-        else:
-            effective_shift = submitted_shift
-
-        shift_hours, valid_shifts = _valid_shifts_for_machine(serializer.validated_data['machine'])
-        if effective_shift not in valid_shifts:
+        machine = serializer.validated_data['machine']
+        context = resolve_shift_context(
+            requested_shift=serializer.validated_data.get('shift'),
+            assigned_shift=getattr(operator, 'assigned_shift', 'ALL'),
+            machine=machine,
+        )
+        effective_shift = context['shift']
+        shift_hours, valid_shifts = _valid_shifts_for_machine(machine)
+        if context['error']:
             raise DRFValidationError({
-                'shift': [f'Shift {effective_shift} is not valid for this {shift_hours}-hour schedule.'],
+                'shift': [context['error']],
             })
 
-        serializer.save(operator=operator, shift=effective_shift)
+        serializer.save(
+            operator=operator,
+            shift=effective_shift,
+            date=serializer.validated_data.get('date') or context['production_date'],
+        )
 
     def create(self, request, *args, **kwargs):
         """Return the original report when a client safely retries a submission."""
@@ -2254,8 +2330,8 @@ class JHInspectionSubmitView(APIView):
 
         data = serializer.validated_data
         machine_id = data['machine_id']
-        insp_date = data['date']
-        shift = data['shift']
+        insp_date = data.get('date')
+        requested_shift = data.get('shift')
         remarks = data.get('overall_remarks', '')
         results_data = data['results']
 
@@ -2263,18 +2339,15 @@ class JHInspectionSubmitView(APIView):
         if not machine:
             return Response({'error': f"Machine ID {machine_id} not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Validate shift for 12-hr vs 8-hr schedule
-        machine_shift_hours = 8
-        if machine.plant and machine.plant.shift_duration_hours:
-            machine_shift_hours = machine.plant.shift_duration_hours
-        elif machine.plant and machine.plant.factory and machine.plant.factory.shift_hours:
-            machine_shift_hours = machine.plant.factory.shift_hours
-
-        if machine_shift_hours == 12 and shift == 'III':
-            return Response(
-                {'error': "Shift III is not applicable for 12-hour schedule machines (only Shift I and Shift II allowed)."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        context = resolve_shift_context(
+            requested_shift=requested_shift,
+            assigned_shift=getattr(request.user, 'assigned_shift', 'ALL'),
+            machine=machine,
+        )
+        if context['error']:
+            return Response({'error': context['error']}, status=status.HTTP_400_BAD_REQUEST)
+        shift = context['shift']
+        insp_date = insp_date or context['production_date']
 
         if not request.user.has_access('production.jh.submit'):
             return Response(

@@ -40,6 +40,7 @@ export function canOpenPath(user, path) {
     ['/production', ['production.daily.view', 'production.downtime.view', 'production.jh.view']],
     ['/reports/oee', ['quality.analytics.view']],
     ['/reports/setup-approval', ['quality.setup.view']],
+    ['/reports/run-chart', ['quality.reports.view']],
     ['/reports', ['quality.reports.view']],
     ['/calibration', ['calibration.view']],
     ['/quality-analyzer', ['quality.live.view', 'quality.reports.view', 'quality.setup.view', 'quality.analytics.view', 'calibration.view']],

@@ -71,7 +71,6 @@ export default function MessagesPage() {
     <>
       <Header
         title="Messages"
-        subtitle="Internal Team Communication & Real-time Direct Messaging"
         showLiveStatus={false}
       />
       <div className="messages-page" style={{ paddingTop: 'var(--header-height)', height: '100vh', boxSizing: 'border-box' }}>

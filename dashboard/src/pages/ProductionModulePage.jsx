@@ -61,7 +61,6 @@ export default function ProductionModulePage() {
     <>
       <Header
         title="Production Module"
-        subtitle="Operational Production Hub : End-of-day output logs, shift target tracking, and rejection analytics"
       />
 
       <div className="page-content bg-gradient-animated" style={{ padding: '28px', background: '#F8FAFC', minHeight: '100vh' }}>

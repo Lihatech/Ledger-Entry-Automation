@@ -235,9 +235,6 @@ export default function ProfilePage() {
                 })}
               >
                 <Building2 size={16} /> Company Details
-                <span className="badge badge-purple" style={{ fontSize: '0.68rem', padding: '2px 6px', marginLeft: 4 }}>
-                  EDIT
-                </span>
               </NavLink>
             </div>
           )}

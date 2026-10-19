@@ -1135,6 +1135,12 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
     final currentIndex = provider.currentParamIndex + 1;
     final paramName = param['parameter_name'] ?? 'Parameter $currentIndex';
     final rule = _getParameterRule(param);
+    final sampleInstruction = (param['sample_size'] ??
+            param['sample_frequency'] ??
+            param['sample'] ??
+            '')
+        .toString()
+        .trim();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -1315,6 +1321,52 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                             ),
                           ),
                         ],
+                      ),
+                    ],
+
+                    if (sampleInstruction.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFECFDF5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFFA7F3D0)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(
+                              Icons.rule_folder_rounded,
+                              color: Color(0xFF047857),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 7),
+                            Expanded(
+                              child: RichText(
+                                text: TextSpan(
+                                  style: const TextStyle(
+                                    color: Color(0xFF065F46),
+                                    fontSize: 12,
+                                  ),
+                                  children: [
+                                    const TextSpan(
+                                      text: 'Sample Size / Frequency: ',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    TextSpan(text: sampleInstruction),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
 
