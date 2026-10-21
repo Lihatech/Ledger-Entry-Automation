@@ -347,6 +347,13 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
       _focusNode.requestFocus();
       return;
     }
+    final zone = _zoneForValue(value);
+    final alert = _alertForValue(zone);
+    String? warningReason;
+    if (alert != null) {
+      warningReason = await _promptWarningReason(alert, value);
+      if (warningReason == null) return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -356,6 +363,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         reportId: _report['report_id'].toString(),
         measuredValue: value,
         pieceNumber: (_report['next_piece_number'] as num).toInt(),
+        warningReason: warningReason,
         idempotencyKey: _submissionKey,
       );
       final readings = List<dynamic>.from(_report['readings'] ?? const []);
@@ -367,8 +375,6 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         _valueController.clear();
         _submissionKey = _newSubmissionKey();
       });
-      final alert = result['alert']?.toString();
-      if (alert != null && mounted) await _showAlert(alert, result['reading']);
       _focusNode.requestFocus();
     } catch (e) {
       if (mounted) {
@@ -388,6 +394,101 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
   String _newSubmissionKey() =>
       '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1000000000)}';
 
+  String _zoneForValue(double value) {
+    final lower = (_report['lower_limit'] as num).toDouble();
+    final upper = (_report['upper_limit'] as num).toDouble();
+    final lowerWarning =
+        (_report['lower_warning_boundary'] as num?)?.toDouble() ??
+        (lower + (_report['nominal_value'] as num).toDouble()) / 2;
+    final upperWarning =
+        (_report['upper_warning_boundary'] as num?)?.toDouble() ??
+        ((_report['nominal_value'] as num).toDouble() + upper) / 2;
+    if (value <= lower || value >= upper) return 'red';
+    if (value <= lowerWarning || value >= upperWarning) return 'yellow';
+    return 'green';
+  }
+
+  String? _alertForValue(String zone) {
+    if (zone == 'red') return 'stop_process';
+    final recent = _readings.reversed.take(2).toList();
+    if (zone == 'yellow' &&
+        recent.length == 2 &&
+        recent.every((reading) => reading['zone']?.toString() == 'yellow')) {
+      return 'three_consecutive_yellow';
+    }
+    return null;
+  }
+
+  Future<String?> _promptWarningReason(String alert, double value) async {
+    final controller = TextEditingController();
+    String? validationError;
+    final reason = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final stop = alert == 'stop_process';
+          return AlertDialog(
+            icon: Icon(
+              stop ? Icons.report_rounded : Icons.warning_amber_rounded,
+              color: stop ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+              size: 42,
+            ),
+            title: Text(
+              stop ? 'STOP PROCESS' : 'PROCESS WARNING',
+              textAlign: TextAlign.center,
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    stop
+                        ? 'Piece value ${_number(value)} is outside the Master Database limits.'
+                        : 'This is the third consecutive yellow-zone reading.',
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: 'Reason *',
+                      hintText: 'Enter why this process condition occurred',
+                      errorText: validationError,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('CANCEL'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final text = controller.text.trim();
+                  if (text.isEmpty) {
+                    setDialogState(() => validationError = 'Reason is required.');
+                    return;
+                  }
+                  Navigator.pop(ctx, text);
+                },
+                child: const Text('SAVE REASON'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    controller.dispose();
+    return reason;
+  }
+
   Future<void> _showAlert(String alert, dynamic reading) async {
     final stop = alert == 'stop_process';
     await showDialog<void>(
@@ -406,7 +507,7 @@ class _RunChartEntryScreenState extends State<RunChartEntryScreen> {
         content: Text(
           stop
               ? 'Piece ${reading['piece_number']} is outside the Master Database limits. Inform the supervisor and correct the process before continuing.'
-              : 'Three of the latest five readings are in a yellow zone. Check the process and tool condition.',
+              : 'This is the third consecutive yellow-zone reading. Check the process and tool condition.',
           textAlign: TextAlign.center,
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -1283,6 +1384,75 @@ class _RunChartPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 1,
         );
+        final valueLabel = (readings[i]['measured_value'] as num?)
+                ?.toDouble()
+                .toStringAsFixed(3)
+                .replaceFirst(RegExp(r'0+$'), '')
+                .replaceFirst(RegExp(r'\.$'), '') ??
+            '';
+        if (valueLabel.isNotEmpty) {
+          final labelPainter = TextPainter(
+            text: TextSpan(
+              text: valueLabel,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 7,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: 170);
+          _text(
+            canvas,
+            valueLabel,
+            Offset(point.dx - labelPainter.width / 2, point.dy - labelPainter.height - 7),
+            Colors.black,
+            7,
+            bold: true,
+          );
+        }
+        final reason = readings[i]['warning_reason']?.toString().trim() ?? '';
+        if (reason.isNotEmpty) {
+          final shortReason = reason.length > 24
+              ? '${reason.substring(0, 21)}...'
+              : reason;
+          final reasonPainter = TextPainter(
+            text: TextSpan(
+              text: shortReason,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 6.5,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout(maxWidth: 170);
+          final reasonRect = Rect.fromLTWH(
+            point.dx + 7,
+            point.dy + 5,
+            reasonPainter.width + 8,
+            reasonPainter.height + 4,
+          );
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(reasonRect, const Radius.circular(3)),
+            Paint()..color = Colors.white,
+          );
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(reasonRect, const Radius.circular(3)),
+            Paint()
+              ..color = Colors.black54
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = .6,
+          );
+          _text(
+            canvas,
+            shortReason,
+            Offset(reasonRect.left + 4, reasonRect.top + 2),
+            Colors.black,
+            6.5,
+            bold: true,
+          );
+        }
       }
     }
 

@@ -185,6 +185,22 @@ def generate_run_chart_pdf(report):
             pdf.setStrokeColor(colors.HexColor(zone_color))
             pdf.setFillColor(colors.white)
             pdf.circle(px, py, 2.8, stroke=1, fill=1)
+            value_label = f'{float(reading.measured_value):g}'
+            pdf.setFillColor(colors.HexColor('#111827'))
+            pdf.setFont('Helvetica-Bold', 5.5)
+            value_width = pdf.stringWidth(value_label, 'Helvetica-Bold', 5.5)
+            pdf.drawString(px - value_width / 2, py + 6, value_label)
+            reason = str(getattr(reading, 'warning_reason', '') or '').strip()
+            if reason:
+                short_reason = reason if len(reason) <= 28 else f'{reason[:25]}...'
+                label_width = min(150, max(30, len(short_reason) * 3.1 + 8))
+                pdf.setFillColor(colors.white)
+                pdf.setStrokeColor(colors.HexColor('#475569'))
+                pdf.setLineWidth(0.35)
+                pdf.roundRect(px + 3, py - 11, label_width, 9, 2, stroke=1, fill=1)
+                pdf.setFillColor(colors.HexColor('#111827'))
+                pdf.setFont('Helvetica-Bold', 5.5)
+                pdf.drawString(px + 7, py - 8, short_reason)
             previous_x, previous_y = px, py
 
         # Zone labels and job-number row match the supplied official template.

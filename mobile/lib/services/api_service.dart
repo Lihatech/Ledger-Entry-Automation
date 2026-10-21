@@ -698,6 +698,7 @@ class ApiService {
     required String reportId,
     required double measuredValue,
     required int pieceNumber,
+    String? warningReason,
     String? idempotencyKey,
   }) async {
     final response = await authenticatedRequest(
@@ -710,6 +711,8 @@ class ApiService {
             body: jsonEncode({
               'measured_value': measuredValue,
               'piece_number': pieceNumber,
+              if (warningReason != null && warningReason.trim().isNotEmpty)
+                'warning_reason': warningReason.trim(),
               if (idempotencyKey != null) 'idempotency_key': idempotencyKey,
             }),
           )

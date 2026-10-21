@@ -77,6 +77,7 @@ def _run_chart_reading_data(reading):
         'measured_value': float(reading.measured_value),
         'deviation': float(reading.deviation),
         'zone': reading.zone,
+        'warning_reason': reading.warning_reason,
         'recorded_at': reading.recorded_at.isoformat(),
     }
 
@@ -431,6 +432,7 @@ class RunChartReadingCreateView(APIView):
 
     def post(self, request, report_id):
         raw_value = request.data.get('measured_value')
+        warning_reason = str(request.data.get('warning_reason') or '').strip()
         idempotency_key = str(
             request.headers.get('Idempotency-Key')
             or request.data.get('idempotency_key')
@@ -463,9 +465,13 @@ class RunChartReadingCreateView(APIView):
             if idempotency_key:
                 existing = report.readings.filter(idempotency_key=idempotency_key).first()
                 if existing:
-                    recent = list(report.readings.order_by('-piece_number').values_list('zone', flat=True)[:5])
+                    recent = list(report.readings.order_by('-piece_number').values_list('zone', flat=True)[:3])
                     alert = 'stop_process' if existing.zone == RunChartReading.Zone.RED else (
-                        'three_of_five_yellow' if recent.count(RunChartReading.Zone.YELLOW) >= 3 else None
+                        'three_consecutive_yellow'
+                        if len(recent) >= 3 and all(
+                            item == RunChartReading.Zone.YELLOW for item in recent[:3]
+                        )
+                        else None
                     )
                     return Response({
                         'reading': _run_chart_reading_data(existing),
@@ -505,24 +511,46 @@ class RunChartReadingCreateView(APIView):
                 getattr(report.parameter, 'measurement_type', 'dimensional'),
             )
 
+            recent_zones = list(
+                report.readings.order_by('-piece_number').values_list('zone', flat=True)[:2]
+            )
+            triggers_warning = (
+                zone == RunChartReading.Zone.RED
+                or (
+                    zone == RunChartReading.Zone.YELLOW
+                    and len(recent_zones) == 2
+                    and all(item == RunChartReading.Zone.YELLOW for item in recent_zones)
+                )
+            )
+            if triggers_warning and not warning_reason:
+                return Response(
+                    {'error': 'A reason is required when the process warning is triggered.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             reading = RunChartReading.objects.create(
                 report=report,
                 piece_number=piece_number,
                 measured_value=measured_value,
                 deviation=measured_value - nominal,
                 zone=zone,
+                warning_reason=warning_reason if triggers_warning else '',
                 recorded_by=request.user,
                 idempotency_key=idempotency_key,
             )
 
             recent_zones = list(
-                report.readings.order_by('-piece_number').values_list('zone', flat=True)[:5]
+                report.readings.order_by('-piece_number').values_list('zone', flat=True)[:2]
             )
             alert = None
             if zone == RunChartReading.Zone.RED:
                 alert = 'stop_process'
-            elif recent_zones.count(RunChartReading.Zone.YELLOW) >= 3:
-                alert = 'three_of_five_yellow'
+            elif (
+                zone == RunChartReading.Zone.YELLOW
+                and len(recent_zones) == 2
+                and all(item == RunChartReading.Zone.YELLOW for item in recent_zones)
+            ):
+                alert = 'three_consecutive_yellow'
 
         return Response({
             'reading': _run_chart_reading_data(reading),
