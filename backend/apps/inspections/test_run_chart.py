@@ -116,11 +116,19 @@ class RunChartAPITests(APITestCase):
 
         second = self.client.post(
             reverse('run-chart-reading-create', kwargs={'report_id': report_id}),
-            {'piece_number': 3, 'measured_value': 20.020},
+            {
+                'piece_number': 3,
+                'measured_value': 20.020,
+                'warning_reason': 'Tool offset was not applied in time.',
+            },
             format='json',
         )
         self.assertEqual(second.status_code, 201)
         self.assertEqual(second.data['reading']['zone'], RunChartReading.Zone.RED)
+        self.assertEqual(
+            second.data['reading']['warning_reason'],
+            'Tool offset was not applied in time.',
+        )
         self.assertEqual(second.data['alert'], 'stop_process')
 
         self.assertEqual(RunChartReport.objects.count(), 1)
@@ -149,6 +157,63 @@ class RunChartAPITests(APITestCase):
         )
         self.assertEqual(skipped.status_code, 409)
         self.assertEqual(RunChartReading.objects.count(), 0)
+
+    def test_warning_requires_third_consecutive_yellow_and_green_resets_sequence(self):
+        opened = self.client.post(
+            reverse('run-chart-open-report'),
+            {
+                'machine_id': self.machine.id,
+                'template_id': self.template.id,
+                'parameter_id': self.parameter.id,
+                'shift': 'I',
+            },
+            format='json',
+        )
+        report_id = opened.data['report_id']
+        endpoint = reverse('run-chart-reading-create', kwargs={'report_id': report_id})
+
+        for piece in (1, 2):
+            response = self.client.post(
+                endpoint,
+                {'piece_number': piece, 'measured_value': 20.008},
+                format='json',
+            )
+            self.assertEqual(response.status_code, 201)
+
+        missing_reason = self.client.post(
+            endpoint,
+            {'piece_number': 3, 'measured_value': 20.008},
+            format='json',
+        )
+        self.assertEqual(missing_reason.status_code, 400)
+
+        third_yellow = self.client.post(
+            endpoint,
+            {
+                'piece_number': 3,
+                'measured_value': 20.008,
+                'warning_reason': 'Tool condition checked and corrected.',
+            },
+            format='json',
+        )
+        self.assertEqual(third_yellow.status_code, 201)
+        self.assertEqual(third_yellow.data['alert'], 'three_consecutive_yellow')
+
+        green = self.client.post(
+            endpoint,
+            {'piece_number': 4, 'measured_value': 20.000},
+            format='json',
+        )
+        self.assertEqual(green.status_code, 201)
+        self.assertIsNone(green.data['alert'])
+
+        yellow_after_reset = self.client.post(
+            endpoint,
+            {'piece_number': 5, 'measured_value': 20.008},
+            format='json',
+        )
+        self.assertEqual(yellow_after_reset.status_code, 201)
+        self.assertIsNone(yellow_after_reset.data['alert'])
 
     def test_complete_closes_report_and_history_returns_saved_readings(self):
         opened = self.client.post(

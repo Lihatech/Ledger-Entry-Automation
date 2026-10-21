@@ -208,6 +208,7 @@ class RunChartReading(models.Model):
     measured_value = models.DecimalField(max_digits=14, decimal_places=6)
     deviation = models.DecimalField(max_digits=14, decimal_places=6)
     zone = models.CharField(max_length=10, choices=Zone.choices, db_index=True)
+    warning_reason = models.TextField(blank=True, default='')
     recorded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='run_chart_readings'
     )

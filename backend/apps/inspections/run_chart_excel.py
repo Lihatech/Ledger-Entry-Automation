@@ -152,6 +152,23 @@ def _add_reading_connections(ws, report, readings):
              point[0] + radius, point[1] + radius),
             fill='white', outline=marker_colors.get(str(reading.zone).lower(), '#0F766E'), width=2,
         )
+        value_label = _format_number(reading.measured_value)
+        if value_label:
+            label = value_label
+            bbox = draw.textbbox((0, 0), label)
+            label_width = bbox[2] - bbox[0]
+            draw.text((point[0] - label_width / 2, point[1] - 18), label, fill='#111827')
+            label_box = (point[0] - label_width / 2, point[1] - 18,
+                         point[0] + label_width / 2,
+                         point[1] + 5 + bbox[3] - bbox[1])
+        reason = str(getattr(reading, 'warning_reason', '') or '').strip()
+        if reason:
+            short_reason = reason if len(reason) <= 24 else f'{reason[:21]}...'
+            reason_box = (point[0] + 7, point[1] + 7,
+                          point[0] + 18 + len(short_reason) * 6,
+                          point[1] + 23)
+            draw.rounded_rectangle(reason_box, radius=3, fill='white', outline='#475569', width=1)
+            draw.text((point[0] + 10, point[1] + 9), short_reason, fill='#111827')
     stream = BytesIO()
     image.save(stream, format='PNG')
     stream.seek(0)
@@ -391,6 +408,9 @@ def _add_reading_line_chart(ws, report, readings, anchor='C7', width=3000, heigh
     draw.line((left, y(nominal), right, y(nominal)), fill='#111827', width=4)
     draw.rectangle((left, top, right, bottom), outline='#334155', width=3)
 
+    label_font = font(22)
+    small_font = font(19)
+
     # Straight segments and zone-coloured markers, matching the mobile graph.
     points = []
     for index, reading in enumerate(readings):
@@ -405,9 +425,25 @@ def _add_reading_line_chart(ws, report, readings, anchor='C7', width=3000, heigh
         draw.ellipse((point[0] - radius, point[1] - radius,
                       point[0] + radius, point[1] + radius),
                      fill=color, outline='white', width=3)
+        value_label = _format_number(reading.measured_value)
+        if value_label:
+            label = value_label
+            bbox = draw.textbbox((0, 0), label, font=small_font)
+            label_width = bbox[2] - bbox[0]
+            draw.text((point[0] - label_width / 2, point[1] - 28), label, fill='#111827', font=small_font)
+            label_box = (point[0] - label_width / 2, point[1] - 28,
+                         point[0] + label_width / 2,
+                         point[1] + 7 + bbox[3] - bbox[1])
+        reason = str(getattr(reading, 'warning_reason', '') or '').strip()
+        if reason:
+            short_reason = reason if len(reason) <= 28 else f'{reason[:25]}...'
+            bbox = draw.textbbox((0, 0), short_reason, font=small_font)
+            reason_box = (point[0] + 12, point[1] + 12,
+                          point[0] + 24 + bbox[2] - bbox[0],
+                          point[1] + 20 + bbox[3] - bbox[1])
+            draw.rounded_rectangle(reason_box, radius=4, fill='white', outline='#475569', width=2)
+            draw.text((point[0] + 15, point[1] + 15), short_reason, fill='#111827', font=small_font)
 
-    label_font = font(22)
-    small_font = font(19)
     draw.text((left, 10), f'Lower limit: {_format_number(lower)}', fill='#dc2626', font=small_font)
     draw.text((right - 260, 10), f'Upper limit: {_format_number(upper)}', fill='#dc2626', font=small_font)
     draw.text((left, bottom + 22), 'Piece number', fill='#475569', font=label_font)
@@ -502,7 +538,7 @@ def _build_expanded_mobile_sheet(ws, report, readings, page_number, page_count):
     ws.cell(table_row, 1, 'Readings')
     ws.cell(table_row, 1).font = Font(name='Arial', size=13, bold=True, color=navy)
     ws.cell(table_row, 1).alignment = Alignment(vertical='center')
-    headers = ('Piece', 'Measured value', 'Deviation', 'Zone', 'Recorded at', 'Recorded by', 'Lower limit', 'Upper limit')
+    headers = ('Piece', 'Measured value', 'Deviation', 'Zone', 'Reason', 'Recorded at', 'Recorded by', 'Lower limit', 'Upper limit')
     for column, header in enumerate(headers, start=1):
         cell = ws.cell(table_row + 1, column, header)
         cell.font = Font(name='Arial', size=10, bold=True, color='FFFFFFFF')
@@ -521,6 +557,7 @@ def _build_expanded_mobile_sheet(ws, report, readings, page_number, page_count):
             float(reading.measured_value),
             float(reading.deviation),
             str(reading.zone).upper(),
+            str(getattr(reading, 'warning_reason', '') or ''),
             reading.recorded_at.strftime('%Y-%m-%d %H:%M:%S') if reading.recorded_at else '',
             _display_name(reading.recorded_by),
             float(report.lower_limit),
@@ -529,14 +566,14 @@ def _build_expanded_mobile_sheet(ws, report, readings, page_number, page_count):
         for column, value in enumerate(values, start=1):
             cell = ws.cell(row_index, column, value)
             cell.font = value_font
-            cell.alignment = Alignment(horizontal='center' if column in (1, 2, 3, 4, 7, 8) else 'left', vertical='center')
+            cell.alignment = Alignment(horizontal='center' if column in (1, 2, 3, 4, 8, 9) else 'left', vertical='center', wrap_text=True)
             cell.border = Border(left=border, right=border, top=border, bottom=border)
             if column in (4,):
                 cell.fill = zone_fills.get(str(reading.zone).lower(), PatternFill('solid', fgColor='FFFFFFFF'))
-            if column in (2, 3, 7, 8):
+            if column in (2, 3, 8, 9):
                 cell.number_format = '0.000000'
-    ws.auto_filter.ref = f'A{table_row + 1}:H{table_row + 1 + len(readings)}'
-    ws.print_area = f'A1:H{table_row + 1 + len(readings)}'
+    ws.auto_filter.ref = f'A{table_row + 1}:I{table_row + 1 + len(readings)}'
+    ws.print_area = f'A1:I{table_row + 1 + len(readings)}'
 
 
 def generate_run_chart_xlsx(report):
