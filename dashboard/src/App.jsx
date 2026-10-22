@@ -27,6 +27,7 @@ import VerifyEmailPage from './pages/VerifyEmailPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import QualityAnalyzerPage from './pages/QualityAnalyzerPage';
+import PDIReportsPage from './pages/PDIReportsPage';
 import OEEReportPage from './pages/OEEReportPage';
 import HRModulePage from './pages/HRModulePage';
 import PurchaseModulePage from './pages/PurchaseModulePage';
@@ -244,6 +245,14 @@ export default function App() {
         element={
           <ProtectedLayout pendingCount={pendingCount}>
             <QualityAnalyzerPage />
+          </ProtectedLayout>
+        }
+      />
+      <Route
+        path="/quality-analyzer/pdi"
+        element={
+          <ProtectedLayout pendingCount={pendingCount}>
+            <PDIReportsPage />
           </ProtectedLayout>
         }
       />

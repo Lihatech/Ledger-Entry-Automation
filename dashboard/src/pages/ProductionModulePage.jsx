@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { canOpenPath } from '../utils/access';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { BarChart3, ArrowRight, Clock, ClipboardCheck } from 'lucide-react';
+import { BarChart3, ArrowRight, Clock, ClipboardCheck, FileSpreadsheet } from 'lucide-react';
 
 export default function ProductionModulePage() {
   const navigate = useNavigate();
@@ -54,6 +54,21 @@ export default function ProductionModulePage() {
       details: ['Autonomous Maintenance Shift Audits', '31-Day Shift I, II, III Compliance Matrix', 'Not OK & Immediate Correction Log'],
       actionText: 'Open JH Inspection Reports',
       link: '/production/jh-inspections',
+    },
+    {
+      id: 'monthly-oee',
+      title: 'Monthly OEE Excel Report',
+      badge: '● OEE Analytics',
+      badgeBg: '#DCFCE7',
+      badgeColor: '#166534',
+      icon: FileSpreadsheet,
+      iconBg: '#DCFCE7',
+      iconColor: '#15803D',
+      description:
+        'Generate and download automated Monthly Overall Equipment Effectiveness (OEE) Excel reports with full parameter tracking.',
+      details: ['Dynamic Shift Formatting', 'Downtime & Quality Rates', 'Excel Formulas Built-in'],
+      actionText: 'View OEE Report',
+      link: '/reports/oee',
     },
   ];
 

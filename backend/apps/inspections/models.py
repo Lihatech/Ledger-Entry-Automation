@@ -233,6 +233,118 @@ class RunChartReading(models.Model):
         return f"{self.report.parameter_code} | Piece {self.piece_number} | {self.measured_value}"
 
 
+class PDIReport(models.Model):
+    """Pre-Dispatch Inspection report with five sampled jobs (X1-X5)."""
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Draft'
+        IN_PROGRESS = 'in_progress', 'In Progress'
+        READY_FOR_REVIEW = 'ready_for_review', 'Ready for Review'
+        SUBMITTED = 'submitted', 'Submitted'
+        APPROVED = 'approved', 'Approved'
+        REJECTED = 'rejected', 'Rejected'
+
+    class Judgement(models.TextChoices):
+        PASS = 'pass', 'Pass'
+        FAIL = 'fail', 'Fail'
+        INCOMPLETE = 'incomplete', 'Incomplete'
+
+    report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    report_number = models.CharField(max_length=40, unique=True, db_index=True)
+    report_date = models.DateField(db_index=True)
+    shift = models.CharField(max_length=10, default='I', db_index=True)
+    machine = models.ForeignKey('machines.Machine', on_delete=models.PROTECT, related_name='pdi_reports')
+    part = models.ForeignKey('parts.Part', on_delete=models.PROTECT, related_name='pdi_reports')
+    template = models.ForeignKey('parts.InspectionTemplate', on_delete=models.PROTECT, related_name='pdi_reports')
+
+    customer_name = models.CharField(max_length=200, blank=True, default='')
+    invoice_number = models.CharField(max_length=100, blank=True, default='')
+    supplied_quantity = models.PositiveIntegerField(default=0)
+    remarks = models.TextField(blank=True, default='')
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_pdi_reports'
+    )
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='submitted_pdi_reports'
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reviewed_pdi_reports'
+    )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='approved_pdi_reports'
+    )
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    overall_judgement = models.CharField(max_length=20, choices=Judgement.choices, default=Judgement.INCOMPLETE)
+    parameter_snapshot = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'pdi_reports'
+        ordering = ['-report_date', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['machine', 'template', 'report_date', 'shift', 'created_by'],
+                condition=models.Q(status__in=['draft', 'in_progress']),
+                name='unique_open_pdi_report_per_creator',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.report_number} | {self.machine.machine_code} | {self.part.part_number}"
+
+
+class PDIReading(models.Model):
+    """One parameter reading for one of the five PDI samples."""
+
+    class Judgement(models.TextChoices):
+        PASS = 'pass', 'Pass'
+        FAIL = 'fail', 'Fail'
+        NA = 'na', 'Not Applicable'
+
+    reading_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    report = models.ForeignKey(PDIReport, on_delete=models.CASCADE, related_name='readings')
+    parameter = models.ForeignKey('parts.InspectionParameter', on_delete=models.PROTECT, related_name='pdi_readings')
+    sample_number = models.PositiveSmallIntegerField()
+    parameter_code = models.CharField(max_length=30)
+    parameter_name = models.CharField(max_length=150)
+    unit = models.CharField(max_length=30, blank=True, default='')
+    specification = models.CharField(max_length=200, blank=True, default='')
+    inspection_method = models.CharField(max_length=200, blank=True, default='')
+    lower_limit = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    upper_limit = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    value_text = models.CharField(max_length=200, blank=True, default='')
+    numeric_value = models.DecimalField(max_digits=14, decimal_places=6, null=True, blank=True)
+    judgement = models.CharField(max_length=10, choices=Judgement.choices, blank=True, default='')
+    remarks = models.TextField(blank=True, default='')
+    entered_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='pdi_readings_entered'
+    )
+    entered_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'pdi_readings'
+        ordering = ['parameter_code', 'sample_number']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['report', 'parameter', 'sample_number'],
+                name='unique_pdi_parameter_sample',
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.report.report_number} | {self.parameter_code} | X{self.sample_number}"
+
+
 class DailyProductionReport(models.Model):
     """
     Dedicated model for End-of-Day Daily Production Reports.

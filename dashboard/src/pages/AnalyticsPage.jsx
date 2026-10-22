@@ -349,6 +349,9 @@ export default function AnalyticsPage() {
                                 <strong>Operator:</strong> {r.operator}
                               </div>
                               <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                                <strong>Supervisor:</strong> {r.supervisor || '-'}
+                              </div>
+                              <div style={{ fontSize: '0.82rem', color: '#475569' }}>
                                 <strong>Inspector:</strong> {r.inspector}
                               </div>
                             </div>

@@ -80,6 +80,23 @@ class MobileInspectionAccess(BasePermission):
         )
 
 
+class SetupApprovalAccess(BasePermission):
+    """Keep web read access separate from mobile setup-approval writes."""
+
+    message = 'Only operators and inspectors can submit setup approvals.'
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return user.has_access('quality.setup.view')
+        return (
+            user.role in {User.Role.OPERATOR, User.Role.INSPECTOR}
+            and user.has_access('quality.inspections.record')
+        )
+
+
 class IsCalibrator(BasePermission):
     """Allow access to calibrators only."""
     message = 'Only calibrators can perform this action.'

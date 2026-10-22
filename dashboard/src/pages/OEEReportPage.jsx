@@ -143,8 +143,8 @@ export default function OEEReportPage() {
           {/* Breadcrumbs and Action */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <Breadcrumbs items={[
-              { label: 'Quality Analyzer', to: '/quality-analyzer' },
-              { label: 'OEE Report' }
+              { label: 'Production Module', to: '/production' },
+              { label: 'OEE Reports' }
             ]} />
             
             <button

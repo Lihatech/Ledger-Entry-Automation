@@ -625,6 +625,104 @@ class ApiService {
     throw Exception('Unable to load run-chart operations.');
   }
 
+  // ── Pre-Dispatch Inspection (five samples X1-X5) ─────────────────────────
+  static Future<List<dynamic>> getPdiOperations(int machineId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/pdi/machines/$machineId/operations/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is List) return decoded;
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to load PDI operations.' : 'Unable to load PDI operations.');
+  }
+
+  static Future<List<dynamic>> getPdiParameters(int templateId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/pdi/operations/$templateId/parameters/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is List) return decoded;
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to load PDI parameters.' : 'Unable to load PDI parameters.');
+  }
+
+  static Future<Map<String, dynamic>> createPdiReport({
+    required int machineId,
+    required int templateId,
+    String? shift,
+  }) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/pdi/reports/create/'),
+        headers: headers,
+        body: jsonEncode({
+          'machine_id': machineId,
+          'template_id': templateId,
+          if (shift != null && shift.isNotEmpty) 'shift': shift,
+        }),
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 201 && decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to create PDI report.' : 'Unable to create PDI report.');
+  }
+
+  static Future<Map<String, dynamic>> savePdiReading({
+    required String reportId,
+    required int parameterId,
+    required int sampleNumber,
+    String? numericValue,
+    String? valueText,
+    String? judgement,
+    String? remarks,
+  }) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/pdi/reports/$reportId/readings/'),
+        headers: headers,
+        body: jsonEncode({
+          'parameter_id': parameterId,
+          'sample_number': sampleNumber,
+          if (numericValue != null) 'numeric_value': numericValue,
+          if (valueText != null) 'value_text': valueText,
+          if (judgement != null) 'judgement': judgement,
+          if (remarks != null) 'remarks': remarks,
+        }),
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to save PDI reading.' : 'Unable to save PDI reading.');
+  }
+
+  static Future<Map<String, dynamic>> getPdiReport(String reportId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.get(
+        Uri.parse('$baseUrl/inspections/pdi/reports/$reportId/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to load PDI report.' : 'Unable to load PDI report.');
+  }
+
+  static Future<Map<String, dynamic>> submitPdiReport(String reportId) async {
+    final response = await authenticatedRequest(
+      (headers) => http.post(
+        Uri.parse('$baseUrl/inspections/pdi/reports/$reportId/submit/'),
+        headers: headers,
+      ).timeout(const Duration(seconds: 20)),
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception(decoded is Map ? decoded['error'] ?? 'Unable to submit PDI report.' : 'Unable to submit PDI report.');
+  }
+
   static Future<List<dynamic>> getRunChartParameters(int templateId) async {
     final response = await authenticatedRequest(
       (headers) => http

@@ -26,3 +26,9 @@ export const getParameterOOCRate = (partNumber) =>
 export const getDailyCompletedReports = (params) =>
   api.get('/api/analytics/daily-completed-reports/', { params });
 
+export const getPdiReports = (params) =>
+  api.get('/api/inspections/pdi/reports/', { params });
+
+export const getPdiReport = (reportId) =>
+  api.get(`/api/inspections/pdi/reports/${reportId}/`);
+

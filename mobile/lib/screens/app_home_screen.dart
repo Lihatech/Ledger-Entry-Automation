@@ -21,6 +21,7 @@ import 'jh_inspection_screen.dart';
 import 'document_control_screen.dart';
 import 'bug_report_screen.dart';
 import 'run_chart_screen.dart';
+import 'pdi_report_screen.dart';
 
 class AppHomeScreen extends StatefulWidget {
   const AppHomeScreen({super.key});
@@ -1341,6 +1342,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                           );
                         },
                       ),
+
+                      // Authorized operators may also enter PDI readings when assigned.
+                      _buildSoftPastelCard(
+                        title: 'PDI Report',
+                        description: 'Record five-job pre-dispatch inspection readings',
+                        icon: Icons.fact_check_rounded,
+                        bgColor: const Color(0xFFFFF7ED),
+                        borderColor: const Color(0xFFFFEDD5),
+                        iconColor: const Color(0xFFEA580C),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PdiReportScreen()));
+                        },
+                      ),
                     ]
                   : [
                       // Inspector / Supervisor Card 1: Machine
@@ -1377,6 +1391,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                               builder: (_) => const ReportSheetScreen(),
                             ),
                           );
+                        },
+                      ),
+
+                      // Inspector / Supervisor Card: Pre-Dispatch Inspection
+                      _buildSoftPastelCard(
+                        title: 'PDI Report',
+                        description: 'Record five-job pre-dispatch inspection readings',
+                        icon: Icons.fact_check_rounded,
+                        bgColor: const Color(0xFFFFF7ED),
+                        borderColor: const Color(0xFFFFEDD5),
+                        iconColor: const Color(0xFFEA580C),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PdiReportScreen()));
                         },
                       ),
 
