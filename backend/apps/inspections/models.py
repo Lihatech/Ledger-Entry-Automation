@@ -289,6 +289,13 @@ class PDIReport(models.Model):
     class Meta:
         db_table = 'pdi_reports'
         ordering = ['-report_date', '-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['machine', 'template', 'report_date', 'shift', 'created_by'],
+                condition=models.Q(status__in=['draft', 'in_progress']),
+                name='unique_open_pdi_report_per_creator',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.report_number} | {self.machine.machine_code} | {self.part.part_number}"

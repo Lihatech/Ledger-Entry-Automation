@@ -293,6 +293,10 @@ class DailyCompletedReportsView(APIView):
             qs = qs.filter(part__part_number__icontains=part_number.strip())
         if shift:
             qs = qs.filter(shift=shift)
+        # Keep the identity lookup independent of operator/inspector filters.
+        # A daily card may be selected through an hourly row while the First
+        # Piece session has a different inspector or supervisor.
+        identity_qs = qs
         if operator_name:
             qs = qs.filter(
                 Q(operator__username__icontains=operator_name.strip()) |
@@ -314,7 +318,7 @@ class DailyCompletedReportsView(APIView):
         # Keep the First Piece identity available so names are not incorrectly
         # substituted with the operator name.
         first_piece_by_key = {}
-        for row in qs.order_by('-started_at'):
+        for row in identity_qs.order_by('-started_at'):
             row_date = row.started_at.strftime('%d %b %Y') if row.started_at else ''
             row_key = (
                 row_date,

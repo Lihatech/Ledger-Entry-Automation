@@ -36,7 +36,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # L1 FIX: Removed duplicate imports : Part and Machine already imported on lines 11-12.
 from apps.users.permissions import (
-    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor, MobileInspectionAccess,
+    HasAccess, IsSupervisorOrAbove, IsOperatorOrSupervisor, MobileInspectionAccess, SetupApprovalAccess,
 )
 from .models import (
     InspectionSession,
@@ -1533,8 +1533,7 @@ class SetupApprovalView(APIView):
     # GET is also used by the web Quality Analyzer. HasAccess resolves the
     # method-specific access key below, while preserving the separate mobile
     # submission permission for POST.
-    permission_classes = [HasAccess]
-    access_key = {'GET': 'quality.setup.view', 'POST': 'quality.inspections.record'}
+    permission_classes = [SetupApprovalAccess]
 
     def get(self, request):
         template_id = request.query_params.get('template')
@@ -1560,7 +1559,10 @@ class SetupApprovalView(APIView):
                 target_date = datetime.datetime.strptime(date_param, '%Y-%m-%d').date()
                 qs = qs.filter(submitted_at__date=target_date)
             except ValueError:
-                pass
+                return Response({'error': 'date must use YYYY-MM-DD format.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if getattr(request.user, 'plant_id', None):
+            qs = qs.filter(machine__plant_id=request.user.plant_id)
         
         setup = qs.order_by('-submitted_at').first()
 
@@ -1572,6 +1574,7 @@ class SetupApprovalView(APIView):
 
         return Response({
             '_id': str(setup.id),
+            'setup_approval_id': str(setup.id),
             'inspection_type': 'setup_approval',
             'template_id': setup.template_id,
             'machine_id': setup.machine_id,
@@ -1583,6 +1586,63 @@ class SetupApprovalView(APIView):
             'submitted_at': setup.submitted_at,
             'status': setup.status,
         })
+
+
+class SetupApprovalPDFView(APIView):
+    """Generate a PDF directly from the persisted SetupApproval record."""
+
+    permission_classes = [HasAccess]
+    access_key = 'quality.reports.view'
+
+    def get(self, request, setup_id):
+        from io import BytesIO
+        from django.http import FileResponse
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from apps.inspections.models import SetupApproval
+
+        qs = SetupApproval.objects.select_related('machine', 'template').filter(pk=setup_id)
+        if getattr(request.user, 'plant_id', None):
+            qs = qs.filter(machine__plant_id=request.user.plant_id)
+        setup = qs.first()
+        if not setup:
+            return Response({'error': 'Setup approval report not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=24, leftMargin=24, topMargin=24, bottomMargin=24)
+        styles = getSampleStyleSheet()
+        story = [
+            Paragraph('Setup Approval Report', styles['Title']),
+            Paragraph(f'Machine: {setup.machine.machine_code} | Part: {setup.part_number} | Inspector: {setup.inspector_name or "-"}', styles['Normal']),
+            Paragraph(f'Submitted: {setup.submitted_at:%Y-%m-%d %H:%M} | Status: {setup.status}', styles['Normal']),
+            Spacer(1, 12),
+        ]
+        rows = [['Parameter', 'Description', 'Trial 1', 'Trial 2', 'Trial 3']]
+        for entry in setup.process_param_entries or []:
+            if not isinstance(entry, dict):
+                continue
+            rows.append([
+                str(entry.get('parameter_code', '')),
+                str(entry.get('parameter_name', '')),
+                str(entry.get('trial_1', '-')),
+                str(entry.get('trial_2', '-')),
+                str(entry.get('trial_3', '-')),
+            ])
+        table = Table(rows, repeatRows=1, colWidths=[90, 260, 90, 90, 90])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('PADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(table)
+        doc.build(story)
+        buffer.seek(0)
+        filename = f'Setup_Approval_{setup.submitted_at:%Y-%m-%d}_{setup.machine.machine_code}.pdf'
+        return FileResponse(buffer, content_type='application/pdf', as_attachment=True, filename=filename)
 
     def post(self, request):
         """
@@ -1617,6 +1677,13 @@ class SetupApprovalView(APIView):
                 {'error': 'template_id and machine_id are required.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        from apps.machines.models import Machine
+        machine_qs = Machine.objects.filter(pk=int(machine_id), is_active=True)
+        if getattr(request.user, 'plant_id', None):
+            machine_qs = machine_qs.filter(plant_id=request.user.plant_id)
+        if not machine_qs.exists():
+            return Response({'error': 'Machine is not available for your plant.'}, status=status.HTTP_404_NOT_FOUND)
 
         if not isinstance(entries, list):
             return Response(

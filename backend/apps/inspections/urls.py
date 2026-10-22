@@ -18,6 +18,7 @@ from .views import (
     FirstPiecePDFView,
     FirstPieceStatusView,
     SetupApprovalView,
+    SetupApprovalPDFView,
     DailyProductionReportViewSet,
     DowntimeReportViewSet,
     JHChecklistItemsView,
@@ -98,6 +99,7 @@ urlpatterns = [
     # Operator flow
     path('setup-status/',                   SetupStatusView.as_view(),        name='setup-status'),
     path('setup-approval/',                 SetupApprovalView.as_view(),      name='setup-approval'),
+    path('setup-approval/<uuid:setup_id>/pdf/', SetupApprovalPDFView.as_view(), name='setup-approval-pdf'),
     path('rejections/',                     RejectionsListView.as_view(),     name='rejections-list'),
     path('start/',                          StartInspectionView.as_view(),    name='inspection-start'),
     path('<uuid:session_id>/measure/',       RecordMeasurementView.as_view(),  name='record-measurement'),

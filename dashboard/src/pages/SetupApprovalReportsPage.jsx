@@ -64,11 +64,11 @@ export default function SetupApprovalReportsPage() {
 
 
   const handleDownloadPDF = async () => {
-    const reportId = reportData?.session_id || reportData?._id;
+    const reportId = reportData?.setup_approval_id || reportData?._id;
     if (!reportId) return;
     setDownloading(true);
     try {
-      const res = await api.get(`/api/inspections/${reportId}/pdf/`, { responseType: 'blob' });
+      const res = await api.get(`/api/inspections/setup-approval/${reportId}/pdf/`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const link = document.createElement('a');
       link.href = url;

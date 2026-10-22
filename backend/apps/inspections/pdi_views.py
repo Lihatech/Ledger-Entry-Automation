@@ -1,7 +1,8 @@
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+import uuid
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -10,7 +11,7 @@ from rest_framework.views import APIView
 
 from apps.machines.models import Machine
 from apps.parts.models import InspectionParameter, InspectionTemplate, Part
-from apps.users.permissions import HasAccess
+from apps.users.permissions import HasAccess, MobileInspectionAccess
 
 from .models import PDIReading, PDIReport
 
@@ -94,14 +95,20 @@ def _parse_date(value):
         return None
 
 
-def _pdi_templates(machine_id):
+def _pdi_templates(machine_id, request=None):
+    filters = {
+        'part__machine_id': machine_id,
+        'part__is_active': True,
+        'is_active': True,
+        'is_published': True,
+        'status': InspectionTemplate.Status.APPROVED,
+    }
+    plant_id = getattr(getattr(request, 'user', None), 'plant_id', None)
+    if plant_id:
+        filters['part__machine__plant_id'] = plant_id
     return (
         InspectionTemplate.objects.filter(
-            part__machine_id=machine_id,
-            part__is_active=True,
-            is_active=True,
-            is_published=True,
-            status=InspectionTemplate.Status.APPROVED,
+            **filters,
         )
         .select_related('part')
         .prefetch_related('parameters')
@@ -110,16 +117,19 @@ def _pdi_templates(machine_id):
 
 
 class PDIReportOperationsView(APIView):
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def get(self, request, machine_id):
-        if not Machine.objects.filter(pk=machine_id, is_active=True).exists():
+        machine_qs = Machine.objects.filter(pk=machine_id, is_active=True)
+        if getattr(request.user, 'plant_id', None):
+            machine_qs = machine_qs.filter(plant_id=request.user.plant_id)
+        if not machine_qs.exists():
             return Response({'error': 'Machine not found.'}, status=status.HTTP_404_NOT_FOUND)
         seen = set()
         operations = []
-        for template in _pdi_templates(machine_id):
-            key = (template.part_id, str(template.operation_key))
+        for template in _pdi_templates(machine_id, request):
+            key = (template.part_id, str(template.operation_key), template.inspection_type)
             if key in seen:
                 continue
             seen.add(key)
@@ -136,16 +146,19 @@ class PDIReportOperationsView(APIView):
 
 
 class PDIReportParametersView(APIView):
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def get(self, request, template_id):
-        template = InspectionTemplate.objects.filter(
+        template_qs = InspectionTemplate.objects.filter(
             pk=template_id,
             is_active=True,
             is_published=True,
             status=InspectionTemplate.Status.APPROVED,
-        ).select_related('part').first()
+        ).select_related('part')
+        if getattr(request.user, 'plant_id', None):
+            template_qs = template_qs.filter(part__machine__plant_id=request.user.plant_id)
+        template = template_qs.first()
         if not template:
             return Response({'error': 'Approved operation not found.'}, status=status.HTTP_404_NOT_FOUND)
         parameters = template.parameters.order_by('sequence_order', 'id')
@@ -153,7 +166,7 @@ class PDIReportParametersView(APIView):
 
 
 class PDIReportCreateView(APIView):
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request):
@@ -165,34 +178,55 @@ class PDIReportCreateView(APIView):
         report_date = _parse_date(request.data.get('report_date'))
         if report_date is None:
             return Response({'error': 'report_date must use YYYY-MM-DD format.'}, status=status.HTTP_400_BAD_REQUEST)
-        template = _pdi_templates(machine_id).filter(pk=template_id).first()
+        template = _pdi_templates(machine_id, request).filter(pk=template_id).first()
         if not template:
             return Response({'error': 'Approved operation is not available for this machine.'}, status=status.HTTP_400_BAD_REQUEST)
         snapshot = [_parameter_snapshot(p) for p in template.parameters.order_by('sequence_order', 'id')]
         if not snapshot:
             return Response({'error': 'This operation has no active inspection parameters.'}, status=status.HTTP_400_BAD_REQUEST)
         shift = str(request.data.get('shift') or getattr(request.user, 'assigned_shift', '') or 'I')
-        report = PDIReport.objects.filter(
-            machine_id=machine_id, template=template, report_date=report_date,
-            shift=shift, created_by=request.user,
-            status__in=[PDIReport.Status.DRAFT, PDIReport.Status.IN_PROGRESS],
-        ).first()
-        if not report:
-            prefix = f'PDI-{report_date:%Y%m%d}'
-            count = PDIReport.objects.filter(report_number__startswith=prefix).count() + 1
-            report = PDIReport.objects.create(
-                report_number=f'{prefix}-{count:03d}', report_date=report_date,
-                shift=shift, machine=template.part.machine, part=template.part,
-                template=template, created_by=request.user, parameter_snapshot=snapshot,
-                customer_name=str(request.data.get('customer_name') or ''),
-                invoice_number=str(request.data.get('invoice_number') or ''),
-                supplied_quantity=int(request.data.get('supplied_quantity') or 0),
-            )
-        return Response(_report_data(report, include_readings=False), status=status.HTTP_201_CREATED)
+        supplied_raw = request.data.get('supplied_quantity', 0)
+        try:
+            supplied_quantity = int(supplied_raw)
+        except (TypeError, ValueError):
+            return Response({'error': 'supplied_quantity must be a non-negative whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+        if supplied_quantity < 0 or str(supplied_raw).strip() != str(supplied_quantity):
+            return Response({'error': 'supplied_quantity must be a non-negative whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            report = PDIReport.objects.select_for_update().filter(
+                machine_id=machine_id, template=template, report_date=report_date,
+                shift=shift, created_by=request.user,
+                status__in=[PDIReport.Status.DRAFT, PDIReport.Status.IN_PROGRESS],
+            ).first()
+            if not report:
+                prefix = f'PDI-{report_date:%Y%m%d}'
+                for _ in range(3):
+                    try:
+                        with transaction.atomic():
+                            report = PDIReport.objects.create(
+                                report_number=f'{prefix}-{uuid.uuid4().hex[:8].upper()}', report_date=report_date,
+                                shift=shift, machine=template.part.machine, part=template.part,
+                                template=template, created_by=request.user, parameter_snapshot=snapshot,
+                                customer_name=str(request.data.get('customer_name') or ''),
+                                invoice_number=str(request.data.get('invoice_number') or ''),
+                                supplied_quantity=supplied_quantity,
+                            )
+                        break
+                    except IntegrityError:
+                        report = PDIReport.objects.select_for_update().filter(
+                            machine_id=machine_id, template=template, report_date=report_date,
+                            shift=shift, created_by=request.user,
+                            status__in=[PDIReport.Status.DRAFT, PDIReport.Status.IN_PROGRESS],
+                        ).first()
+                        if report:
+                            break
+                if not report:
+                    return Response({'error': 'The report is being created by another request. Please retry.'}, status=status.HTTP_409_CONFLICT)
+        return Response(_report_data(report), status=status.HTTP_201_CREATED)
 
 
 class PDIReportReadingView(APIView):
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, report_id):
@@ -203,50 +237,53 @@ class PDIReportReadingView(APIView):
             return Response({'error': 'parameter_id and sample_number are required.'}, status=status.HTTP_400_BAD_REQUEST)
         if not 1 <= sample_number <= 5:
             return Response({'error': 'sample_number must be between 1 and 5.'}, status=status.HTTP_400_BAD_REQUEST)
-        report = PDIReport.objects.select_related('machine', 'part', 'template').filter(pk=report_id).first()
-        if not report:
-            return Response({'error': 'PDI report not found.'}, status=status.HTTP_404_NOT_FOUND)
-        if report.status in [PDIReport.Status.SUBMITTED, PDIReport.Status.APPROVED]:
-            return Response({'error': 'Submitted reports cannot be edited.'}, status=status.HTTP_409_CONFLICT)
-        parameter = InspectionParameter.objects.filter(pk=parameter_id, template_id=report.template_id).first()
-        if not parameter:
-            return Response({'error': 'Parameter is not part of this operation.'}, status=status.HTTP_400_BAD_REQUEST)
-        value_text = str(request.data.get('value_text') or '').strip()
-        measurement_type = parameter.measurement_type
-        numeric_value = None
-        judgement = str(request.data.get('judgement') or '').lower().strip()
-        if measurement_type == InspectionParameter.MeasurementType.VISUAL:
-            if judgement not in {PDIReading.Judgement.PASS, PDIReading.Judgement.FAIL, PDIReading.Judgement.NA}:
-                return Response({'error': 'Visual parameters require Pass, Fail, or Not Applicable.'}, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            try:
-                numeric_value = Decimal(str(request.data.get('numeric_value', value_text)))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response({'error': 'A numeric value is required for this parameter.'}, status=status.HTTP_400_BAD_REQUEST)
-            judgement = PDIReading.Judgement.PASS if parameter.lower_limit <= numeric_value <= parameter.upper_limit else PDIReading.Judgement.FAIL
-            value_text = str(numeric_value)
         with transaction.atomic():
+            report = PDIReport.objects.select_for_update().select_related('machine', 'part', 'template').filter(
+                pk=report_id, created_by=request.user
+            ).first()
+            if not report:
+                return Response({'error': 'PDI report not found or you are not allowed to edit it.'}, status=status.HTTP_404_NOT_FOUND)
+            if report.status in [PDIReport.Status.SUBMITTED, PDIReport.Status.APPROVED]:
+                return Response({'error': 'Submitted reports cannot be edited.'}, status=status.HTTP_409_CONFLICT)
+            snapshot_by_id = {str(item.get('id')): item for item in (report.parameter_snapshot or [])}
+            snapshot = snapshot_by_id.get(str(parameter_id))
+            parameter = InspectionParameter.objects.filter(pk=parameter_id, template_id=report.template_id).first()
+            if not parameter or not snapshot:
+                return Response({'error': 'Parameter is not part of this operation.'}, status=status.HTTP_400_BAD_REQUEST)
+            value_text = str(request.data.get('value_text') or '').strip()
+            measurement_type = snapshot.get('measurement_type') or parameter.measurement_type
+            numeric_value = None
+            judgement = str(request.data.get('judgement') or '').lower().strip()
+            if measurement_type == InspectionParameter.MeasurementType.VISUAL:
+                if judgement not in {PDIReading.Judgement.PASS, PDIReading.Judgement.FAIL, PDIReading.Judgement.NA}:
+                    return Response({'error': 'Visual parameters require Pass, Fail, or Not Applicable.'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                try:
+                    numeric_value = Decimal(str(request.data.get('numeric_value', value_text)))
+                    lower = Decimal(str(snapshot['lower_limit'])) if snapshot.get('lower_limit') is not None else None
+                    upper = Decimal(str(snapshot['upper_limit'])) if snapshot.get('upper_limit') is not None else None
+                except (InvalidOperation, TypeError, ValueError, KeyError):
+                    return Response({'error': 'A numeric value is required for this parameter.'}, status=status.HTTP_400_BAD_REQUEST)
+                judgement = PDIReading.Judgement.PASS if (lower is not None and upper is not None and lower <= numeric_value <= upper) else PDIReading.Judgement.FAIL
+                value_text = str(numeric_value)
             reading, _ = PDIReading.objects.update_or_create(
                 report=report, parameter=parameter, sample_number=sample_number,
                 defaults={
-                    'parameter_code': parameter.parameter_code,
-                    'parameter_name': parameter.parameter_name,
-                    'unit': parameter.unit,
-                    'specification': f'{parameter.lower_limit} to {parameter.upper_limit} {parameter.unit}'.strip(),
-                    'inspection_method': parameter.measurement_technique,
-                    'lower_limit': parameter.lower_limit,
-                    'upper_limit': parameter.upper_limit,
-                    'value_text': value_text,
-                    'numeric_value': numeric_value,
-                    'judgement': judgement,
-                    'remarks': str(request.data.get('remarks') or ''),
-                    'entered_by': request.user,
+                    'parameter_code': snapshot.get('parameter_code', parameter.parameter_code),
+                    'parameter_name': snapshot.get('parameter_name', parameter.parameter_name),
+                    'unit': snapshot.get('unit', parameter.unit),
+                    'specification': snapshot.get('specification', ''),
+                    'inspection_method': snapshot.get('inspection_method', parameter.measurement_technique),
+                    'lower_limit': snapshot.get('lower_limit'), 'upper_limit': snapshot.get('upper_limit'),
+                    'value_text': value_text, 'numeric_value': numeric_value, 'judgement': judgement,
+                    'remarks': str(request.data.get('remarks') or ''), 'entered_by': request.user,
                 },
             )
             if report.status == PDIReport.Status.DRAFT:
                 report.status = PDIReport.Status.IN_PROGRESS
                 report.save(update_fields=['status', 'updated_at'])
-        return Response({'reading_id': str(reading.reading_id), 'judgement': reading.judgement, 'status': report.status})
+            response = {'reading_id': str(reading.reading_id), 'judgement': reading.judgement, 'status': report.status}
+        return Response(response)
 
 
 class PDIReportDetailView(APIView):
@@ -254,21 +291,26 @@ class PDIReportDetailView(APIView):
     access_key = {'GET': 'quality.reports.view', 'PATCH': 'quality.inspections.record'}
 
     def get(self, request, report_id):
-        report = PDIReport.objects.select_related('machine', 'part', 'template', 'created_by', 'submitted_by', 'reviewed_by', 'approved_by').filter(pk=report_id).first()
+        reports = PDIReport.objects.select_related('machine', 'part', 'template', 'created_by', 'submitted_by', 'reviewed_by', 'approved_by').filter(pk=report_id)
+        if getattr(request.user, 'plant_id', None):
+            reports = reports.filter(machine__plant_id=request.user.plant_id)
+        report = reports.first()
         if not report:
             return Response({'error': 'PDI report not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(_report_data(report))
 
 
 class PDIReportSubmitView(APIView):
-    permission_classes = [HasAccess]
+    permission_classes = [MobileInspectionAccess]
     access_key = 'quality.inspections.record'
 
     def post(self, request, report_id):
         with transaction.atomic():
-            report = PDIReport.objects.select_for_update().filter(pk=report_id).first()
+            report = PDIReport.objects.select_for_update().filter(pk=report_id, created_by=request.user).first()
             if not report:
                 return Response({'error': 'PDI report not found.'}, status=status.HTTP_404_NOT_FOUND)
+            if report.status in [PDIReport.Status.SUBMITTED, PDIReport.Status.APPROVED]:
+                return Response({'error': 'This report has already been submitted and cannot be submitted again.'}, status=status.HTTP_409_CONFLICT)
             expected = len(report.parameter_snapshot or []) * 5
             readings = list(report.readings.all())
             if len(readings) < expected:
@@ -287,12 +329,25 @@ class PDIReportListView(APIView):
 
     def get(self, request):
         reports = PDIReport.objects.select_related('machine', 'part', 'template', 'created_by', 'submitted_by').all()
+        if getattr(request.user, 'plant_id', None):
+            reports = reports.filter(machine__plant_id=request.user.plant_id)
         if request.query_params.get('date'):
             report_date = _parse_date(request.query_params.get('date'))
-            if report_date:
-                reports = reports.filter(report_date=report_date)
+            if report_date is None:
+                return Response({'error': 'date must use YYYY-MM-DD format.'}, status=status.HTTP_400_BAD_REQUEST)
+            reports = reports.filter(report_date=report_date)
         if request.query_params.get('machine_id'):
             reports = reports.filter(machine_id=request.query_params['machine_id'])
         if request.query_params.get('status'):
             reports = reports.filter(status=request.query_params['status'])
-        return Response([_report_data(report, include_readings=False) for report in reports[:200]])
+        else:
+            reports = reports.filter(status__in=[PDIReport.Status.SUBMITTED, PDIReport.Status.APPROVED, PDIReport.Status.REJECTED])
+        page_size = min(max(int(request.query_params.get('page_size', 50)), 1), 200)
+        try:
+            page = max(int(request.query_params.get('page', 1)), 1)
+        except (TypeError, ValueError):
+            return Response({'error': 'page must be a positive integer.'}, status=status.HTTP_400_BAD_REQUEST)
+        offset = (page - 1) * page_size
+        items = list(reports[offset:offset + page_size + 1])
+        has_more = len(items) > page_size
+        return Response({'results': [_report_data(report, include_readings=False) for report in items[:page_size]], 'page': page, 'page_size': page_size, 'has_more': has_more})

@@ -22,6 +22,8 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
   String? _error;
   final Map<String, TextEditingController> _controllers = {};
   final Map<String, String> _visualJudgements = {};
+  final Map<String, Future<void>> _saveChains = {};
+  int _selectionRequest = 0;
 
   @override
   void initState() {
@@ -45,6 +47,7 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (request != _selectionRequest || _machineId != id) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -54,6 +57,7 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
 
   Future<void> _selectMachine(int? id) async {
     if (id == null) return;
+    final request = ++_selectionRequest;
     setState(() {
       _machineId = id;
       _templateId = null;
@@ -66,12 +70,14 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
     try {
       final operations = await ApiService.getPdiOperations(id);
       if (!mounted) return;
+      if (request != _selectionRequest || _machineId != id) return;
       setState(() {
         _operations = operations;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
+      if (request != _selectionRequest || _machineId != id) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -81,6 +87,8 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
 
   Future<void> _selectOperation(int? id) async {
     if (id == null || _machineId == null) return;
+    final machineId = _machineId!;
+    final request = ++_selectionRequest;
     setState(() {
       _templateId = id;
       _parameters = [];
@@ -91,20 +99,44 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
     try {
       final result = await Future.wait([
         ApiService.getPdiParameters(id),
-        ApiService.createPdiReport(machineId: _machineId!, templateId: id),
+        ApiService.createPdiReport(machineId: machineId, templateId: id),
       ]);
       if (!mounted) return;
+      if (request != _selectionRequest || _machineId != machineId || _templateId != id) return;
+      final parameters = result[0] as List<dynamic>;
+      final report = result[1] as Map<String, dynamic>;
+      _restoreReadings(parameters, report['readings'] as List<dynamic>? ?? const []);
       setState(() {
-        _parameters = result[0] as List<dynamic>;
-        _reportId = (result[1] as Map<String, dynamic>)['report_id']?.toString();
+        _parameters = parameters;
+        _reportId = report['report_id']?.toString();
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
+      if (request != _selectionRequest || _machineId != machineId || _templateId != id) return;
       setState(() {
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  void _restoreReadings(List<dynamic> parameters, List<dynamic> readings) {
+    final byId = {for (final raw in readings) '${raw['parameter_id']}_${raw['sample_number']}': raw};
+    for (final raw in parameters) {
+      final parameter = Map<String, dynamic>.from(raw as Map);
+      final id = parameter['id'] as int;
+      for (var sample = 1; sample <= 5; sample++) {
+        final reading = byId['${id}_$sample'];
+        if (reading == null) continue;
+        final key = '${id}_$sample';
+        if (parameter['measurement_type'] == 'visual') {
+          _visualJudgements[key] = reading['judgement']?.toString() ?? 'pass';
+        } else {
+          final controller = _controllers.putIfAbsent(key, () => TextEditingController());
+          controller.text = reading['value_text']?.toString() ?? reading['numeric_value']?.toString() ?? '';
+        }
+      }
     }
   }
 
@@ -114,14 +146,18 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
     final isVisual = parameter['measurement_type'] == 'visual';
     final value = isVisual ? null : _controllers[key]?.text.trim();
     if (!isVisual && (value == null || value.isEmpty)) return;
-    try {
+    final reportId = _reportId!;
+    final sampleNumber = _sample;
+    final judgement = isVisual ? _visualJudgements[key] : null;
+    final previous = _saveChains[key] ?? Future<void>.value();
+    final save = previous.then((_) async {
       await ApiService.savePdiReading(
-        reportId: _reportId!,
-        parameterId: parameterId,
-        sampleNumber: _sample,
-        numericValue: value,
-        judgement: isVisual ? _visualJudgements[key] : null,
-      );
+          reportId: reportId, parameterId: parameterId, sampleNumber: sampleNumber,
+          numericValue: value, judgement: judgement);
+    });
+    _saveChains[key] = save.catchError((_) {});
+    try {
+      await save;
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDI reading saved')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
