@@ -43,6 +43,15 @@ from .views import (
     RunChartPDFView,
     RunChartExcelView,
 )
+from .pdi_views import (
+    PDIReportOperationsView,
+    PDIReportParametersView,
+    PDIReportCreateView,
+    PDIReportReadingView,
+    PDIReportDetailView,
+    PDIReportSubmitView,
+    PDIReportListView,
+)
 
 router = SimpleRouter()
 router.register('daily-production-reports', DailyProductionReportViewSet, basename='daily-production-report')
@@ -65,6 +74,15 @@ urlpatterns = [
     path('run-chart/reports/<uuid:report_id>/readings/', RunChartReadingCreateView.as_view(), name='run-chart-reading-create'),
     path('run-chart/reports/<uuid:report_id>/pdf/', RunChartPDFView.as_view(), name='run-chart-pdf'),
     path('run-chart/reports/<uuid:report_id>/xlsx/', RunChartExcelView.as_view(), name='run-chart-xlsx'),
+
+    # Pre-Dispatch Inspection (five samples X1-X5)
+    path('pdi/machines/<int:machine_id>/operations/', PDIReportOperationsView.as_view(), name='pdi-operations'),
+    path('pdi/operations/<int:template_id>/parameters/', PDIReportParametersView.as_view(), name='pdi-parameters'),
+    path('pdi/reports/', PDIReportListView.as_view(), name='pdi-report-list'),
+    path('pdi/reports/create/', PDIReportCreateView.as_view(), name='pdi-report-create'),
+    path('pdi/reports/<uuid:report_id>/', PDIReportDetailView.as_view(), name='pdi-report-detail'),
+    path('pdi/reports/<uuid:report_id>/readings/', PDIReportReadingView.as_view(), name='pdi-report-reading'),
+    path('pdi/reports/<uuid:report_id>/submit/', PDIReportSubmitView.as_view(), name='pdi-report-submit'),
 
     # Inspector & Setup flow
     path('first-piece-status/',             FirstPieceStatusView.as_view(),   name='first-piece-status'),

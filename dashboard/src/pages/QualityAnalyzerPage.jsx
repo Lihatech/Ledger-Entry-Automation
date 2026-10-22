@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
-import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, FileSpreadsheet, LineChart } from 'lucide-react';
+import { Cpu, FileText, ArrowRight, ShieldCheck, Clock, Gauge, LineChart, ClipboardCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { canOpenPath } from '../utils/access';
 
@@ -74,22 +74,6 @@ export default function QualityAnalyzerPage() {
       disabled: false,
     },
     {
-      id: 'monthly-oee',
-      title: 'Monthly OEE Excel Report',
-      badge: '● OEE Analytics',
-      badgeBg: '#DCFCE7',
-      badgeColor: '#166534',
-      icon: FileSpreadsheet,
-      iconBg: '#DCFCE7',
-      iconColor: '#15803D',
-      description:
-        'Generate and download automated Monthly Overall Equipment Effectiveness (OEE) Excel reports with full parameter tracking.',
-      details: ['Dynamic Shift Formatting', 'Downtime & Quality Rates', 'Excel Formulas Built-in'],
-      actionText: 'View OEE Report',
-      link: '/reports/oee',
-      disabled: false,
-    },
-    {
       id: 'run-chart-reports',
       title: 'Run Chart Reports',
       badge: '● Completed Shift Reports',
@@ -103,6 +87,22 @@ export default function QualityAnalyzerPage() {
       details: ['Saved Graph Readings', 'Shift-Wise Archive', 'Red / Yellow / Green Zones'],
       actionText: 'Open Run Chart Reports',
       link: '/reports/run-chart',
+      disabled: false,
+    },
+    {
+      id: 'pdi-reports',
+      title: 'PDI Reports',
+      badge: '● Five-Job Inspection Records',
+      badgeBg: '#FFF7ED',
+      badgeColor: '#C2410C',
+      icon: ClipboardCheck,
+      iconBg: '#FFF7ED',
+      iconColor: '#EA580C',
+      description:
+        'Review day-wise Pre-Dispatch Inspection reports submitted from mobile with all parameters and X1-X5 job observations.',
+      details: ['Five Sample Observations', 'Pass / Fail Judgement', 'Machine, Part & Operation Archive'],
+      actionText: 'Open PDI Reports',
+      link: '/quality-analyzer/pdi',
       disabled: false,
     },
   ];

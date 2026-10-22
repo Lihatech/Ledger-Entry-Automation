@@ -1530,7 +1530,10 @@ class SetupApprovalView(APIView):
         Returns the most recent Setup Approval data for a template + machine combination.
         Used to pre-populate the SetupApprovalScreen on the mobile app.
     """
-    permission_classes = [MobileInspectionAccess]
+    # GET is also used by the web Quality Analyzer. HasAccess resolves the
+    # method-specific access key below, while preserving the separate mobile
+    # submission permission for POST.
+    permission_classes = [HasAccess]
     access_key = {'GET': 'quality.setup.view', 'POST': 'quality.inspections.record'}
 
     def get(self, request):

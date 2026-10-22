@@ -309,6 +309,22 @@ class DailyCompletedReportsView(APIView):
                 Q(supervisor__last_name__icontains=inspector_name.strip())
             )
 
+        # A daily card may be represented by the latest hourly session, while
+        # the supervisor and inspector are recorded on the First Piece session.
+        # Keep the First Piece identity available so names are not incorrectly
+        # substituted with the operator name.
+        first_piece_by_key = {}
+        for row in qs.order_by('-started_at'):
+            row_date = row.started_at.strftime('%d %b %Y') if row.started_at else ''
+            row_key = (
+                row_date,
+                row.machine.machine_code if row.machine else '',
+                row.part.part_number if row.part else '',
+                row.shift,
+            )
+            if row.inspection_type == 'first_piece' and row_key not in first_piece_by_key:
+                first_piece_by_key[row_key] = row
+
         seen_keys = set()
         reports = []
         for s in qs.order_by('-started_at'):
@@ -318,11 +334,20 @@ class DailyCompletedReportsView(APIView):
                 continue
             seen_keys.add(key)
 
-            operator_full = s.operator.get_full_name() if s.operator else '-'
+            first_piece = first_piece_by_key.get(key)
+            operator_full = (
+                (s.operator.get_full_name() or s.operator.username).strip()
+                if s.operator else '-'
+            )
+            supervisor_user = (first_piece.supervisor if first_piece else None) or s.supervisor
+            inspector_user = (first_piece.finalized_by if first_piece else None) or s.finalized_by
+            supervisor_full = (
+                (supervisor_user.get_full_name() or supervisor_user.username).strip()
+                if supervisor_user else '-'
+            )
             inspector_full = (
-                s.finalized_by.get_full_name()
-                if s.finalized_by
-                else (s.supervisor.get_full_name() if s.supervisor else operator_full)
+                (inspector_user.get_full_name() or inspector_user.username).strip()
+                if inspector_user else '-'
             )
 
             reports.append({
@@ -335,6 +360,7 @@ class DailyCompletedReportsView(APIView):
                 'part_number': s.part.part_number if s.part else '',
                 'shift': s.shift or 'A',
                 'operator': operator_full,
+                'supervisor': supervisor_full,
                 'inspector': inspector_full,
                 'status': 'Completed',
                 'pdf_url': f"/api/inspections/{s.session_id}/pdf/",
