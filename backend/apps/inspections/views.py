@@ -803,7 +803,29 @@ class BatchMeasureView(APIView):
             return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         op_name = session_obj.template.name if session_obj.template and session_obj.template.name else (session_obj.inspection_type or 'Inspection')
-        if (session_obj.status or '').lower() in ['completed', 'approved']:
+        if (session_obj.status or '').lower() == 'completed':
+            # The mobile form can be submitted twice when the first request
+            # completes the session before the response reaches the client.
+            # Treat that retry as an idempotent success instead of showing a
+            # false submission failure to the inspector.
+            return Response({
+                'piece_complete': True,
+                'total': len(measurements_data),
+                'passed_count': len(measurements_data),
+                'failed_count': 0,
+                'failed_codes': [],
+                'results': [
+                    {
+                        'parameter_code': item.get('parameter_code'),
+                        'status': 'ok',
+                        'measured_value': item.get('measured_value'),
+                        'message': 'Measurement was already submitted for this session.',
+                    }
+                    for item in measurements_data
+                ],
+                'idempotent': True,
+            })
+        if (session_obj.status or '').lower() == 'approved':
             return Response(
                 {'error': f"Operation '{op_name}' is fully completed and locked against edits."},
                 status=status.HTTP_403_FORBIDDEN
@@ -1563,6 +1585,89 @@ class SetupApprovalView(APIView):
     # submission permission for POST.
     permission_classes = [SetupApprovalAccess]
 
+    @staticmethod
+    def _parameter_entry(parameter, values=None, process=False):
+        values = values or {}
+        return {
+            'parameter_code': parameter.parameter_code,
+            'parameter_name': parameter.parameter_name,
+            'description': getattr(parameter, 'description', ''),
+            'unit': getattr(parameter, 'unit', ''),
+            'specification': getattr(parameter, 'specification', '') or '',
+            'nominal_value': getattr(parameter, 'nominal_value', None),
+            'upper_tolerance': getattr(parameter, 'upper_tolerance', None),
+            'lower_tolerance': getattr(parameter, 'lower_tolerance', None),
+            'upper_limit': getattr(parameter, 'upper_limit', None),
+            'lower_limit': getattr(parameter, 'lower_limit', None),
+            'is_critical': getattr(parameter, 'is_critical', False),
+            'evaluation_technique': getattr(parameter, 'measurement_technique', '') or '',
+            'sample_frequency': getattr(parameter, 'sample_size', '') or '',
+            'sequence_order': getattr(parameter, 'sequence_order', 0),
+            'process': process,
+            'trial_1': values.get(1, '-'),
+            'trial_2': values.get(2, '-'),
+            'trial_3': values.get(3, '-'),
+        }
+
+    def _report_payload(self, setup, date_param=None):
+        from apps.inspections.models import InspectionSession
+        from apps.inspections import document_utils as doc_utils
+
+        template = setup.template
+        sessions = InspectionSession.objects.filter(
+            machine_id=setup.machine_id,
+            template_id=setup.template_id,
+            inspection_type='first_piece',
+        ).order_by('trial_number', 'started_at')
+        if date_param:
+            sessions = sessions.filter(started_at__date=date_param)
+
+        product_values = {}
+        for session in sessions:
+            trial = session.trial_number or 1
+            doc = doc_utils.get_document(session) or {}
+            source = doc.get('parameter_summary') or doc.get('measurements') or []
+            for item in source:
+                if not isinstance(item, dict) or not item.get('parameter_code'):
+                    continue
+                value = item.get('measured_value', item.get('value'))
+                if value is not None and str(value).strip() != '':
+                    product_values.setdefault(item['parameter_code'], {})[trial] = value
+
+        product_parameters = [
+            self._parameter_entry(parameter, product_values.get(parameter.parameter_code), process=False)
+            for parameter in template.parameters.filter().order_by('sequence_order')
+        ]
+        raw_process = {e.get('parameter_code'): e for e in (setup.process_param_entries or []) if isinstance(e, dict)}
+        process_parameters = []
+        for parameter in template.process_parameters.filter(is_active=True).order_by('sequence_order'):
+            entry = raw_process.get(parameter.parameter_code, {})
+            process_parameters.append(self._parameter_entry(parameter, {
+                1: entry.get('trial_1', '-'), 2: entry.get('trial_2', '-'), 3: entry.get('trial_3', '-')
+            }, process=True))
+
+        return {
+            '_id': str(setup.id),
+            'setup_approval_id': str(setup.id),
+            'inspection_type': 'setup_approval',
+            'template_id': setup.template_id,
+            'template_name': template.name or f'Operation {template.version}',
+            'operation_key': str(template.operation_key),
+            'machine_id': setup.machine_id,
+            'machine_code': setup.machine.machine_code,
+            'part_number': setup.part_number or template.part.part_number,
+            'part_name': template.part.part_name,
+            'inspector_id': setup.inspector_id,
+            'inspector_name': setup.inspector_name,
+            'operator_name': setup.inspector_name,
+            'shift': getattr(setup, 'shift', 'I'),
+            'process_param_entries': setup.process_param_entries,
+            'product_parameters': product_parameters,
+            'process_parameters': process_parameters,
+            'submitted_at': setup.submitted_at,
+            'status': setup.status,
+        }
+
     def get(self, request):
         template_id = request.query_params.get('template')
         machine_id  = request.query_params.get('machine')
@@ -1592,7 +1697,24 @@ class SetupApprovalView(APIView):
         if getattr(request.user, 'plant_id', None):
             qs = qs.filter(machine__plant_id=request.user.plant_id)
         
-        setup = qs.order_by('-submitted_at').first()
+        if request.query_params.get('list') in ('1', 'true', 'yes'):
+            options = []
+            for item in qs.select_related('template__part', 'machine').order_by('-submitted_at'):
+                options.append({
+                    'setup_approval_id': str(item.id),
+                    'template_id': item.template_id,
+                    'template_name': item.template.name or f'Operation {item.template.version}',
+                    'operation_key': str(item.template.operation_key),
+                    'part_number': item.part_number or item.template.part.part_number,
+                    'part_name': item.template.part.part_name,
+                    'machine_id': item.machine_id,
+                    'machine_code': item.machine.machine_code,
+                    'submitted_at': item.submitted_at,
+                    'status': item.status,
+                })
+            return Response(options)
+
+        setup = qs.select_related('template__part', 'machine').order_by('-submitted_at').first()
 
         if not setup:
             return Response(
@@ -1600,20 +1722,40 @@ class SetupApprovalView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
-        return Response({
-            '_id': str(setup.id),
-            'setup_approval_id': str(setup.id),
-            'inspection_type': 'setup_approval',
-            'template_id': setup.template_id,
-            'machine_id': setup.machine_id,
-            'part_number': setup.part_number,
-            'inspector_id': setup.inspector_id,
-            'inspector_name': setup.inspector_name,
-            'shift': getattr(setup, 'shift', 'I'),
-            'process_param_entries': setup.process_param_entries,
-            'submitted_at': setup.submitted_at,
-            'status': setup.status,
-        })
+        return Response(self._report_payload(setup, target_date if date_param else None))
+
+    def post(self, request):
+        """Persist the inspector's three process-parameter trials."""
+        from datetime import datetime, timezone as tz
+        from apps.machines.models import Machine
+        from apps.inspections.models import SetupApproval, InspectionSession
+        from apps.inspections import document_utils as doc_utils
+
+        template_id = request.data.get('template_id')
+        machine_id = request.data.get('machine_id')
+        entries = request.data.get('process_param_entries', [])
+        if not template_id or not machine_id or not isinstance(entries, list):
+            return Response({'error': 'template_id, machine_id and process_param_entries list are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        machine_qs = Machine.objects.filter(pk=int(machine_id), is_active=True)
+        if getattr(request.user, 'plant_id', None):
+            machine_qs = machine_qs.filter(plant_id=request.user.plant_id)
+        if not machine_qs.exists():
+            return Response({'error': 'Machine is not available for your plant.'}, status=status.HTTP_404_NOT_FOUND)
+        now = datetime.now(tz.utc)
+        setup = SetupApproval.objects.filter(template_id=int(template_id), machine_id=int(machine_id), submitted_at__date=now.date()).first()
+        fields = dict(
+            part_number=request.data.get('part_number', ''), inspector=request.user,
+            inspector_name=request.data.get('inspector_name', request.user.get_full_name()),
+            process_param_entries=entries, status='submitted', submitted_at=now,
+        )
+        if setup:
+            for key, value in fields.items(): setattr(setup, key, value)
+            setup.save()
+        else:
+            setup = SetupApproval.objects.create(template_id=int(template_id), machine_id=int(machine_id), **fields)
+        for session in InspectionSession.objects.filter(machine_id=int(machine_id), started_at__date=now.date()):
+            doc_utils.update_document(session, updates={'process_param_entries': entries}, save=True)
+        return Response({'success': True, 'setup_approval_id': str(setup.id), 'template_id': template_id, 'machine_id': machine_id, 'entries_count': len(entries)}, status=status.HTTP_201_CREATED)
 
 
 class SetupApprovalPDFView(APIView):
@@ -1648,9 +1790,8 @@ class SetupApprovalPDFView(APIView):
             Spacer(1, 12),
         ]
         rows = [['Parameter', 'Description', 'Trial 1', 'Trial 2', 'Trial 3']]
-        for entry in setup.process_param_entries or []:
-            if not isinstance(entry, dict):
-                continue
+        report = SetupApprovalView()._report_payload(setup, setup.submitted_at.date())
+        for entry in (report.get('product_parameters', []) + report.get('process_parameters', [])):
             rows.append([
                 str(entry.get('parameter_code', '')),
                 str(entry.get('parameter_name', '')),

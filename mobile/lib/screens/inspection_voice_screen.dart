@@ -481,9 +481,11 @@ class _InspectionVoiceScreenState extends State<InspectionVoiceScreen> {
                     } else {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
+                          SnackBar(
                             content: Text(
-                              'Failed to submit measurements. Please check connection and try again.',
+                              provider.errorMessage?.isNotEmpty == true
+                                  ? provider.errorMessage!
+                                  : 'Failed to submit measurements. Please check connection and try again.',
                             ),
                             backgroundColor: Color(0xFFDC2626),
                             duration: Duration(seconds: 4),

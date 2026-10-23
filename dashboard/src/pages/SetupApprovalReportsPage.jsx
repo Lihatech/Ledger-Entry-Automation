@@ -2,22 +2,46 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { getSetupApprovalData } from '../api/inspections';
+import { getSetupApprovalData, getSetupApprovalOptions } from '../api/inspections';
 import api from '../api/axios';
 import { useCompany } from '../context/CompanyContext';
 import { formatDate } from '../utils/formatters';
-import { Download, Calendar, Cpu, Search } from 'lucide-react';
+import { Download, Calendar, Cpu, Search, Settings2 } from 'lucide-react';
 
 export default function SetupApprovalReportsPage() {
   const { companyName, companyCode } = useCompany();
   const [machines, setMachines] = useState([]);
   const [selectedMachine, setSelectedMachine] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [operations, setOperations] = useState([]);
+  const [selectedOperation, setSelectedOperation] = useState('');
 
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedMachine || !selectedDate) return;
+    let cancelled = false;
+    const fetchOperations = async () => {
+      setOperations([]);
+      setSelectedOperation('');
+      setReportData(null);
+      try {
+        const res = await getSetupApprovalOptions(selectedMachine, selectedDate);
+        const list = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        if (!cancelled) {
+          setOperations(list);
+          if (list.length) setSelectedOperation(String(list[0].template_id));
+        }
+      } catch (err) {
+        if (!cancelled && err.response?.status !== 404) setError('Failed to load setup approval operations.');
+      }
+    };
+    fetchOperations();
+    return () => { cancelled = true; };
+  }, [selectedMachine, selectedDate]);
 
   useEffect(() => {
     const fetchMachines = async () => {
@@ -40,8 +64,7 @@ export default function SetupApprovalReportsPage() {
     setError('');
     setReportData(null);
     try {
-      // Pass null for templateId so the backend returns the latest setup approval for the machine
-      const res = await getSetupApprovalData(null, selectedMachine, selectedDate);
+      const res = await getSetupApprovalData(selectedOperation, selectedMachine, selectedDate);
       if (res.data) {
         setReportData(res.data);
       }
@@ -54,13 +77,13 @@ export default function SetupApprovalReportsPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedMachine, selectedDate]);
+  }, [selectedMachine, selectedDate, selectedOperation]);
 
   useEffect(() => {
-    if (selectedMachine && selectedDate) {
+    if (selectedMachine && selectedDate && selectedOperation) {
       loadReport();
     }
-  }, [selectedMachine, selectedDate, loadReport]);
+  }, [selectedMachine, selectedDate, selectedOperation, loadReport]);
 
 
   const handleDownloadPDF = async () => {
@@ -86,9 +109,9 @@ export default function SetupApprovalReportsPage() {
     }
   };
 
-  const paramEntries = reportData?.process_param_entries || [];
-  const productParams = paramEntries.filter(p => p.parameter_code && !p.parameter_code.startsWith('PR'));
-  const processParams = paramEntries.filter(p => p.parameter_code && p.parameter_code.startsWith('PR'));
+  const productParams = reportData?.product_parameters || [];
+  const processParams = reportData?.process_parameters || [];
+  const paramEntries = [...productParams, ...processParams];
 
   const entriesByKey = {};
   paramEntries.forEach(entry => {
@@ -136,6 +159,24 @@ export default function SetupApprovalReportsPage() {
                   onChange={e => setSelectedDate(e.target.value)}
                   style={{ border: 'none', outline: 'none', padding: '8px 0', fontSize: 13, fontWeight: 600, color: '#1E293B', background: 'transparent' }}
                 />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Select Operation / Template</label>
+              <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #CBD5E1', borderRadius: '6px', overflow: 'hidden', padding: '0 12px', background: '#FFFFFF' }}>
+                <Settings2 size={14} color="#64748B" style={{ marginRight: 8 }} />
+                <select
+                  value={selectedOperation}
+                  onChange={e => setSelectedOperation(e.target.value)}
+                  disabled={!operations.length}
+                  style={{ border: 'none', outline: 'none', padding: '9px 0', fontSize: 13, fontWeight: 600, color: '#1E293B', background: 'transparent', minWidth: '220px' }}
+                >
+                  <option value="" disabled>{operations.length ? 'Select Operation...' : 'No operation report'}</option>
+                  {operations.map(op => (
+                    <option key={op.template_id} value={op.template_id}>{op.template_name || op.part_number || `Template ${op.template_id}`}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

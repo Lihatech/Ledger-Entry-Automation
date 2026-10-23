@@ -23,6 +23,13 @@ class ApiService {
   static String _resolveBaseUrl() {
     const envUrl = String.fromEnvironment('API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
+    // A release web build can still be run locally (for example with
+    // `flutter build web` + a local static server). In that case keep API
+    // traffic local instead of silently sending credentials to Railway.
+    if (kIsWeb &&
+        (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1')) {
+      return 'http://${Uri.base.host}:8000/api';
+    }
     if (kDebugMode) {
       // Defaults to localhost:8000 (compatible with `adb reverse tcp:8000 tcp:8000` for physical devices, web, and desktop)
       return 'http://localhost:8000/api';
@@ -1260,7 +1267,7 @@ class ApiService {
         Uri.parse('$baseUrl/inspections/$sessionId/batch-measure/'),
         headers: headers,
         body: jsonEncode({'measurements': measurements}),
-      ),
+      ).timeout(const Duration(seconds: 35)),
     );
     sw.stop();
     print(
@@ -1272,7 +1279,15 @@ class ApiService {
     if (response.statusCode == 200 || response.statusCode == 202) {
       return jsonDecode(response.body);
     }
-    return null;
+    String detail = 'HTTP ${response.statusCode}';
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        detail = (body['detail'] ?? body['error'] ?? body.values.first).toString();
+      }
+    } catch (_) {}
+    debugPrint('[API] batchMeasure rejected: $detail');
+    throw Exception(detail);
   }
 
   // 10. Complete Session

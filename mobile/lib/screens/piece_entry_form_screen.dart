@@ -45,7 +45,8 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
       if (code.isNotEmpty) {
         final existingResult = provider.recordedResults[code];
         String initialText = '';
-        if (existingResult != null && existingResult['measured_value'] != null) {
+        if (existingResult != null &&
+            existingResult['measured_value'] != null) {
           initialText = existingResult['measured_value'].toString();
         }
         _controllers[code] = TextEditingController(text: initialText);
@@ -72,7 +73,8 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
 
     if (type == 'visual') return 2;
     if (type == 'min_limit' || name.contains('MIN')) return 31;
-    if (type == 'max_limit' || type == 'surface' || name.contains('MAX')) return 32;
+    if (type == 'max_limit' || type == 'surface' || name.contains('MAX'))
+      return 32;
     return 1;
   }
 
@@ -93,7 +95,8 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
 
     if (param['is_process_parameter'] == true) {
       final spec = param['specification'] ?? '';
-      if (spec.isNotEmpty && param['nominal_value'] == null) return 'Spec: $spec $unit';
+      if (spec.isNotEmpty && param['nominal_value'] == null)
+        return 'Spec: $spec $unit';
       if (param['nominal_value'] != null) {
         final ll = param['lower_limit'] ?? '—';
         final ul = param['upper_limit'] ?? '—';
@@ -105,7 +108,10 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     return 'Spec: ${param['nominal_value']} $unit [${param['lower_limit']} - ${param['upper_limit']}]';
   }
 
-  Future<void> _recordVoiceForField(String code, Map<String, dynamic> param) async {
+  Future<void> _recordVoiceForField(
+    String code,
+    Map<String, dynamic> param,
+  ) async {
     if (_isProcessingVoice) return;
 
     if (_activeRecordingCode == code) {
@@ -175,10 +181,19 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               final clean = rawText.trim().toLowerCase();
               if (['1', '1.0', 'yes', 'pass', 'ok', 'true'].contains(clean)) {
                 parsedVal = 1.0;
-              } else if (['0', '0.0', 'no', 'fail', 'reject', 'false'].contains(clean)) {
+              } else if ([
+                '0',
+                '0.0',
+                'no',
+                'fail',
+                'reject',
+                'false',
+              ].contains(clean)) {
                 parsedVal = 0.0;
               } else {
-                parsedVal = double.tryParse(rawText.replaceAll(RegExp(r'[^0-9.-]'), ''));
+                parsedVal = double.tryParse(
+                  rawText.replaceAll(RegExp(r'[^0-9.-]'), ''),
+                );
               }
             } else {
               // 1. Check if backend already parsed the value during STT task
@@ -186,10 +201,13 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 parsedVal = (pollRes!['parsed_value'] as num).toDouble();
               } else {
                 // 2. Try direct local parse
-                parsedVal = double.tryParse(rawText.replaceAll(RegExp(r'[^0-9.-]'), ''));
+                parsedVal = double.tryParse(
+                  rawText.replaceAll(RegExp(r'[^0-9.-]'), ''),
+                );
                 if (parsedVal == null && rawText.isNotEmpty) {
                   final parseResult = await ApiService.parseText(rawText);
-                  if (parseResult['is_parseable'] == true && parseResult['parsed_value'] != null) {
+                  if (parseResult['is_parseable'] == true &&
+                      parseResult['parsed_value'] != null) {
                     parsedVal = (parseResult['parsed_value'] as num).toDouble();
                   }
                 }
@@ -198,12 +216,10 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
 
             if (parsedVal != null) {
               _controllers[code]?.text = parsedVal.toString();
-              Provider.of<InspectionProvider>(context, listen: false).setPendingValue(
-                code,
-                parsedVal,
-                rawText,
-                method: 'voice',
-              );
+              Provider.of<InspectionProvider>(
+                context,
+                listen: false,
+              ).setPendingValue(code, parsedVal, rawText, method: 'voice');
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -217,7 +233,9 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Could not parse "$rawText". Please enter manually.'),
+                    content: Text(
+                      'Could not parse "$rawText". Please enter manually.',
+                    ),
                     backgroundColor: const Color(0xFFF59E0B),
                   ),
                 );
@@ -258,11 +276,15 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
 
   Future<void> _submitPieceForm() async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
-    debugPrint('[SUBMIT] _submitPieceForm() called. sessionId=${provider.sessionId}');
+    debugPrint(
+      '[SUBMIT] _submitPieceForm() called. sessionId=${provider.sessionId}',
+    );
 
     // ── Guard: session must exist ─────────────────────────────────────────
     if (provider.sessionId == null) {
-      debugPrint('[SUBMIT] ERROR: sessionId is null — cannot submit without an active session.');
+      debugPrint(
+        '[SUBMIT] ERROR: sessionId is null — cannot submit without an active session.',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No active session. Please restart the inspection.'),
@@ -276,21 +298,29 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     final missingCodes = <String>[];
     for (var param in provider.parameters) {
       final code = param['parameter_code']?.toString() ?? '';
-      final isCarriedForward = provider.recordedResults[code]?['carried_forward'] == true ||
-          (provider.recordedResults[code]?['status'] == 'ok' && widget.attemptNumber > 1);
+      final isCarriedForward =
+          provider.recordedResults[code]?['carried_forward'] == true ||
+          (provider.recordedResults[code]?['status'] == 'ok' &&
+              widget.attemptNumber > 1);
 
       if (!isCarriedForward) {
         final textVal = _controllers[code]?.text.trim() ?? '';
         if (textVal.isEmpty && !provider.pendingBatchValues.containsKey(code)) {
-          debugPrint('[SUBMIT] MISSING: $code — text empty, not in pendingBatch');
+          debugPrint(
+            '[SUBMIT] MISSING: $code — text empty, not in pendingBatch',
+          );
           missingCodes.add(code);
         } else if (textVal.isNotEmpty) {
           final parsed = double.tryParse(textVal);
           if (parsed != null) {
-            debugPrint('[SUBMIT] setPendingValue: $code = $parsed (from text field)');
+            debugPrint(
+              '[SUBMIT] setPendingValue: $code = $parsed (from text field)',
+            );
             provider.setPendingValue(code, parsed, textVal, method: 'form');
           } else {
-            debugPrint('[SUBMIT] MISSING: $code — text "$textVal" is not a valid number');
+            debugPrint(
+              '[SUBMIT] MISSING: $code — text "$textVal" is not a valid number',
+            );
             missingCodes.add(code);
           }
         }
@@ -298,17 +328,23 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     }
 
     if (missingCodes.isNotEmpty) {
-      debugPrint('[SUBMIT] Validation failed — ${missingCodes.length} missing: $missingCodes');
+      debugPrint(
+        '[SUBMIT] Validation failed — ${missingCodes.length} missing: $missingCodes',
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Please fill all ${missingCodes.length} remaining fields before submitting.'),
+          content: Text(
+            'Please fill all ${missingCodes.length} remaining fields before submitting.',
+          ),
           backgroundColor: const Color(0xFFEF4444),
         ),
       );
       return;
     }
 
-    debugPrint('[SUBMIT] Validation passed. Pending values: ${provider.pendingBatchValues.keys.toList()}');
+    debugPrint(
+      '[SUBMIT] Validation passed. Pending values: ${provider.pendingBatchValues.keys.toList()}',
+    );
     setState(() => _isSubmitting = true);
 
     // ── API call — ALWAYS reset _isSubmitting in finally ──────────────────
@@ -320,23 +356,31 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
       if (!mounted) return;
 
       if (res != null) {
-        final bool complete  = res['piece_complete'] == true;
+        final bool complete = res['piece_complete'] == true;
         final int failedCount = res['failed_count'] ?? 0;
         final List<dynamic> failedCodes = res['failed_codes'] ?? [];
-        debugPrint('[SUBMIT] piece_complete=$complete failedCount=$failedCount failedCodes=$failedCodes');
+        debugPrint(
+          '[SUBMIT] piece_complete=$complete failedCount=$failedCount failedCodes=$failedCodes',
+        );
 
         if (complete) {
           debugPrint('[SUBMIT] All params passed — showing success modal.');
           _showSuccessModal();
         } else {
-          debugPrint('[SUBMIT] ${failedCodes.length} param(s) failed — showing failure modal.');
+          debugPrint(
+            '[SUBMIT] ${failedCodes.length} param(s) failed — showing failure modal.',
+          );
           _showFailureModal(failedCount, failedCodes, res['results'] ?? []);
         }
       } else {
-        debugPrint('[SUBMIT] ERROR: submitBatchMeasurements returned null (API failure).');
+        debugPrint(
+          '[SUBMIT] ERROR: submitBatchMeasurements returned null (API failure).',
+        );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Submission failed. Please check your network connection and try again.'),
+            content: Text(
+              'Submission failed. Please check your network connection and try again.',
+            ),
             backgroundColor: Color(0xFFEF4444),
             duration: Duration(seconds: 4),
           ),
@@ -375,12 +419,20 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
         ),
         title: Row(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 32),
+            const Icon(
+              Icons.check_circle_rounded,
+              color: Color(0xFF10B981),
+              size: 32,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'PC #${widget.pieceNumber} PASSED! 🎉',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
               ),
             ),
           ],
@@ -399,23 +451,35 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 (route) => false,
               );
             },
-            child: const Text('Home', style: TextStyle(color: Color(0xFF94A3B8))),
+            child: const Text(
+              'Home',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            ),
           ),
           if (widget.pieceNumber < 3)
             ElevatedButton.icon(
               onPressed: () async {
                 Navigator.pop(ctx);
-                final provider = Provider.of<InspectionProvider>(context, listen: false);
+                final provider = Provider.of<InspectionProvider>(
+                  context,
+                  listen: false,
+                );
                 final nextPiece = widget.pieceNumber + 1;
                 final template = provider.selectedTemplate;
                 if (template != null) {
                   await provider.loadParameters(template);
-                  final started = await provider.startSession(trial: nextPiece, inspectionType: 'first_piece');
+                  final started = await provider.startSession(
+                    trial: nextPiece,
+                    inspectionType: 'first_piece',
+                  );
                   if (started && mounted) {
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => PieceEntryFormScreen(pieceNumber: nextPiece, attemptNumber: 1),
+                        builder: (_) => PieceEntryFormScreen(
+                          pieceNumber: nextPiece,
+                          attemptNumber: 1,
+                        ),
                       ),
                     );
                   }
@@ -424,7 +488,9 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2563EB),
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
               label: Text('Next Piece (PC #${widget.pieceNumber + 1})'),
@@ -440,7 +506,9 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF10B981),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             icon: const Icon(Icons.assessment_rounded, size: 18),
             label: const Text('View Summary'),
@@ -450,8 +518,14 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     );
   }
 
-  void _showFailureModal(int failedCount, List<dynamic> failedCodes, List<dynamic> results) {
-    final failedResults = results.where((r) => r['status'] == 'out_of_spec' || r['status'] == 'error').toList();
+  void _showFailureModal(
+    int failedCount,
+    List<dynamic> failedCodes,
+    List<dynamic> results,
+  ) {
+    final failedResults = results
+        .where((r) => r['status'] == 'out_of_spec' || r['status'] == 'error')
+        .toList();
 
     showDialog(
       context: context,
@@ -464,12 +538,20 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
         ),
         title: Row(
           children: [
-            const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 32),
+            const Icon(
+              Icons.error_outline_rounded,
+              color: Color(0xFFEF4444),
+              size: 32,
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Attempt #${widget.attemptNumber}: $failedCount Failed',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
               ),
             ),
           ],
@@ -497,19 +579,28 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E293B),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.5)),
+                        border: Border.all(
+                          color: const Color(0xFFEF4444).withValues(alpha: 0.5),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             '${item['parameter_code']} — Value: ${item['measured_value']}',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             item['message'] ?? 'Out of specification',
-                            style: const TextStyle(color: Color(0xFFF87171), fontSize: 12),
+                            style: const TextStyle(
+                              color: Color(0xFFF87171),
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -520,7 +611,11 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               const SizedBox(height: 8),
               Text(
                 'Attempt #${widget.attemptNumber + 1} will open only the failed parameter(s) for correction. All passed parameters are locked.',
-                style: TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontStyle: FontStyle.italic),
+                style: TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
           ),
@@ -529,11 +624,17 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
           ElevatedButton.icon(
             onPressed: () async {
               Navigator.pop(ctx);
-              final provider = Provider.of<InspectionProvider>(context, listen: false);
+              final provider = Provider.of<InspectionProvider>(
+                context,
+                listen: false,
+              );
               final currentSessionId = provider.sessionId;
               final template = provider.selectedTemplate;
               if (template != null) {
-                await provider.loadParametersForRetrial(template, trial: widget.pieceNumber);
+                await provider.loadParametersForRetrial(
+                  template,
+                  trial: widget.pieceNumber,
+                );
                 final started = await provider.startSession(
                   trial: widget.pieceNumber,
                   inspectionType: 'first_piece',
@@ -555,10 +656,14 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFF59E0B),
               foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             icon: const Icon(Icons.refresh_rounded, size: 18),
-            label: Text('Re-enter Failed (${failedResults.length}) → Attempt #${widget.attemptNumber + 1}'),
+            label: Text(
+              'Re-enter Failed (${failedResults.length}) → Attempt #${widget.attemptNumber + 1}',
+            ),
           ),
         ],
       ),
@@ -568,12 +673,16 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context);
-    final partNumber = provider.selectedPart?['part_number'] ?? 'FBT00222';
-    final partName = provider.selectedPart?['part_name'] ?? 'POLY V PULLEY';
-    final machineCode = provider.selectedMachine?['machine_code'] ?? 'MCH-001';
+    final partNumber = provider.selectedPart?['part_number'] ?? '—';
+    final partName = provider.selectedPart?['part_name'] ?? 'No part selected';
+    final machineCode = provider.selectedMachine?['machine_code'] ?? '—';
 
-    final processParams = provider.parameters.where((p) => p['is_process_parameter'] == true).toList();
-    final productParams = provider.parameters.where((p) => p['is_process_parameter'] != true).toList();
+    final processParams = provider.parameters
+        .where((p) => p['is_process_parameter'] == true)
+        .toList();
+    final productParams = provider.parameters
+        .where((p) => p['is_process_parameter'] != true)
+        .toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFF0B1120),
@@ -586,7 +695,11 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
           children: [
             Text(
               '1ST PC #${widget.pieceNumber} Entry (Attempt #${widget.attemptNumber})',
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+              ),
             ),
             Text(
               '$partNumber ($partName) · $machineCode',
@@ -610,8 +723,12 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
             child: Row(
               children: [
                 Icon(
-                  widget.attemptNumber > 1 ? Icons.build_circle_rounded : Icons.assignment_turned_in_rounded,
-                  color: widget.attemptNumber > 1 ? const Color(0xFFF59E0B) : const Color(0xFF10B981),
+                  widget.attemptNumber > 1
+                      ? Icons.build_circle_rounded
+                      : Icons.assignment_turned_in_rounded,
+                  color: widget.attemptNumber > 1
+                      ? const Color(0xFFF59E0B)
+                      : const Color(0xFF10B981),
                   size: 20,
                 ),
                 const SizedBox(width: 10),
@@ -620,7 +737,11 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                     widget.attemptNumber == 1
                         ? 'Fill all Product & Process parameters for PC #${widget.pieceNumber} and tap Submit.'
                         : 'Attempt #${widget.attemptNumber}: Re-entering ${provider.parameters.length} failed field(s). Passed fields locked.',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ],
@@ -633,13 +754,19 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 if (processParams.isNotEmpty) ...[
-                  _buildSectionHeader('PROCESS PARAMETERS (${processParams.length})', Icons.precision_manufacturing_rounded),
+                  _buildSectionHeader(
+                    'PROCESS PARAMETERS (${processParams.length})',
+                    Icons.precision_manufacturing_rounded,
+                  ),
                   const SizedBox(height: 8),
                   ...processParams.map((p) => _buildParameterCard(p)),
                   const SizedBox(height: 20),
                 ],
                 if (productParams.isNotEmpty) ...[
-                  _buildSectionHeader('PRODUCT PARAMETERS (${productParams.length})', Icons.rule_rounded),
+                  _buildSectionHeader(
+                    'PRODUCT PARAMETERS (${productParams.length})',
+                    Icons.rule_rounded,
+                  ),
                   const SizedBox(height: 8),
                   ...productParams.map((p) => _buildParameterCard(p)),
                 ],
@@ -653,7 +780,11 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF0F172A),
               boxShadow: [
-                BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 10, offset: const Offset(0, -3)),
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.3),
+                  blurRadius: 10,
+                  offset: const Offset(0, -3),
+                ),
               ],
             ),
             child: SafeArea(
@@ -663,14 +794,28 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                   backgroundColor: const Color(0xFF10B981),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 52),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 icon: _isSubmitting
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.send_rounded, size: 20),
                 label: Text(
-                  _isSubmitting ? 'VALIDATING PIECE...' : 'SUBMIT PC #${widget.pieceNumber} (ATTEMPT #${widget.attemptNumber})',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  _isSubmitting
+                      ? 'VALIDATING PIECE...'
+                      : 'SUBMIT PC #${widget.pieceNumber} (ATTEMPT #${widget.attemptNumber})',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ),
             ),
@@ -687,7 +832,12 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
         const SizedBox(width: 8),
         Text(
           title,
-          style: const TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.5),
+          style: const TextStyle(
+            color: Color(0xFF38BDF8),
+            fontWeight: FontWeight.bold,
+            fontSize: 13,
+            letterSpacing: 0.5,
+          ),
         ),
       ],
     );
@@ -700,7 +850,8 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
     final isCritical = param['is_critical'] == true;
 
     final existingResult = provider.recordedResults[code];
-    final bool isCarriedForward = existingResult?['carried_forward'] == true ||
+    final bool isCarriedForward =
+        existingResult?['carried_forward'] == true ||
         (existingResult?['status'] == 'ok' && widget.attemptNumber > 1);
     final bool isFailedFromPrev = existingResult?['status'] == 'out_of_spec';
 
@@ -741,15 +892,32 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               Expanded(
                 child: Text(
                   '$code — $name',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               if (isCritical)
                 Container(
                   margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: const Color(0xFFEF4444).withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
-                  child: const Text('CRITICAL', style: TextStyle(color: Color(0xFFEF4444), fontSize: 9, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    'CRITICAL',
+                    style: TextStyle(
+                      color: Color(0xFFEF4444),
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -759,7 +927,11 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 ),
                 child: Text(
                   statusText,
-                  style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -778,18 +950,35 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
                 child: TextField(
                   controller: controller,
                   enabled: !isCarriedForward && !_isProcessingVoice,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   style: TextStyle(
-                    color: isCarriedForward ? const Color(0xFF10B981) : Colors.white,
+                    color: isCarriedForward
+                        ? const Color(0xFF10B981)
+                        : Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                   decoration: InputDecoration(
-                    hintText: isCarriedForward ? 'Passed' : 'Enter value (e.g. 25.02)',
-                    hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                    hintText: isCarriedForward
+                        ? 'Passed'
+                        : 'Enter value (e.g. 25.02)',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 13,
+                    ),
                     filled: true,
-                    fillColor: isCarriedForward ? const Color(0xFF1E293B).withValues(alpha: 0.5) : const Color(0xFF1E293B),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+                    fillColor: isCarriedForward
+                        ? const Color(0xFF1E293B).withValues(alpha: 0.5)
+                        : const Color(0xFF1E293B),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
                   ),
                   onChanged: (val) {
                     final d = double.tryParse(val);
@@ -802,11 +991,15 @@ class _PieceEntryFormScreenState extends State<PieceEntryFormScreen> {
               ),
               const SizedBox(width: 10),
               IconButton.filled(
-                onPressed: isCarriedForward || _isProcessingVoice ? null : () => _recordVoiceForField(code, param),
+                onPressed: isCarriedForward || _isProcessingVoice
+                    ? null
+                    : () => _recordVoiceForField(code, param),
                 style: IconButton.styleFrom(
                   backgroundColor: isRecording
                       ? const Color(0xFFEF4444)
-                      : (isCarriedForward ? const Color(0xFF334155) : const Color(0xFF2563EB)),
+                      : (isCarriedForward
+                            ? const Color(0xFF334155)
+                            : const Color(0xFF2563EB)),
                   padding: const EdgeInsets.all(12),
                 ),
                 icon: isRecording

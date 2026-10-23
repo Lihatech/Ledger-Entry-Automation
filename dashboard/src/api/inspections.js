@@ -16,6 +16,12 @@ export const getSetupApprovalData = (templateId, machineId, dateStr) => {
   return api.get(url);
 };
 
+export const getSetupApprovalOptions = (machineId, dateStr) => {
+  const params = new URLSearchParams({ machine: machineId, list: '1' });
+  if (dateStr) params.set('date', dateStr);
+  return api.get(`/api/inspections/setup-approval/?${params.toString()}`);
+};
+
 export const reviewSession = (sessionId, action, remark = '', rejectedParameters = []) =>
   api.post(`/api/inspections/${sessionId}/review/`, {
     action,

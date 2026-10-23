@@ -34,11 +34,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     if (_isRefreshing) return;
     setState(() => _isRefreshing = true);
     final provider = Provider.of<InspectionProvider>(context, listen: false);
-    final machineId = provider.selectedMachine?['id'] ?? 2;
+    final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+    if (machineId == null) return;
 
     try {
       final setupStatus = await ApiService.checkSetupApproved(machineId);
-      final hasReport = setupStatus['has_today_report'] == true || setupStatus['session_id'] != null;
+      final hasReport =
+          setupStatus['has_today_report'] == true ||
+          setupStatus['session_id'] != null;
       if (hasReport) {
         await provider.restoreActiveReportState(setupStatus);
       } else {
@@ -65,7 +68,16 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
   Future<void> _loadTemplates() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
-      final machineId = provider.selectedMachine?['id'] ?? 2;
+      final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+      if (machineId == null) {
+        if (mounted) {
+          setState(() {
+            _templates = [];
+            _isLoading = false;
+          });
+        }
+        return;
+      }
 
       await provider.fetchPendingRejections();
 
@@ -73,7 +85,8 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       Map<int, int> opActiveSlots = {};
       try {
         final setupStatus = await ApiService.checkSetupApproved(machineId);
-        if (setupStatus['has_today_report'] == true || setupStatus['session_id'] != null) {
+        if (setupStatus['has_today_report'] == true ||
+            setupStatus['session_id'] != null) {
           await provider.restoreActiveReportState(setupStatus);
         } else {
           await provider.resetSessionState();
@@ -89,17 +102,13 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       } catch (_) {}
 
       List<dynamic> rawTemplates = [];
-      if (provider.selectedPart != null && provider.selectedPart?['part_number'] != null) {
-        rawTemplates = await ApiService.getTemplatesByPart(provider.selectedPart!['part_number']);
+      if (provider.selectedPart != null &&
+          provider.selectedPart?['part_number'] != null) {
+        rawTemplates = await ApiService.getTemplatesByPart(
+          provider.selectedPart!['part_number'],
+        );
       } else {
-        final parts = await ApiService.getPartsByMachine(machineId);
-        if (parts.isNotEmpty) {
-          provider.selectPart(parts.first);
-          rawTemplates = await ApiService.getTemplatesByPart(parts.first['part_number']);
-        } else {
-          provider.selectPart({'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'});
-          rawTemplates = await ApiService.getTemplatesByPart('FBT00222');
-        }
+        rawTemplates = [];
       }
 
       final List<dynamic> sorted = List.from(rawTemplates);
@@ -131,7 +140,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     return 'Operation $version';
   }
 
-  Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {
+  Future<void> _startFpiTrial(
+    Map<String, dynamic> template,
+    int trialNumber,
+  ) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final isInspector = auth.isInspector;
@@ -145,7 +157,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
         : null;
 
     if (trialNumber == 1 || !isInspector) {
-      await provider.loadParameters(template, isFirstPiece: isInspector, categoryFilter: 'product');
+      await provider.loadParameters(
+        template,
+        isFirstPiece: isInspector,
+        categoryFilter: 'product',
+      );
     } else {
       final failedCodes = provider.trialFailedCodes[trialNumber - 1];
       await provider.loadParametersForRetrial(
@@ -168,9 +184,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       return;
     }
 
-    if (provider.sessionId != null && trialNumber == provider.trialNumber && provider.inspectionType == inspType) {
+    if (provider.sessionId != null &&
+        trialNumber == provider.trialNumber &&
+        provider.inspectionType == inspType) {
       if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()));
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+        );
       }
       return;
     }
@@ -186,17 +207,24 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
         final count = provider.parameters.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🎯 Corrective Trial 1ST PC #$trialNumber: Re-measuring $count failed parameter(s).'),
+            content: Text(
+              '🎯 Corrective Trial 1ST PC #$trialNumber: Re-measuring $count failed parameter(s).',
+            ),
             backgroundColor: const Color(0xFFD97706),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()));
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+      );
     } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to start session: ${provider.errorMessage ?? "Server error"}'),
+          content: Text(
+            'Failed to start session: ${provider.errorMessage ?? "Server error"}',
+          ),
           backgroundColor: Colors.redAccent,
         ),
       );
@@ -221,8 +249,12 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
         ),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         title: Text(
-          'Part: ${provider.selectedPart?['part_number'] ?? 'FBT00222'}',
-          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+          'Part: ${provider.selectedPart?['part_number'] ?? '—'}',
+          style: const TextStyle(
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.bold,
+            fontSize: 17,
+          ),
         ),
         actions: [
           IconButton(
@@ -230,7 +262,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(0xFF2563EB),
+                    ),
                   )
                 : const Icon(Icons.refresh_rounded, color: Color(0xFF2563EB)),
             tooltip: 'Refresh / Sync with Server',
@@ -255,7 +290,6 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-
               // Selected Machine & Part Banner
               Container(
                 padding: const EdgeInsets.all(16),
@@ -268,7 +302,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                       color: Color(0x0A0F172A),
                       blurRadius: 10,
                       offset: Offset(0, 3),
-                    )
+                    ),
                   ],
                 ),
                 child: Row(
@@ -280,7 +314,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFFDBEAFE)),
                       ),
-                      child: const Icon(Icons.build_circle_rounded, color: Color(0xFF2563EB), size: 24),
+                      child: const Icon(
+                        Icons.build_circle_rounded,
+                        color: Color(0xFF2563EB),
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -289,12 +327,19 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                         children: [
                           Text(
                             provider.selectedMachine?['name'] ?? 'Machine',
-                            style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                            style: const TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             'Code: ${provider.selectedMachine?['machine_code'] ?? ''}  •  Part: ${provider.selectedPart?['part_name'] ?? provider.selectedPart?['part_number'] ?? '-'}',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                            style: const TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -303,16 +348,30 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                       onPressed: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                          MaterialPageRoute(
+                            builder: (_) => const MachineSelectScreen(),
+                          ),
                         );
                       },
                       style: OutlinedButton.styleFrom(
                         foregroundColor: const Color(0xFF2563EB),
                         side: const BorderSide(color: Color(0xFFBFDBFE)),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                      child: const Text('CHANGE', style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'CHANGE',
+                        style: TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -324,8 +383,12 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 ...provider.activeRejections.map((rej) {
                   final currentTrial = rej['trial_number'] ?? 1;
                   final nextTrial = currentTrial + 1;
-                  final remark = rej['rejection_reason'] ?? rej['supervisor_remark'] ?? 'Correction required by supervisor.';
-                  final List<dynamic> rejectedParams = rej['rejected_parameters'] ?? [];
+                  final remark =
+                      rej['rejection_reason'] ??
+                      rej['supervisor_remark'] ??
+                      'Correction required by supervisor.';
+                  final List<dynamic> rejectedParams =
+                      rej['rejected_parameters'] ?? [];
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 12),
@@ -340,24 +403,40 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                       children: [
                         Row(
                           children: [
-                            const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 22),
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: Color(0xFFDC2626),
+                              size: 22,
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               '1ST PC #$currentTrial REJECTED BY SUPERVISOR',
-                              style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 13),
+                              style: const TextStyle(
+                                color: Color(0xFFDC2626),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Remark: "$remark"',
-                          style: const TextStyle(color: Color(0xFF451A03), fontSize: 13, fontStyle: FontStyle.italic),
+                          style: const TextStyle(
+                            color: Color(0xFF451A03),
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                         if (rejectedParams.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Text(
                             'Targeted Re-entry Params: ${rejectedParams.join(", ")}',
-                            style: const TextStyle(color: Color(0xFFB45309), fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Color(0xFFB45309),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                         const SizedBox(height: 12),
@@ -366,19 +445,34 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                             backgroundColor: const Color(0xFFDC2626),
                             foregroundColor: Colors.white,
                             minimumSize: const Size(double.infinity, 42),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                             elevation: 0,
                           ),
-                          icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+                          icon: const Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                          ),
                           label: Text(
                             'START CORRECTIVE TRIAL (1ST PC #$nextTrial)',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           onPressed: () async {
                             List<dynamic> templates = _templates;
                             if (templates.isEmpty) {
-                              final partNo = provider.selectedPart?['part_number'] ?? 'FBT00222';
-                              templates = await ApiService.getTemplatesByPart(partNo);
+                              final partNo = provider
+                                  .selectedPart?['part_number']
+                                  ?.toString();
+                              if (partNo != null && partNo.isNotEmpty) {
+                                templates = await ApiService.getTemplatesByPart(
+                                  partNo,
+                                );
+                              }
                             }
 
                             if (templates.isNotEmpty) {
@@ -395,12 +489,17 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                               if (started && context.mounted) {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
+                                  MaterialPageRoute(
+                                    builder: (_) =>
+                                        const InspectionVoiceScreen(),
+                                  ),
                                 );
                               } else if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content: Text('Failed to start corrective session: ${provider.errorMessage ?? "Server error"}'),
+                                    content: Text(
+                                      'Failed to start corrective session: ${provider.errorMessage ?? "Server error"}',
+                                    ),
                                     backgroundColor: Colors.redAccent,
                                   ),
                                 );
@@ -408,13 +507,15 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                             } else if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('No active template found for corrective trial.'),
+                                  content: Text(
+                                    'No active template found for corrective trial.',
+                                  ),
                                   backgroundColor: Colors.amber,
                                 ),
                               );
                             }
                           },
-                        )
+                        ),
                       ],
                     ),
                   );
@@ -436,7 +537,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFEFF6FF),
                         borderRadius: BorderRadius.circular(6),
@@ -444,7 +548,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                       ),
                       child: const Text(
                         '1PC ONLY',
-                        style: TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -453,15 +561,30 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 Row(
                   children: [
                     Expanded(
-                      child: _buildTrialLaunchCard(1, '1ST PC #1', 'Initial Setup', const Color(0xFF2563EB)),
+                      child: _buildTrialLaunchCard(
+                        1,
+                        '1ST PC #1',
+                        'Initial Setup',
+                        const Color(0xFF2563EB),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildTrialLaunchCard(2, '1ST PC #2', 'Corrective', const Color(0xFFD97706)),
+                      child: _buildTrialLaunchCard(
+                        2,
+                        '1ST PC #2',
+                        'Corrective',
+                        const Color(0xFFD97706),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
-                      child: _buildTrialLaunchCard(3, '1ST PC #3', 'Final Check', const Color(0xFF059669)),
+                      child: _buildTrialLaunchCard(
+                        3,
+                        '1ST PC #3',
+                        'Final Check',
+                        const Color(0xFF059669),
+                      ),
                     ),
                   ],
                 ),
@@ -469,15 +592,24 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
 
               const SizedBox(height: 20),
               Text(
-                isInspector ? 'SELECT OPERATION FOR 1ST PIECE INSPECTION' : 'SELECT PROCESS OPERATION TO INSPECT',
-                style: const TextStyle(color: Color(0xFF475569), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                isInspector
+                    ? 'SELECT OPERATION FOR 1ST PIECE INSPECTION'
+                    : 'SELECT PROCESS OPERATION TO INSPECT',
+                style: const TextStyle(
+                  color: Color(0xFF475569),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
               ),
               const SizedBox(height: 12),
 
               _isLoading
                   ? const Expanded(
                       child: Center(
-                        child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF2563EB),
+                        ),
                       ),
                     )
                   : Expanded(
@@ -489,14 +621,23 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                           itemCount: _templates.length,
                           itemBuilder: (context, index) {
                             final t = _templates[index];
-                            final version = t['version'] ?? 10;
+                            final version = t['version'];
                             final customName = t['name']?.toString().trim();
-                            final title = (customName != null && customName.isNotEmpty)
+                            final title =
+                                (customName != null && customName.isNotEmpty)
                                 ? customName
-                                : _getOpTitle(version);
-                            final paramCount = t['configured_parameter_count'] ?? t['target_parameter_count'] ?? 18;
-                            final cycleTimeMins = (t['cycle_time_mins'] is num) ? (t['cycle_time_mins'] as num).toDouble() : 0.0;
-                            final isPublished = t['is_published'] == true || t['is_active'] == true;
+                                : (version != null
+                                      ? _getOpTitle(version)
+                                      : 'Unnamed operation');
+                            final paramCount =
+                                t['configured_parameter_count'] ??
+                                t['target_parameter_count'];
+                            final cycleTimeMins = (t['cycle_time_mins'] is num)
+                                ? (t['cycle_time_mins'] as num).toDouble()
+                                : 0.0;
+                            final isPublished =
+                                t['is_published'] == true ||
+                                t['is_active'] == true;
 
                             return Card(
                               color: Colors.white,
@@ -505,7 +646,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
                                 side: BorderSide(
-                                  color: isPublished ? const Color(0xFFA7F3D0) : const Color(0xFFE2E8F0),
+                                  color: isPublished
+                                      ? const Color(0xFFA7F3D0)
+                                      : const Color(0xFFE2E8F0),
                                   width: isPublished ? 1.5 : 1,
                                 ),
                               ),
@@ -513,7 +656,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                 borderRadius: BorderRadius.circular(14),
                                 onTap: () {
                                   if (isInspector) {
-                                    _showInspectionTypeSelectionModal(context, t);
+                                    _showInspectionTypeSelectionModal(
+                                      context,
+                                      t,
+                                    );
                                   } else {
                                     final tid = t['id'] as int? ?? 0;
                                     final List<int> completedSlotsForOp =
@@ -523,12 +669,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
-                                        builder: (_) => OperationHourlySlotScreen(
-                                          template: t,
-                                          totalSlots: provider.shiftHours,
-                                          completedSlots: completedSlotsForOp,
-                                          activeSlot: activeSlotForOp,
-                                        ),
+                                        builder: (_) =>
+                                            OperationHourlySlotScreen(
+                                              template: t,
+                                              totalSlots: provider.shiftHours,
+                                              completedSlots:
+                                                  completedSlotsForOp,
+                                              activeSlot: activeSlotForOp,
+                                            ),
                                       ),
                                     ).then((_) {
                                       _loadTemplates();
@@ -547,7 +695,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                         child: Text(
                                           '${index + 1}',
                                           style: TextStyle(
-                                            color: isPublished ? const Color(0xFF059669) : const Color(0xFF2563EB),
+                                            color: isPublished
+                                                ? const Color(0xFF059669)
+                                                : const Color(0xFF2563EB),
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
                                           ),
@@ -556,7 +706,8 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                       const SizedBox(width: 14),
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
                                           children: [
                                             Row(
                                               children: [
@@ -565,33 +716,62 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                                     title,
                                                     style: const TextStyle(
                                                       color: Color(0xFF0F172A),
-                                                      fontWeight: FontWeight.bold,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                       fontSize: 15,
                                                     ),
-                                                    overflow: TextOverflow.ellipsis,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ),
                                                 if (cycleTimeMins > 0) ...[
                                                   const SizedBox(width: 6),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
+                                                        ),
                                                     decoration: BoxDecoration(
-                                                      color: const Color(0xFFF0FDF4),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                                                      color: const Color(
+                                                        0xFFF0FDF4,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: const Color(
+                                                          0xFFBBF7D0,
+                                                        ),
+                                                      ),
                                                     ),
                                                     child: Row(
-                                                      mainAxisSize: MainAxisSize.min,
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
                                                       children: [
-                                                        const Icon(Icons.timer_outlined, size: 10, color: Color(0xFF059669)),
-                                                        const SizedBox(width: 3),
+                                                        const Icon(
+                                                          Icons.timer_outlined,
+                                                          size: 10,
+                                                          color: Color(
+                                                            0xFF059669,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 3,
+                                                        ),
                                                         Text(
                                                           '${cycleTimeMins.toStringAsFixed(1)} min',
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF059669),
-                                                            fontSize: 9,
-                                                            fontWeight: FontWeight.bold,
-                                                          ),
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Color(
+                                                                  0xFF059669,
+                                                                ),
+                                                                fontSize: 9,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .bold,
+                                                              ),
                                                         ),
                                                       ],
                                                     ),
@@ -600,13 +780,36 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                                 if (isPublished) ...[
                                                   const SizedBox(width: 6),
                                                   Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
+                                                        ),
                                                     decoration: BoxDecoration(
-                                                      color: const Color(0xFFECFDF5),
-                                                      borderRadius: BorderRadius.circular(4),
-                                                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                                                      color: const Color(
+                                                        0xFFECFDF5,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            4,
+                                                          ),
+                                                      border: Border.all(
+                                                        color: const Color(
+                                                          0xFFA7F3D0,
+                                                        ),
+                                                      ),
                                                     ),
-                                                    child: const Text('DISPATCHED', style: TextStyle(color: Color(0xFF059669), fontSize: 9, fontWeight: FontWeight.bold)),
+                                                    child: const Text(
+                                                      'DISPATCHED',
+                                                      style: TextStyle(
+                                                        color: Color(
+                                                          0xFF059669,
+                                                        ),
+                                                        fontSize: 9,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
                                                   ),
                                                 ],
                                               ],
@@ -615,76 +818,136 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                                             Wrap(
                                               spacing: 6,
                                               runSpacing: 4,
-                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              crossAxisAlignment:
+                                                  WrapCrossAlignment.center,
                                               children: [
                                                 Text(
                                                   isInspector
                                                       ? 'Type: ${t['inspection_type_display'] ?? t['inspection_type']}'
                                                       : 'Hourly • Slot ${_opActiveSlots[t['id'] ?? 0] ?? 1}/HR Active',
-                                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF64748B),
+                                                    fontSize: 11,
+                                                  ),
                                                 ),
-                                                const Text('•', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                                                const Text(
+                                                  '•',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF94A3B8),
+                                                    fontSize: 11,
+                                                  ),
+                                                ),
                                                 Text(
                                                   '⚡ $paramCount Params',
-                                                  style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF2563EB),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
                                                 ),
                                               ],
                                             ),
                                             if (!isInspector) ...[
                                               const SizedBox(height: 6),
-                                              Builder(builder: (_) {
-                                                final tid = t['id'] as int? ?? 0;
-                                                final done = _opCompletedSlots[tid] ?? [];
-                                                final active = _opActiveSlots[tid] ?? 1;
-                                                return Wrap(
-                                                  spacing: 4,
-                                                  runSpacing: 4,
-                                                  children: List.generate(
-                                                    provider.shiftHours > 8 ? 8 : provider.shiftHours,
-                                                    (i) {
-                                                      final s = i + 1;
-                                                      final isDone = done.contains(s);
-                                                      final isAct = s == active && !isDone;
-                                                      return Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                        decoration: BoxDecoration(
-                                                          color: isDone
-                                                              ? const Color(0xFFECFDF5)
-                                                              : isAct
-                                                                  ? const Color(0xFFEFF6FF)
-                                                                  : const Color(0xFFF1F5F9),
-                                                          borderRadius: BorderRadius.circular(4),
-                                                          border: Border.all(
+                                              Builder(
+                                                builder: (_) {
+                                                  final tid =
+                                                      t['id'] as int? ?? 0;
+                                                  final done =
+                                                      _opCompletedSlots[tid] ??
+                                                      [];
+                                                  final active =
+                                                      _opActiveSlots[tid] ?? 1;
+                                                  return Wrap(
+                                                    spacing: 4,
+                                                    runSpacing: 4,
+                                                    children: List.generate(
+                                                      provider.shiftHours > 8
+                                                          ? 8
+                                                          : provider.shiftHours,
+                                                      (i) {
+                                                        final s = i + 1;
+                                                        final isDone = done
+                                                            .contains(s);
+                                                        final isAct =
+                                                            s == active &&
+                                                            !isDone;
+                                                        return Container(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 5,
+                                                                vertical: 2,
+                                                              ),
+                                                          decoration: BoxDecoration(
                                                             color: isDone
-                                                                ? const Color(0xFFA7F3D0)
+                                                                ? const Color(
+                                                                    0xFFECFDF5,
+                                                                  )
                                                                 : isAct
-                                                                    ? const Color(0xFF2563EB)
-                                                                    : const Color(0xFFE2E8F0),
+                                                                ? const Color(
+                                                                    0xFFEFF6FF,
+                                                                  )
+                                                                : const Color(
+                                                                    0xFFF1F5F9,
+                                                                  ),
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  4,
+                                                                ),
+                                                            border: Border.all(
+                                                              color: isDone
+                                                                  ? const Color(
+                                                                      0xFFA7F3D0,
+                                                                    )
+                                                                  : isAct
+                                                                  ? const Color(
+                                                                      0xFF2563EB,
+                                                                    )
+                                                                  : const Color(
+                                                                      0xFFE2E8F0,
+                                                                    ),
+                                                            ),
                                                           ),
-                                                        ),
-                                                        child: Text(
-                                                          isDone ? '✓$s' : isAct ? '▶$s' : '🔒$s',
-                                                          style: TextStyle(
-                                                            fontSize: 9,
-                                                            color: isDone
-                                                                ? const Color(0xFF059669)
+                                                          child: Text(
+                                                            isDone
+                                                                ? '✓$s'
                                                                 : isAct
-                                                                    ? const Color(0xFF2563EB)
-                                                                    : const Color(0xFF94A3B8),
-                                                            fontWeight: FontWeight.bold,
+                                                                ? '▶$s'
+                                                                : '🔒$s',
+                                                            style: TextStyle(
+                                                              fontSize: 9,
+                                                              color: isDone
+                                                                  ? const Color(
+                                                                      0xFF059669,
+                                                                    )
+                                                                  : isAct
+                                                                  ? const Color(
+                                                                      0xFF2563EB,
+                                                                    )
+                                                                  : const Color(
+                                                                      0xFF94A3B8,
+                                                                    ),
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .bold,
+                                                            ),
                                                           ),
-                                                        ),
-                                                      );
-                                                    },
-                                                  ),
-                                                );
-                                              }),
+                                                        );
+                                                      },
+                                                    ),
+                                                  );
+                                                },
+                                              ),
                                             ],
                                           ],
                                         ),
                                       ),
                                       const SizedBox(width: 10),
-                                      const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF2563EB), size: 16),
+                                      const Icon(
+                                        Icons.arrow_forward_ios_rounded,
+                                        color: Color(0xFF2563EB),
+                                        size: 16,
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -701,9 +964,16 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     );
   }
 
-  Widget _buildTrialLaunchCard(int trialNum, String title, String subtitle, Color color) {
+  Widget _buildTrialLaunchCard(
+    int trialNum,
+    String title,
+    String subtitle,
+    Color color,
+  ) {
     final provider = Provider.of<InspectionProvider>(context);
-    final status = provider.trialStatuses[trialNum] ?? (trialNum == 1 ? 'pending' : 'locked');
+    final status =
+        provider.trialStatuses[trialNum] ??
+        (trialNum == 1 ? 'pending' : 'locked');
     final isPassed = status == 'passed';
     final isFailed = status == 'failed';
     final isNotNeeded = status == 'not_needed';
@@ -757,14 +1027,27 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cardBorderColor, width: isActionable ? 1.5 : 1),
+        border: Border.all(
+          color: cardBorderColor,
+          width: isActionable ? 1.5 : 1,
+        ),
       ),
       child: Column(
         children: [
           Icon(icon, color: iconColor, size: 20),
           const SizedBox(height: 4),
-          Text(title, style: TextStyle(color: isActionable ? color : const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 11)),
-          Text(subtitle, style: const TextStyle(color: Color(0xFF64748B), fontSize: 9)),
+          Text(
+            title,
+            style: TextStyle(
+              color: isActionable ? color : const Color(0xFF64748B),
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: const TextStyle(color: Color(0xFF64748B), fontSize: 9),
+          ),
           const SizedBox(height: 6),
           SizedBox(
             width: double.infinity,
@@ -773,7 +1056,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 if (isLocked) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('🔒 1ST PC #$trialNum is only unlocked if 1ST PC #${trialNum - 1} has out-of-spec readings.'),
+                      content: Text(
+                        '🔒 1ST PC #$trialNum is only unlocked if 1ST PC #${trialNum - 1} has out-of-spec readings.',
+                      ),
                       backgroundColor: const Color(0xFFD97706),
                       behavior: SnackBarBehavior.floating,
                     ),
@@ -783,7 +1068,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 if (isPassed) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('✅ 1ST PC #$trialNum is already completed and passed.'),
+                      content: Text(
+                        '✅ 1ST PC #$trialNum is already completed and passed.',
+                      ),
                       backgroundColor: const Color(0xFF059669),
                       behavior: SnackBarBehavior.floating,
                     ),
@@ -793,7 +1080,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 if (isNotNeeded) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('ℹ️ Setup is already passed. Corrective trial is not needed.'),
+                      content: Text(
+                        'ℹ️ Setup is already passed. Corrective trial is not needed.',
+                      ),
                       backgroundColor: Color(0xFF2563EB),
                       behavior: SnackBarBehavior.floating,
                     ),
@@ -817,10 +1106,18 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 minimumSize: Size.zero,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
                 elevation: 0,
               ),
-              child: Text(btnText, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              child: Text(
+                btnText,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
         ],
@@ -828,7 +1125,10 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     );
   }
 
-  void _showInspectionTypeSelectionModal(BuildContext context, Map<String, dynamic> template) {
+  void _showInspectionTypeSelectionModal(
+    BuildContext context,
+    Map<String, dynamic> template,
+  ) {
     final opTitle = template['name'] ?? _getOpTitle(template['version'] ?? 10);
 
     showModalBottomSheet(
@@ -859,13 +1159,21 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
               const SizedBox(height: 18),
               Text(
                 opTitle,
-                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 17,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
               const Text(
                 'Select Inspection Type',
-                style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 22),
@@ -875,17 +1183,26 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 borderRadius: BorderRadius.circular(14),
                 onTap: () {
                   Navigator.pop(ctx);
-                  final provider = Provider.of<InspectionProvider>(context, listen: false);
+                  final provider = Provider.of<InspectionProvider>(
+                    context,
+                    listen: false,
+                  );
                   provider.selectedTemplate = template;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ParameterListScreen(template: template, initialCategory: 'product'),
+                      builder: (_) => ParameterListScreen(
+                        template: template,
+                        initialCategory: 'product',
+                      ),
                     ),
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(14),
@@ -900,7 +1217,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                           color: const Color(0xFF2563EB),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.straighten_rounded, color: Colors.white, size: 24),
+                        child: const Icon(
+                          Icons.straighten_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       const Expanded(
@@ -910,17 +1231,28 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                           children: [
                             Text(
                               'Product Parameters',
-                              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                              style: TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
                             ),
                             SizedBox(height: 3),
                             Text(
                               'First Piece Inspection — Quality Dimensions',
-                              style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF2563EB), size: 16),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Color(0xFF2563EB),
+                        size: 16,
+                      ),
                     ],
                   ),
                 ),
@@ -933,17 +1265,26 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                 borderRadius: BorderRadius.circular(14),
                 onTap: () {
                   Navigator.pop(ctx);
-                  final provider = Provider.of<InspectionProvider>(context, listen: false);
+                  final provider = Provider.of<InspectionProvider>(
+                    context,
+                    listen: false,
+                  );
                   provider.selectedTemplate = template;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => ParameterListScreen(template: template, initialCategory: 'process'),
+                      builder: (_) => ParameterListScreen(
+                        template: template,
+                        initialCategory: 'process',
+                      ),
                     ),
                   );
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEEF2FF),
                     borderRadius: BorderRadius.circular(14),
@@ -958,7 +1299,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                           color: const Color(0xFF4F46E5),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.settings_suggest_rounded, color: Colors.white, size: 24),
+                        child: const Icon(
+                          Icons.settings_suggest_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       const Expanded(
@@ -968,17 +1313,28 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                           children: [
                             Text(
                               'Process Parameters',
-                              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                              style: TextStyle(
+                                color: Color(0xFF0F172A),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
                             ),
                             SizedBox(height: 3),
                             Text(
                               'First Piece Inspection — Process Setup Checks',
-                              style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF4F46E5), size: 16),
+                      const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Color(0xFF4F46E5),
+                        size: 16,
+                      ),
                     ],
                   ),
                 ),
@@ -991,6 +1347,4 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       },
     );
   }
-
-
 }

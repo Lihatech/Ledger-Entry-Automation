@@ -47,7 +47,6 @@ class _PdiReportScreenState extends State<PdiReportScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      if (request != _selectionRequest || _machineId != id) return;
       setState(() {
         _loading = false;
         _error = e.toString();
