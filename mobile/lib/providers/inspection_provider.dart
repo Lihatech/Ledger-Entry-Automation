@@ -48,23 +48,49 @@ class InspectionProvider with ChangeNotifier {
   String? get parentSessionId => _active?.parentSessionId;
 
   // ── Setters for backward-compat (older callers may assign directly) ────────
-  set sessionId(String? v) { _active?.sessionId = v; }
-  set selectedTemplate(Map<String, dynamic>? v) { _active?.template = v; }
-  set parameters(List<dynamic> v) { if (_active != null) _active!.parameters = v; }
+  set sessionId(String? v) {
+    _active?.sessionId = v;
+  }
+
+  set selectedTemplate(Map<String, dynamic>? v) {
+    _active?.template = v;
+  }
+
+  set parameters(List<dynamic> v) {
+    if (_active != null) _active!.parameters = v;
+  }
+
   set recordedResults(Map<String, Map<String, dynamic>> v) {
     if (_active != null) _active!.recordedResults = v;
   }
+
   set pendingBatchValues(Map<String, Map<String, dynamic>> v) {
     if (_active != null) _active!.pendingBatchValues = v;
   }
-  set currentParamIndex(int v) { if (_active != null) _active!.currentParamIndex = v; }
-  set inspectionType(String v) { if (_active != null) _active!.inspectionType = v; }
-  set hourlySlot(int v) { if (_active != null) _active!.hourlySlot = v; }
+
+  set currentParamIndex(int v) {
+    if (_active != null) _active!.currentParamIndex = v;
+  }
+
+  set inspectionType(String v) {
+    if (_active != null) _active!.inspectionType = v;
+  }
+
+  set hourlySlot(int v) {
+    if (_active != null) _active!.hourlySlot = v;
+  }
+
   set completedHourlySlots(Set<int> v) {
     if (_active != null) _active!.completedHourlySlots = v;
   }
-  set trialNumber(int v) { if (_active != null) _active!.trialNumber = v; }
-  set parentSessionId(String? v) { if (_active != null) _active!.parentSessionId = v; }
+
+  set trialNumber(int v) {
+    if (_active != null) _active!.trialNumber = v;
+  }
+
+  set parentSessionId(String? v) {
+    if (_active != null) _active!.parentSessionId = v;
+  }
 
   // ── Active operation key helper ───────────────────────────────────────────
   /// Call this before loadParameters() when the user taps an operation card.
@@ -78,16 +104,16 @@ class InspectionProvider with ChangeNotifier {
   }
 
   /// Convenience: build the key from template map + inspectionType string.
-    bool isSessionActiveFor(Map<String, dynamic> template, String inspType) {
+  bool isSessionActiveFor(Map<String, dynamic> template, String inspType) {
     final key = operationKey(template, inspType);
     return _sessions[key]?.sessionId != null;
   }
-  
+
   bool isSessionActiveForOperationKey(String key) {
     return _sessions[key]?.sessionId != null;
   }
 
-static String operationKey(Map<String, dynamic> template, String inspType) {
+  static String operationKey(Map<String, dynamic> template, String inspType) {
     final tid = template['id'] ?? template['version'] ?? '0';
     return '${tid}_$inspType';
   }
@@ -170,7 +196,9 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   // ── Persistence ───────────────────────────────────────────────────────────
   Future<void> saveCurrentState() async {
     if (currentUserId == null) {
-      debugPrint('[InspectionProvider] WARNING: saveCurrentState() called but currentUserId is null — state NOT saved!');
+      debugPrint(
+        '[InspectionProvider] WARNING: saveCurrentState() called but currentUserId is null — state NOT saved!',
+      );
       return;
     }
     await PersistenceService.saveState(
@@ -195,8 +223,9 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     final rawSessions = state['sessions'] as Map<String, dynamic>?;
     if (rawSessions != null) {
       for (final entry in rawSessions.entries) {
-        _sessions[entry.key] =
-            OperationSession.fromJson(Map<String, dynamic>.from(entry.value as Map));
+        _sessions[entry.key] = OperationSession.fromJson(
+          Map<String, dynamic>.from(entry.value as Map),
+        );
       }
     }
 
@@ -278,7 +307,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       op.parameters = allCombined;
     }
 
-        // Only reset state if we aren't resuming an active session for this operation
+    // Only reset state if we aren't resuming an active session for this operation
     if (op.sessionId == null) {
       op.currentParamIndex = 0;
       op.recordedResults.clear();
@@ -336,10 +365,13 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     }
 
     if (targetCodes.isEmpty && selectedMachine != null) {
-      final setupInfo = await ApiService.checkSetupApproved(selectedMachine!['id']);
+      final setupInfo = await ApiService.checkSetupApproved(
+        selectedMachine!['id'],
+      );
       if (setupInfo['session_id'] != null) {
-        final sessionDoc =
-            await ApiService.getSessionDetail(setupInfo['session_id']);
+        final sessionDoc = await ApiService.getSessionDetail(
+          setupInfo['session_id'],
+        );
         if (sessionDoc != null) {
           final rejList = sessionDoc['rejected_parameters'] as List?;
           if (rejList != null && rejList.isNotEmpty) {
@@ -372,7 +404,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       op.parameters = allParams;
     }
 
-        if (op.sessionId == null) {
+    if (op.sessionId == null) {
       op.currentParamIndex = 0;
       op.recordedResults.clear();
       op.pendingBatchValues.clear();
@@ -403,8 +435,9 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     if (_active == null) return;
     _active!.completedHourlySlots = Set<int>.from(slots);
     if (_active!.completedHourlySlots.isNotEmpty) {
-      final maxDone =
-          _active!.completedHourlySlots.reduce((a, b) => a > b ? a : b);
+      final maxDone = _active!.completedHourlySlots.reduce(
+        (a, b) => a > b ? a : b,
+      );
       if (maxDone >= _active!.hourlySlot && maxDone < 8) {
         _active!.hourlySlot = maxDone + 1;
       }
@@ -419,7 +452,8 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
 
   // ── Restore active report state from server ───────────────────────────────
   Future<void> restoreActiveReportState(
-      Map<String, dynamic> setupStatus) async {
+    Map<String, dynamic> setupStatus,
+  ) async {
     if (setupStatus['shift_hours'] is int) {
       shiftHours = setupStatus['shift_hours'];
     } else if (setupStatus['total_hourly_slots'] is int) {
@@ -446,7 +480,10 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       // 1. Hourly drawer for this operation
       final hourlyKey = '${tid}_hourly';
       if (!_sessions.containsKey(hourlyKey)) {
-        _sessions[hourlyKey] = OperationSession(operationKey: hourlyKey, inspectionType: 'hourly');
+        _sessions[hourlyKey] = OperationSession(
+          operationKey: hourlyKey,
+          inspectionType: 'hourly',
+        );
       }
       final opSess = _sessions[hourlyKey]!;
       final completedList = List<int>.from(op['completed_slots'] ?? []);
@@ -463,7 +500,10 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       final fpKey = '${tid}_first_piece';
       if (op['first_piece_session_id'] != null) {
         if (!_sessions.containsKey(fpKey)) {
-          _sessions[fpKey] = OperationSession(operationKey: fpKey, inspectionType: 'first_piece');
+          _sessions[fpKey] = OperationSession(
+            operationKey: fpKey,
+            inspectionType: 'first_piece',
+          );
         }
         _sessions[fpKey]!.sessionId = op['first_piece_session_id'].toString();
       }
@@ -506,15 +546,24 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     int hourlySlot = 1,
     String? parentId,
   }) async {
-    selectedPart ??= {'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'};
-    selectedMachine ??= {'id': 1, 'machine_code': 'CNC-01', 'name': 'CNC Turning Center'};
-
-    // Ensure there's an active operation slot.
-    if (_activeOperationKey == null) {
-      final fallbackKey = '1_$inspectionType';
-      switchActiveOperation(fallbackKey);
+    final machineId = int.tryParse('${selectedMachine?['id']}');
+    final partNo = selectedPart?['part_number']?.toString().trim();
+    final op = _active;
+    if (machineId == null || machineId <= 0) {
+      errorMessage = 'Select a machine from the master database first.';
+      notifyListeners();
+      return false;
     }
-    final op = _active!;
+    if (partNo == null || partNo.isEmpty) {
+      errorMessage = 'No part is configured for the selected machine.';
+      notifyListeners();
+      return false;
+    }
+    if (op == null || op.template == null) {
+      errorMessage = 'Select an operation from the master database first.';
+      notifyListeners();
+      return false;
+    }
 
     isLoading = true;
     op.trialNumber = inspectionType == 'hourly' ? 0 : trial;
@@ -524,9 +573,14 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     this.shift = shift;
     notifyListeners();
 
-    final mId = int.tryParse('${selectedMachine!['id']}') ?? 1;
-    final tId = int.tryParse('${op.template?['id'] ?? 1}') ?? 1;
-    final partNo = (selectedPart!['part_number'] ?? 'FBT00222').toString();
+    final mId = machineId;
+    final tId = int.tryParse('${op.template?['id']}');
+    if (tId == null || tId <= 0) {
+      isLoading = false;
+      errorMessage = 'Selected operation has no valid master template.';
+      notifyListeners();
+      return false;
+    }
 
     final result = await ApiService.startSession(
       partNumber: partNo,
@@ -543,7 +597,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     if (result != null &&
         (result.containsKey('session_id') || result.containsKey('id'))) {
       final newSessionId = result['session_id'] ?? result['id'];
-      
+
       // If the session ID is different, we are starting a completely new session.
       // Clear out any old measurements that were stored locally.
       if (op.sessionId != newSessionId) {
@@ -551,7 +605,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
         op.pendingBatchValues.clear();
         op.currentParamIndex = 0;
       }
-      
+
       op.sessionId = newSessionId;
       if (inspectionType == 'first_piece' && trial >= 1) {
         trialSessionIds[trial] = op.sessionId!;
@@ -569,7 +623,8 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   // ── Parameter navigation ──────────────────────────────────────────────────
   Map<String, dynamic>? get currentParameter {
     final op = _active;
-    if (op == null || op.parameters.isEmpty ||
+    if (op == null ||
+        op.parameters.isEmpty ||
         op.currentParamIndex >= op.parameters.length) {
       return null;
     }
@@ -596,8 +651,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   void jumpToParam(int index) => goToParameter(index);
 
   void goToParameter(int index) {
-    if (_active != null &&
-        index >= 0 && index < _active!.parameters.length) {
+    if (_active != null && index >= 0 && index < _active!.parameters.length) {
       _active!.currentParamIndex = index;
       notifyListeners();
     }
@@ -640,16 +694,24 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
         resultMap['trial_number'] = op.trialNumber;
       }
       op.recordedResults[param['parameter_code']] = resultMap;
-      setPendingValue(param['parameter_code'], value, voiceRawText,
-          method: method);
+      setPendingValue(
+        param['parameter_code'],
+        value,
+        voiceRawText,
+        method: method,
+      );
       saveCurrentState();
       notifyListeners();
     }
     return result;
   }
 
-  void setPendingValue(String code, double value, String voiceRawText,
-      {String method = 'voice'}) {
+  void setPendingValue(
+    String code,
+    double value,
+    String voiceRawText, {
+    String method = 'voice',
+  }) {
     final op = _active;
     if (op == null) return;
     op.pendingBatchValues[code] = {
@@ -672,25 +734,35 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
   // ── Batch submit ──────────────────────────────────────────────────────────
   Future<Map<String, dynamic>?> submitBatchMeasurements() async {
     final op = _active;
-    debugPrint('[PROVIDER] submitBatchMeasurements() called. sessionId=${op?.sessionId}');
+    debugPrint(
+      '[PROVIDER] submitBatchMeasurements() called. sessionId=${op?.sessionId}',
+    );
 
     if (op == null || op.sessionId == null) {
-      debugPrint('[PROVIDER] ERROR: sessionId is null — aborting batch submit.');
+      debugPrint(
+        '[PROVIDER] ERROR: sessionId is null — aborting batch submit.',
+      );
       return null;
     }
 
     isLoading = true;
     notifyListeners();
 
-    var measurementsList = op.pendingBatchValues.values.map((item) => {
-          ...item,
-          'inspection_type': item['inspection_type'] ?? op.inspectionType,
-          'hourly_slot': item['hourly_slot'] ?? op.hourlySlot,
-          'trial_number': item['trial_number'] ?? op.trialNumber,
-        }).toList();
+    var measurementsList = op.pendingBatchValues.values
+        .map(
+          (item) => {
+            ...item,
+            'inspection_type': item['inspection_type'] ?? op.inspectionType,
+            'hourly_slot': item['hourly_slot'] ?? op.hourlySlot,
+            'trial_number': item['trial_number'] ?? op.trialNumber,
+          },
+        )
+        .toList();
 
     if (measurementsList.isEmpty && op.recordedResults.isNotEmpty) {
-      debugPrint('[PROVIDER] pendingBatchValues empty, constructing from recordedResults...');
+      debugPrint(
+        '[PROVIDER] pendingBatchValues empty, constructing from recordedResults...',
+      );
       for (var entry in op.recordedResults.entries) {
         final code = entry.key;
         final data = entry.value;
@@ -712,8 +784,10 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
       }
     }
 
-    debugPrint('[PROVIDER] Submitting ${measurementsList.length} measurement(s): '
-        '${measurementsList.map((m) => "${m['parameter_code']}=${m['measured_value']}").join(", ")}');
+    debugPrint(
+      '[PROVIDER] Submitting ${measurementsList.length} measurement(s): '
+      '${measurementsList.map((m) => "${m['parameter_code']}=${m['measured_value']}").join(", ")}',
+    );
 
     try {
       final result = await ApiService.batchMeasure(
@@ -727,7 +801,9 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
           final code = r['parameter_code'];
           if (code != null) {
             op.recordedResults[code.toString()] = r;
-            debugPrint('[PROVIDER] recordedResult saved: $code → status=${r['status']}');
+            debugPrint(
+              '[PROVIDER] recordedResult saved: $code → status=${r['status']}',
+            );
           }
         }
         saveCurrentState();
@@ -736,6 +812,7 @@ static String operationKey(Map<String, dynamic> template, String inspType) {
     } catch (e, stack) {
       debugPrint('[PROVIDER] EXCEPTION in batchMeasure API call: $e');
       debugPrint('[PROVIDER] Stack trace: $stack');
+      errorMessage = e.toString().replaceFirst('Exception: ', '');
       return null;
     } finally {
       isLoading = false;

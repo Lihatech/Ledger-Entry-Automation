@@ -37,10 +37,15 @@ class _SummaryScreenState extends State<SummaryScreen> {
     return 'Spec: ${param['nominal_value']} ${param['unit']} [${param['lower_limit']} - ${param['upper_limit']}]';
   }
 
-  String _formatRecordedValue(Map<String, dynamic> param, Map<String, dynamic> res) {
+  String _formatRecordedValue(
+    Map<String, dynamic> param,
+    Map<String, dynamic> res,
+  ) {
     if (param['is_process_parameter'] == true) {
       if (param['data_type'] == 'yes_no') {
-        return (res['measured_value'] == 1.0 || res['status'] == 'ok') ? 'YES (PASS)' : 'NO (REJECT)';
+        return (res['measured_value'] == 1.0 || res['status'] == 'ok')
+            ? 'YES (PASS)'
+            : 'NO (REJECT)';
       }
       return '${res['measured_value']} ${param['unit'] ?? ''}';
     }
@@ -48,7 +53,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
     final type = (param['measurement_type'] ?? '').toString().toLowerCase();
 
     if (type == 'visual') {
-      return (res['measured_value'] == 1.0 || res['status'] == 'ok') ? 'YES (PASS)' : 'NO (REJECT)';
+      return (res['measured_value'] == 1.0 || res['status'] == 'ok')
+          ? 'YES (PASS)'
+          : 'NO (REJECT)';
     }
     return '${res['measured_value']} ${param['unit']}';
   }
@@ -57,7 +64,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
     if (res == null) return false;
     final st = (res['status'] ?? '').toString().toLowerCase();
     if (st == 'ok' || st == 'pass' || res['is_pass'] == true) return true;
-    if (st == 'out_of_spec' || st == 'reject' || res['is_pass'] == false) return false;
+    if (st == 'out_of_spec' || st == 'reject' || res['is_pass'] == false)
+      return false;
 
     final val = double.tryParse('${res['measured_value'] ?? res['value']}');
     if (val == null) return false;
@@ -67,11 +75,15 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
     if (type == 'visual') return val >= 0.5;
     if (name.contains('MIN')) {
-      final minVal = double.tryParse('${param['lower_limit'] ?? param['nominal_value']}');
+      final minVal = double.tryParse(
+        '${param['lower_limit'] ?? param['nominal_value']}',
+      );
       if (minVal != null) return val >= minVal;
     }
     if (type == 'surface' || name.contains('MAX')) {
-      final maxVal = double.tryParse('${param['nominal_value'] ?? param['upper_limit']}');
+      final maxVal = double.tryParse(
+        '${param['nominal_value'] ?? param['upper_limit']}',
+      );
       if (maxVal != null) return val <= maxVal;
     }
     final ll = double.tryParse('${param['lower_limit']}');
@@ -100,7 +112,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
         ),
         title: const Text(
           'Session Summary',
-          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+          style: TextStyle(
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.bold,
+            fontSize: 17,
+          ),
         ),
         iconTheme: const IconThemeData(color: Color(0xFF0F172A)),
         actions: [
@@ -135,7 +151,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
                       color: Color(0x0A0F172A),
                       blurRadius: 10,
                       offset: Offset(0, 3),
-                    )
+                    ),
                   ],
                 ),
                 child: Column(
@@ -147,13 +163,20 @@ class _SummaryScreenState extends State<SummaryScreen> {
                         Expanded(
                           child: Text(
                             'Part: ${provider.selectedPart?['part_number'] ?? '-'} (${provider.selectedPart?['part_name'] ?? provider.selectedPart?['part_number'] ?? '-'})',
-                            style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                            style: const TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: provider.inspectionType == 'first_piece'
                                 ? const Color(0xFFEFF6FF)
@@ -182,8 +205,11 @@ class _SummaryScreenState extends State<SummaryScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Machine: ${provider.selectedMachine?['name'] ?? provider.selectedMachine?['machine_code'] ?? 'CNC-01'}  •  Recorded: ${results.length} of ${provider.parameters.length} params',
-                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+                      'Machine: ${provider.selectedMachine?['name'] ?? provider.selectedMachine?['machine_code'] ?? '—'}  •  Recorded: ${results.length} of ${provider.parameters.length} params',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                      ),
                     ),
                   ],
                 ),
@@ -192,7 +218,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
               const SizedBox(height: 20),
               const Text(
                 'RECORDED PARAMETERS CHECKLIST',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.0),
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
               ),
               const SizedBox(height: 10),
 
@@ -214,49 +245,79 @@ class _SummaryScreenState extends State<SummaryScreen> {
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
                           color: isRecorded
-                              ? (isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5))
+                              ? (isOk
+                                    ? const Color(0xFFA7F3D0)
+                                    : const Color(0xFFFCA5A5))
                               : const Color(0xFFE2E8F0),
                         ),
                       ),
                       child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 4,
+                        ),
                         title: Text(
                           '${param['parameter_name']}',
-                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                         subtitle: Text(
                           _formatSpecSubtitle(param),
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
                         ),
                         trailing: isRecorded
                             ? Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: isOk ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                                  color: isOk
+                                      ? const Color(0xFFECFDF5)
+                                      : const Color(0xFFFEF2F2),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: isOk ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5),
+                                    color: isOk
+                                        ? const Color(0xFFA7F3D0)
+                                        : const Color(0xFFFCA5A5),
                                   ),
                                 ),
                                 child: Text(
                                   '${_formatRecordedValue(param, res)} (${isOk ? 'OK' : 'FAIL'})',
                                   style: TextStyle(
-                                    color: isOk ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                    color: isOk
+                                        ? const Color(0xFF059669)
+                                        : const Color(0xFFDC2626),
                                     fontWeight: FontWeight.bold,
                                     fontSize: 11,
                                   ),
                                 ),
                               )
                             : Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFFFBEB),
                                   borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: const Color(0xFFFDE68A)),
+                                  border: Border.all(
+                                    color: const Color(0xFFFDE68A),
+                                  ),
                                 ),
                                 child: const Text(
                                   'PENDING',
-                                  style: TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold, fontSize: 10),
+                                  style: TextStyle(
+                                    color: Color(0xFFD97706),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 10,
+                                  ),
                                 ),
                               ),
                       ),
@@ -291,7 +352,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
                         Map<String, dynamic>? finalResult;
                         if (isInspector) {
-                          finalResult = await provider.finalizeFirstPieceSession();
+                          finalResult = await provider
+                              .finalizeFirstPieceSession();
                         } else {
                           await provider.completeSession();
                         }
@@ -308,20 +370,29 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   elevation: 0,
                 ),
                 child: _isSubmitting
                     ? const SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
                       )
                     : Text(
                         isInspector
                             ? 'FINALIZE FIRST PIECE & GENERATE REPORT'
                             : 'SUBMIT HOURLY INSPECTION (SLOT ${provider.hourlySlot}/HR)',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.3),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.3,
+                        ),
                       ),
               ),
             ],
@@ -331,7 +402,10 @@ class _SummaryScreenState extends State<SummaryScreen> {
     );
   }
 
-  void _showCompletionDialog(InspectionProvider provider, [Map<String, dynamic>? finalResult]) {
+  void _showCompletionDialog(
+    InspectionProvider provider, [
+    Map<String, dynamic>? finalResult,
+  ]) {
     final results = provider.recordedResults;
     final totalParams = provider.parameters.length;
     int okCount = 0;
@@ -346,11 +420,16 @@ class _SummaryScreenState extends State<SummaryScreen> {
       }
     });
 
-    final templateName = provider.selectedTemplate?['name'] ??
+    final templateName =
+        provider.selectedTemplate?['name'] ??
         'Op ${provider.selectedTemplate?['version'] ?? 10} — Inspection';
 
-    final isInspector = Provider.of<AuthProvider>(context, listen: false).isInspector;
-    final isPassed = (finalResult?['status'] == 'finalized_passed') ||
+    final isInspector = Provider.of<AuthProvider>(
+      context,
+      listen: false,
+    ).isInspector;
+    final isPassed =
+        (finalResult?['status'] == 'finalized_passed') ||
         (oocCount == 0 && totalParams > 0 && results.isNotEmpty);
 
     showDialog(
@@ -368,23 +447,37 @@ class _SummaryScreenState extends State<SummaryScreen> {
         title: Column(
           children: [
             Icon(
-              isPassed ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-              color: isPassed ? const Color(0xFF059669) : const Color(0xFFDC2626),
+              isPassed
+                  ? Icons.check_circle_rounded
+                  : Icons.warning_amber_rounded,
+              color: isPassed
+                  ? const Color(0xFF059669)
+                  : const Color(0xFFDC2626),
               size: 54,
             ),
             const SizedBox(height: 10),
             Text(
               isInspector
-                  ? (isPassed ? 'FIRST PIECE FINALIZED & PASSED!' : 'FIRST PIECE FINALIZED (REJECTED)')
+                  ? (isPassed
+                        ? 'FIRST PIECE FINALIZED & PASSED!'
+                        : 'FIRST PIECE FINALIZED (REJECTED)')
                   : 'HOURLY INSPECTION SUBMITTED!',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.bold,
+                fontSize: 17,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               templateName,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                color: Color(0xFF2563EB),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ],
         ),
@@ -396,10 +489,14 @@ class _SummaryScreenState extends State<SummaryScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: isPassed ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                  color: isPassed
+                      ? const Color(0xFFECFDF5)
+                      : const Color(0xFFFEF2F2),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isPassed ? const Color(0xFFA7F3D0) : const Color(0xFFFCA5A5),
+                    color: isPassed
+                        ? const Color(0xFFA7F3D0)
+                        : const Color(0xFFFCA5A5),
                   ),
                 ),
                 child: Row(
@@ -407,17 +504,49 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   children: [
                     Column(
                       children: [
-                        const Text('WITHIN SPEC', style: TextStyle(color: Color(0xFF059669), fontSize: 10, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'WITHIN SPEC',
+                          style: TextStyle(
+                            color: Color(0xFF059669),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        Text('$okCount / $totalParams', style: const TextStyle(color: Color(0xFF059669), fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(
+                          '$okCount / $totalParams',
+                          style: const TextStyle(
+                            color: Color(0xFF059669),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                       ],
                     ),
-                    Container(height: 24, width: 1, color: const Color(0xFFCBD5E1)),
+                    Container(
+                      height: 24,
+                      width: 1,
+                      color: const Color(0xFFCBD5E1),
+                    ),
                     Column(
                       children: [
-                        const Text('OUT OF SPEC', style: TextStyle(color: Color(0xFFDC2626), fontSize: 10, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'OUT OF SPEC',
+                          style: TextStyle(
+                            color: Color(0xFFDC2626),
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         const SizedBox(height: 2),
-                        Text('$oocCount / $totalParams', style: const TextStyle(color: Color(0xFFDC2626), fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(
+                          '$oocCount / $totalParams',
+                          style: const TextStyle(
+                            color: Color(0xFFDC2626),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -427,8 +556,8 @@ class _SummaryScreenState extends State<SummaryScreen> {
               Text(
                 isInspector
                     ? (isPassed
-                        ? 'Production line setup is approved. Operators may proceed with hourly manufacturing.'
-                        : 'Setup parameters failed validation. Corrective trial required.')
+                          ? 'Production line setup is approved. Operators may proceed with hourly manufacturing.'
+                          : 'Setup parameters failed validation. Corrective trial required.')
                     : 'Hourly Slot ${provider.completedHourlySlots.isNotEmpty ? provider.completedHourlySlots.last : provider.hourlySlot}/HR recorded successfully into the digital F02 inspection ledger.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
@@ -450,7 +579,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
                   MaterialPageRoute(
                     builder: (_) => OperationHourlySlotScreen(
                       template: provider.selectedTemplate!,
-                      totalSlots: provider.shiftHours > 0 ? provider.shiftHours : 8,
+                      totalSlots: provider.shiftHours > 0
+                          ? provider.shiftHours
+                          : 8,
                       completedSlots: provider.completedHourlySlots.toList(),
                       activeSlot: provider.hourlySlot,
                     ),
@@ -460,7 +591,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
               } else {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => const OperationSelectScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const OperationSelectScreen(),
+                  ),
                   (route) => false,
                 );
               }
@@ -469,7 +602,9 @@ class _SummaryScreenState extends State<SummaryScreen> {
               backgroundColor: const Color(0xFF2563EB),
               foregroundColor: Colors.white,
               minimumSize: const Size(double.infinity, 44),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               elevation: 0,
             ),
             child: Text(

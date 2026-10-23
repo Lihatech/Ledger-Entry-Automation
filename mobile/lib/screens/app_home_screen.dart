@@ -577,7 +577,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                                             final partNo =
                                                 provider
                                                     .selectedPart?['part_number'] ??
-                                                'FBT00222';
+                                                '—';
                                             final templates =
                                                 await ApiService.getTemplatesByPart(
                                                   partNo,
@@ -1014,7 +1014,7 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                     : 'Mobile Access Restricted'));
 
     final selectedPart = provider.selectedPart;
-    final partNumber = selectedPart?['part_number'] ?? 'FBT00222';
+    final partNumber = selectedPart?['part_number'] ?? '—';
 
     final hasActiveSession =
         provider.sessionId != null || provider.recordedResults.isNotEmpty;
@@ -1074,39 +1074,43 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 6),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: (auth.isOperator || auth.isInspector)
-                                ? () => _selectWorkingShift(context, auth, company)
-                                : null,
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Color(0xFF10B981),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'Current Shift: Shift ${company.availableShifts.contains(auth.assignedShift) ? auth.assignedShift : company.availableShifts.first}',
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                  if (auth.isOperator || auth.isInspector)
-                                    const Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
-                                ],
+                      InkWell(
+                        borderRadius: BorderRadius.circular(8),
+                        onTap: (auth.isOperator || auth.isInspector)
+                            ? () => _selectWorkingShift(context, auth, company)
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF10B981),
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Current Shift: Shift ${company.availableShifts.contains(auth.assignedShift) ? auth.assignedShift : company.availableShifts.first}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                              if (auth.isOperator || auth.isInspector)
+                                const Icon(
+                                  Icons.arrow_drop_down,
+                                  size: 18,
+                                  color: Color(0xFF64748B),
+                                ),
+                            ],
                           ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1346,13 +1350,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Authorized operators may also enter PDI readings when assigned.
                       _buildSoftPastelCard(
                         title: 'PDI Report',
-                        description: 'Record five-job pre-dispatch inspection readings',
+                        description:
+                            'Record five-job pre-dispatch inspection readings',
                         icon: Icons.fact_check_rounded,
                         bgColor: const Color(0xFFFFF7ED),
                         borderColor: const Color(0xFFFFEDD5),
                         iconColor: const Color(0xFFEA580C),
                         onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PdiReportScreen()));
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PdiReportScreen(),
+                            ),
+                          );
                         },
                       ),
                     ]
@@ -1397,13 +1407,19 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
                       // Inspector / Supervisor Card: Pre-Dispatch Inspection
                       _buildSoftPastelCard(
                         title: 'PDI Report',
-                        description: 'Record five-job pre-dispatch inspection readings',
+                        description:
+                            'Record five-job pre-dispatch inspection readings',
                         icon: Icons.fact_check_rounded,
                         bgColor: const Color(0xFFFFF7ED),
                         borderColor: const Color(0xFFFFEDD5),
                         iconColor: const Color(0xFFEA580C),
                         onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PdiReportScreen()));
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PdiReportScreen(),
+                            ),
+                          );
                         },
                       ),
 

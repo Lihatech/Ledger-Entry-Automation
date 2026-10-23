@@ -31,7 +31,8 @@ class _MachineSelectScreenState extends State<MachineSelectScreen> {
 
   Future<void> _loadMachines() async {
     try {
-      final loaded = await ApiService.getMachines();
+      // Selection must reflect the current master database, not a cached/demo list.
+      final loaded = await ApiService.getMachinesStrict();
       if (mounted) {
         setState(() {
           _machines = loaded.isNotEmpty ? loaded : _fallbackMachines;

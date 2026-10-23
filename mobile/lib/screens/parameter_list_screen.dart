@@ -11,7 +11,11 @@ class ParameterListScreen extends StatefulWidget {
   final Map<String, dynamic> template;
   final String? initialCategory;
 
-  const ParameterListScreen({super.key, required this.template, this.initialCategory});
+  const ParameterListScreen({
+    super.key,
+    required this.template,
+    this.initialCategory,
+  });
 
   @override
   State<ParameterListScreen> createState() => _ParameterListScreenState();
@@ -30,9 +34,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
 
   List<dynamic> get _displayedParameters {
     if (_activeCategoryTab == 'process') {
-      return _parameters.where((p) => p['is_process_parameter'] == true).toList();
+      return _parameters
+          .where((p) => p['is_process_parameter'] == true)
+          .toList();
     } else if (_activeCategoryTab == 'product') {
-      return _parameters.where((p) => p['is_process_parameter'] != true).toList();
+      return _parameters
+          .where((p) => p['is_process_parameter'] != true)
+          .toList();
     }
     return _parameters;
   }
@@ -123,8 +131,10 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     final name = (param['parameter_name'] ?? '').toString().toUpperCase();
 
     if (type == 'visual') return 2; // Rule 2: Visual
-    if (type == 'min_limit' || name.contains('MIN')) return 31; // Rule 3A: Min limit
-    if (type == 'max_limit' || type == 'surface' || name.contains('MAX')) return 32; // Rule 3B: Max limit
+    if (type == 'min_limit' || name.contains('MIN'))
+      return 31; // Rule 3A: Min limit
+    if (type == 'max_limit' || type == 'surface' || name.contains('MAX'))
+      return 32; // Rule 3B: Max limit
     return 1; // Rule 1: Range
   }
 
@@ -174,13 +184,18 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
       }
 
       // Check if symmetrical tolerance, e.g. +0.25 and -0.25
-      if ((upperVal.abs() - lowerVal.abs()).abs() < 0.0001 && (upperVal > 0 && lowerVal < 0 || upperVal == lowerVal)) {
+      if ((upperVal.abs() - lowerVal.abs()).abs() < 0.0001 &&
+          (upperVal > 0 && lowerVal < 0 || upperVal == lowerVal)) {
         final tol = _cleanNumber(upperVal.abs());
         return '$nom ± $tol $unit';
       }
 
-      final upperStr = upperVal >= 0 ? '+${_cleanNumber(upperVal)}' : _cleanNumber(upperVal);
-      final lowerStr = lowerVal > 0 ? '+${_cleanNumber(lowerVal)}' : _cleanNumber(lowerVal);
+      final upperStr = upperVal >= 0
+          ? '+${_cleanNumber(upperVal)}'
+          : _cleanNumber(upperVal);
+      final lowerStr = lowerVal > 0
+          ? '+${_cleanNumber(lowerVal)}'
+          : _cleanNumber(lowerVal);
       return '$nom ($upperStr / $lowerStr) $unit';
     }
   }
@@ -191,9 +206,11 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     final selectedMachine = provider.selectedMachine;
     final selectedPart = provider.selectedPart;
 
-    final machineCode = selectedMachine?['machine_code'] ?? 'CNC-01';
-    final partNo = selectedPart?['part_number'] ?? 'FBT00222';
-    final opTitle = widget.template['operation_name'] ?? 'Operation ${widget.template['version'] ?? 10}';
+    final machineCode = selectedMachine?['machine_code'] ?? '—';
+    final partNo = selectedPart?['part_number'] ?? '—';
+    final opTitle =
+        widget.template['operation_name'] ??
+        'Operation ${widget.template['version'] ?? 10}';
     final currentDisplayed = _displayedParameters;
     final totalInTab = currentDisplayed.length;
     final recordedInTab = currentDisplayed.where((p) {
@@ -212,7 +229,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
     final activeRecorded = isFilteredTab ? recordedInTab : overallRecorded;
     final tabTitle = _activeCategoryTab == 'product'
         ? 'Product Parameters'
-        : (_activeCategoryTab == 'process' ? 'Process Parameters' : 'Parameter Matrix');
+        : (_activeCategoryTab == 'process'
+              ? 'Process Parameters'
+              : 'Parameter Matrix');
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -228,11 +247,19 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
           children: [
             Text(
               opTitle,
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             Text(
               'Part: $partNo  •  Machine: $machineCode',
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -255,7 +282,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               _isGridView ? Icons.view_list_rounded : Icons.grid_view_rounded,
               color: const Color(0xFF2563EB),
             ),
-            tooltip: _isGridView ? 'Switch to List View' : 'Switch to Grid View',
+            tooltip: _isGridView
+                ? 'Switch to List View'
+                : 'Switch to Grid View',
             onPressed: () => setState(() => _isGridView = !_isGridView),
           ),
         ],
@@ -274,7 +303,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF4338CA).withValues(alpha: 0.5)),
+                border: Border.all(
+                  color: const Color(0xFF4338CA).withValues(alpha: 0.5),
+                ),
               ),
               child: Row(
                 children: [
@@ -286,7 +317,11 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFF6366F1)),
                     ),
-                    child: const Icon(Icons.grid_view_rounded, color: Color(0xFF818CF8), size: 22),
+                    child: const Icon(
+                      Icons.grid_view_rounded,
+                      color: Color(0xFF818CF8),
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -298,11 +333,19 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           children: [
                             Text(
                               '$tabTitle ($activeTotal items)',
-                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             Text(
                               '$activeRecorded / $activeTotal Recorded',
-                              style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.bold),
+                              style: const TextStyle(
+                                color: Color(0xFF34D399),
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -310,17 +353,25 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                         ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: LinearProgressIndicator(
-                            value: activeTotal > 0 ? (activeRecorded / activeTotal) : 0,
+                            value: activeTotal > 0
+                                ? (activeRecorded / activeTotal)
+                                : 0,
                             minHeight: 6,
                             backgroundColor: const Color(0xFF334155),
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF10B981)),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF10B981),
+                            ),
                           ),
                         ),
                         if (isFilteredTab && overallTotal > activeTotal) ...[
                           const SizedBox(height: 5),
                           Text(
                             'Overall session: $overallRecorded / $overallTotal total recorded',
-                            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 10, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ],
@@ -333,21 +384,34 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             // Inspector Setup Parameter Category Selection Tabs
             if (isInspector)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 child: Row(
                   children: [
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _activeCategoryTab = 'process'),
+                        onTap: () =>
+                            setState(() => _activeCategoryTab = 'process'),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 8,
+                          ),
                           decoration: BoxDecoration(
-                            color: _activeCategoryTab == 'process' ? const Color(0xFF4338CA) : const Color(0xFF1E293B),
+                            color: _activeCategoryTab == 'process'
+                                ? const Color(0xFF4338CA)
+                                : const Color(0xFF1E293B),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: _activeCategoryTab == 'process' ? const Color(0xFF818CF8) : const Color(0xFF334155),
-                              width: _activeCategoryTab == 'process' ? 1.8 : 1.0,
+                              color: _activeCategoryTab == 'process'
+                                  ? const Color(0xFF818CF8)
+                                  : const Color(0xFF334155),
+                              width: _activeCategoryTab == 'process'
+                                  ? 1.8
+                                  : 1.0,
                             ),
                           ),
                           child: Row(
@@ -362,7 +426,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
-                                    fontWeight: _activeCategoryTab == 'process' ? FontWeight.w900 : FontWeight.w600,
+                                    fontWeight: _activeCategoryTab == 'process'
+                                        ? FontWeight.w900
+                                        : FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -374,16 +440,26 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => setState(() => _activeCategoryTab = 'product'),
+                        onTap: () =>
+                            setState(() => _activeCategoryTab = 'product'),
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 8,
+                            horizontal: 8,
+                          ),
                           decoration: BoxDecoration(
-                            color: _activeCategoryTab == 'product' ? const Color(0xFF0284C7) : const Color(0xFF1E293B),
+                            color: _activeCategoryTab == 'product'
+                                ? const Color(0xFF0284C7)
+                                : const Color(0xFF1E293B),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: _activeCategoryTab == 'product' ? const Color(0xFF38BDF8) : const Color(0xFF334155),
-                              width: _activeCategoryTab == 'product' ? 1.8 : 1.0,
+                              color: _activeCategoryTab == 'product'
+                                  ? const Color(0xFF38BDF8)
+                                  : const Color(0xFF334155),
+                              width: _activeCategoryTab == 'product'
+                                  ? 1.8
+                                  : 1.0,
                             ),
                           ),
                           child: Row(
@@ -398,7 +474,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
-                                    fontWeight: _activeCategoryTab == 'product' ? FontWeight.w900 : FontWeight.w600,
+                                    fontWeight: _activeCategoryTab == 'product'
+                                        ? FontWeight.w900
+                                        : FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -412,18 +490,27 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       onTap: () => setState(() => _activeCategoryTab = 'all'),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 8,
+                          horizontal: 10,
+                        ),
                         decoration: BoxDecoration(
-                          color: _activeCategoryTab == 'all' ? const Color(0xFF334155) : const Color(0xFF0F172A),
+                          color: _activeCategoryTab == 'all'
+                              ? const Color(0xFF334155)
+                              : const Color(0xFF0F172A),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: _activeCategoryTab == 'all' ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                            color: _activeCategoryTab == 'all'
+                                ? const Color(0xFF94A3B8)
+                                : const Color(0xFF1E293B),
                           ),
                         ),
                         child: Text(
                           'All (${_parameters.length})',
                           style: TextStyle(
-                            color: _activeCategoryTab == 'all' ? Colors.white : const Color(0xFF94A3B8),
+                            color: _activeCategoryTab == 'all'
+                                ? Colors.white
+                                : const Color(0xFF94A3B8),
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -439,27 +526,51 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
               child: Row(
                 children: [
-                  const Icon(Icons.touch_app_rounded, color: Color(0xFF94A3B8), size: 14),
+                  const Icon(
+                    Icons.touch_app_rounded,
+                    color: Color(0xFF94A3B8),
+                    size: 14,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     isInspector
                         ? 'Tap tile to enter ${_activeCategoryTab.toUpperCase()} parameter'
                         : 'Tap any tile to inspect with Auto-Advance',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 11.5, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                      color: Colors.grey.shade400,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const Spacer(),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
+                      border: Border.all(
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.4),
+                      ),
                     ),
                     child: const Row(
                       children: [
-                        Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 10),
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 10,
+                        ),
                         SizedBox(width: 3),
-                        Text('◑ Critical', style: TextStyle(color: Color(0xFFF87171), fontSize: 9.5, fontWeight: FontWeight.bold)),
+                        Text(
+                          '◑ Critical',
+                          style: TextStyle(
+                            color: Color(0xFFF87171),
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -472,28 +583,38 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             // Main Parameters Grid or List
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF6366F1),
+                      ),
+                    )
                   : _displayedParameters.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _activeCategoryTab == 'process' ? Icons.settings_suggest_rounded : Icons.square_foot_rounded,
-                                size: 42,
-                                color: const Color(0xFF64748B),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'No ${_activeCategoryTab.toUpperCase()} parameters configured.',
-                                style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.bold, fontSize: 13),
-                              ),
-                            ],
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _activeCategoryTab == 'process'
+                                ? Icons.settings_suggest_rounded
+                                : Icons.square_foot_rounded,
+                            size: 42,
+                            color: const Color(0xFF64748B),
                           ),
-                        )
-                      : _isGridView
-                          ? _buildGridView(provider)
-                          : _buildListView(provider),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No ${_activeCategoryTab.toUpperCase()} parameters configured.',
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _isGridView
+                  ? _buildGridView(provider)
+                  : _buildListView(provider),
             ),
 
             // Bottom Floating Action Button
@@ -501,7 +622,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
-                border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
+                border: Border(
+                  top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                ),
               ),
               child: ElevatedButton.icon(
                 onPressed: () => _startDataEntry(startIndex: 0),
@@ -509,14 +632,22 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                   backgroundColor: const Color(0xFF4F46E5),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 4,
                   shadowColor: const Color(0xFF4F46E5).withValues(alpha: 0.5),
                 ),
                 icon: const Icon(Icons.bolt_rounded, size: 22),
                 label: Text(
-                  overallRecorded > 0 ? 'RESUME INSPECTION (AUTO-ADVANCE)' : 'START DATA ENTRY (AUTO-ADVANCE)',
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13.5, letterSpacing: 0.4),
+                  overallRecorded > 0
+                      ? 'RESUME INSPECTION (AUTO-ADVANCE)'
+                      : 'START DATA ENTRY (AUTO-ADVANCE)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13.5,
+                    letterSpacing: 0.4,
+                  ),
                 ),
               ),
             ),
@@ -540,7 +671,8 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
       itemCount: list.length,
       itemBuilder: (context, index) {
         final param = list[index];
-        final code = param['parameter_code'] ?? param['code'] ?? 'P${index + 1}';
+        final code =
+            param['parameter_code'] ?? param['code'] ?? 'P${index + 1}';
         final name = param['parameter_name'] ?? param['name'] ?? 'Param $code';
         final isCritical = param['is_critical'] == true;
         final rule = _getParameterRule(param);
@@ -587,7 +719,10 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: borderCol, width: isRecorded || isCritical ? 1.6 : 1.0),
+                border: Border.all(
+                  color: borderCol,
+                  width: isRecorded || isCritical ? 1.6 : 1.0,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.18),
@@ -607,7 +742,10 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2.5,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF0F172A),
                               borderRadius: BorderRadius.circular(6),
@@ -634,15 +772,28 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       ),
                       if (isCritical)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                            color: const Color(
+                              0xFFEF4444,
+                            ).withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
-                            border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.5)),
+                            border: Border.all(
+                              color: const Color(
+                                0xFFEF4444,
+                              ).withValues(alpha: 0.5),
+                            ),
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 10),
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                color: Color(0xFFEF4444),
+                                size: 10,
+                              ),
                               SizedBox(width: 2),
                               Text(
                                 'Critical',
@@ -697,8 +848,12 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                     decoration: BoxDecoration(
                       color: isRecorded
                           ? (status == 'ok'
-                              ? const Color(0xFF10B981).withValues(alpha: 0.18)
-                              : const Color(0xFFEF4444).withValues(alpha: 0.18))
+                                ? const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.18)
+                                : const Color(
+                                    0xFFEF4444,
+                                  ).withValues(alpha: 0.18))
                           : const Color(0xFF0F172A),
                       borderRadius: BorderRadius.circular(6),
                     ),
@@ -708,17 +863,26 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  status == 'ok' ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                                  color: status == 'ok' ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                  status == 'ok'
+                                      ? Icons.check_circle_rounded
+                                      : Icons.cancel_rounded,
+                                  color: status == 'ok'
+                                      ? const Color(0xFF34D399)
+                                      : const Color(0xFFF87171),
                                   size: 13,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  recordedVal != null && recordedVal.toString().isNotEmpty
-                                      ? (status == 'ok' ? 'OK  ($recordedVal)' : 'FAIL ($recordedVal)')
+                                  recordedVal != null &&
+                                          recordedVal.toString().isNotEmpty
+                                      ? (status == 'ok'
+                                            ? 'OK  ($recordedVal)'
+                                            : 'FAIL ($recordedVal)')
                                       : (status == 'ok' ? 'OK' : 'FAIL'),
                                   style: TextStyle(
-                                    color: status == 'ok' ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                                    color: status == 'ok'
+                                        ? const Color(0xFF34D399)
+                                        : const Color(0xFFF87171),
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -727,7 +891,11 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                             )
                           : const Text(
                               'Tap to inspect',
-                              style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w600),
+                              style: TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                     ),
                   ),
@@ -748,8 +916,10 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
       itemCount: list.length,
       itemBuilder: (context, index) {
         final param = list[index];
-        final code = param['parameter_code'] ?? param['code'] ?? 'P${index + 1}';
-        final name = param['parameter_name'] ?? param['name'] ?? 'Parameter $code';
+        final code =
+            param['parameter_code'] ?? param['code'] ?? 'P${index + 1}';
+        final name =
+            param['parameter_name'] ?? param['name'] ?? 'Parameter $code';
         final isCritical = param['is_critical'] == true;
         final spec = _formatSpec(param);
         final technique = param['measurement_technique'] ?? 'Standard';
@@ -764,12 +934,19 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isRecorded
-                  ? (status == 'ok' ? const Color(0xFF10B981) : const Color(0xFFEF4444))
-                  : (isCritical ? const Color(0xFFEF4444).withValues(alpha: 0.5) : const Color(0xFF334155)),
+                  ? (status == 'ok'
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEF4444))
+                  : (isCritical
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.5)
+                        : const Color(0xFF334155)),
             ),
           ),
           child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 4,
+            ),
             onTap: () => _startDataEntry(startIndex: index),
             leading: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -779,7 +956,11 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               ),
               child: Text(
                 code,
-                style: const TextStyle(color: Color(0xFF818CF8), fontWeight: FontWeight.w900, fontSize: 13),
+                style: const TextStyle(
+                  color: Color(0xFF818CF8),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                ),
               ),
             ),
             title: Row(
@@ -787,17 +968,31 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                 Expanded(
                   child: Text(
                     name,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                    ),
                   ),
                 ),
                 if (isCritical)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text('CRITICAL', style: TextStyle(color: Color(0xFFF87171), fontSize: 9, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'CRITICAL',
+                      style: TextStyle(
+                        color: Color(0xFFF87171),
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -807,10 +1002,18 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             ),
             trailing: isRecorded
                 ? Icon(
-                    status == 'ok' ? Icons.check_circle_rounded : Icons.cancel_rounded,
-                    color: status == 'ok' ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                    status == 'ok'
+                        ? Icons.check_circle_rounded
+                        : Icons.cancel_rounded,
+                    color: status == 'ok'
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEF4444),
                   )
-                : const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF64748B), size: 14),
+                : const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    color: Color(0xFF64748B),
+                    size: 14,
+                  ),
           ),
         );
       },

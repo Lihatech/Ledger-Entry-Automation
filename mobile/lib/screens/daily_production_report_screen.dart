@@ -9,10 +9,12 @@ class DailyProductionReportScreen extends StatefulWidget {
   const DailyProductionReportScreen({super.key});
 
   @override
-  State<DailyProductionReportScreen> createState() => _DailyProductionReportScreenState();
+  State<DailyProductionReportScreen> createState() =>
+      _DailyProductionReportScreenState();
 }
 
-class _DailyProductionReportScreenState extends State<DailyProductionReportScreen> {
+class _DailyProductionReportScreenState
+    extends State<DailyProductionReportScreen> {
   final _formKey = GlobalKey<FormState>();
 
   final _targetController = TextEditingController(text: '42');
@@ -59,7 +61,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      _submissionKey = prefs.getString('pending_daily_report_key') ??
+      _submissionKey =
+          prefs.getString('pending_daily_report_key') ??
           '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
     });
     await prefs.setString('pending_daily_report_key', _submissionKey!);
@@ -89,12 +92,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
       // 1. Resolve Active Machine
       Map<String, dynamic>? activeMachine = provider.selectedMachine;
-      if (activeMachine == null && machines.isNotEmpty) {
-        activeMachine = machines.firstWhere(
-          (m) => m['machine_code']?.toString().toUpperCase() == 'CNC-01',
-          orElse: () => machines.first,
-        );
-      }
+      // Do not invent a machine or silently choose one. The inspector/operator
+      // must select a machine returned by the master-data endpoint.
       _selectedMachine = activeMachine;
 
       // 2. Resolve Active Part for this machine
@@ -103,10 +102,15 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
         final parts = await ApiService.getPartsByMachine(mId);
 
         Map<String, dynamic>? activePart = provider.selectedPart;
-        if (activePart == null || !parts.any((p) => p['id'] == activePart!['id'])) {
+        if (activePart == null ||
+            !parts.any((p) => p['id'] == activePart!['id'])) {
           if (parts.isNotEmpty) {
             activePart = parts.firstWhere(
-              (p) => p['part_name']?.toString().toLowerCase().contains('brake drum') ?? false,
+              (p) =>
+                  p['part_name']?.toString().toLowerCase().contains(
+                    'brake drum',
+                  ) ??
+                  false,
               orElse: () => parts.first,
             );
           }
@@ -119,7 +123,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
           final templates = await ApiService.getTemplatesByPart(pNum);
 
           Map<String, dynamic>? activeTemplate = provider.selectedTemplate;
-          if (activeTemplate == null || !templates.any((t) => t['id'] == activeTemplate!['id'])) {
+          if (activeTemplate == null ||
+              !templates.any((t) => t['id'] == activeTemplate!['id'])) {
             if (templates.isNotEmpty) {
               activeTemplate = templates.first;
             }
@@ -131,7 +136,8 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       // Sync back to Provider so rest of the app is consistent
       if (_selectedMachine != null) provider.selectedMachine = _selectedMachine;
       if (_selectedPart != null) provider.selectedPart = _selectedPart;
-      if (_selectedTemplate != null) provider.selectedTemplate = _selectedTemplate;
+      if (_selectedTemplate != null)
+        provider.selectedTemplate = _selectedTemplate;
     } catch (e) {
       debugPrint('[DailyProduction] Error initializing station: $e');
     } finally {
@@ -144,11 +150,14 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
   /// 2. Auto-calculate target = (Available Time / Cycle Time)
   void _calculateTarget() {
-    final shiftHours = (_selectedMachine?['shift_duration_hours'] as num?)?.toInt() ?? 8;
-    final breakMins = (_selectedMachine?['total_break_mins'] as num?)?.toInt() ?? 60;
+    final shiftHours =
+        (_selectedMachine?['shift_duration_hours'] as num?)?.toInt() ?? 8;
+    final breakMins =
+        (_selectedMachine?['total_break_mins'] as num?)?.toInt() ?? 60;
     _currentAvailableTime = (shiftHours * 60) - breakMins;
 
-    double cycleTime = (_selectedTemplate?['cycle_time_mins'] as num?)?.toDouble() ?? 0.0;
+    double cycleTime =
+        (_selectedTemplate?['cycle_time_mins'] as num?)?.toDouble() ?? 0.0;
     if (cycleTime <= 0) {
       cycleTime = 10.0; // standard fallback
     }
@@ -175,7 +184,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       modalReceipts = await ApiService.getInventoryReceipts();
     } on InventoryReceiptFetchException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.message)));
       }
       return;
     }
@@ -192,7 +203,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     // Pre-load templates for current part
     if (tempPart != null && tempPart['part_number'] != null) {
       isFetchingTemplates = true;
-      modalTemplates = await ApiService.getTemplatesByPart(tempPart['part_number'].toString());
+      modalTemplates = await ApiService.getTemplatesByPart(
+        tempPart['part_number'].toString(),
+      );
       isFetchingTemplates = false;
     }
 
@@ -207,29 +220,51 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
           final eligibleReceipts = tempMachine == null
               ? <dynamic>[]
               : modalReceipts.where((receipt) {
-                  final remaining = ((receipt['received_quantity'] as num?)?.toInt() ?? 0) -
+                  final remaining =
+                      ((receipt['received_quantity'] as num?)?.toInt() ?? 0) -
                       ((receipt['dispatched_quantity'] as num?)?.toInt() ?? 0);
                   if (remaining <= 0) return false;
                   final steps = receipt['machine_sequence_steps'];
                   if (steps is! List || steps.isEmpty) return true;
-                  return steps.any((step) => step is Map && '${step['machine_id']}' == '${tempMachine!['id']}');
+                  return steps.any(
+                    (step) =>
+                        step is Map &&
+                        '${step['machine_id']}' == '${tempMachine!['id']}',
+                  );
                 }).toList();
-          final companies = eligibleReceipts
-              .map((receipt) => (receipt['company_name'] ?? '').toString().trim())
-              .where((company) => company.isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
-          final activeCompany = companies.contains(tempCompany) ? tempCompany : null;
+          final companies =
+              eligibleReceipts
+                  .map(
+                    (receipt) =>
+                        (receipt['company_name'] ?? '').toString().trim(),
+                  )
+                  .where((company) => company.isNotEmpty)
+                  .toSet()
+                  .toList()
+                ..sort();
+          final activeCompany = companies.contains(tempCompany)
+              ? tempCompany
+              : null;
           final companyParts = activeCompany == null
               ? <dynamic>[]
               : modalParts.where((part) {
-                  final partName = (part['part_name'] ?? '').toString().trim().toLowerCase();
-                  return eligibleReceipts.any((receipt) =>
-                      (receipt['company_name'] ?? '').toString().trim() == activeCompany &&
-                      (receipt['part_name'] ?? '').toString().trim().toLowerCase() == partName);
+                  final partName = (part['part_name'] ?? '')
+                      .toString()
+                      .trim()
+                      .toLowerCase();
+                  return eligibleReceipts.any(
+                    (receipt) =>
+                        (receipt['company_name'] ?? '').toString().trim() ==
+                            activeCompany &&
+                        (receipt['part_name'] ?? '')
+                                .toString()
+                                .trim()
+                                .toLowerCase() ==
+                            partName,
+                  );
                 }).toList();
-          double modalCycleTime = (tempTemplate?['cycle_time_mins'] as num?)?.toDouble() ?? 10.0;
+          double modalCycleTime =
+              (tempTemplate?['cycle_time_mins'] as num?)?.toDouble() ?? 10.0;
           if (modalCycleTime <= 0) modalCycleTime = 10.0;
           final modalTarget = (_currentAvailableTime / modalCycleTime).toInt();
 
@@ -258,10 +293,17 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                     children: [
                       const Text(
                         'Change Station & Operation',
-                        style: TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Color(0xFF64748B),
+                        ),
                         onPressed: () => Navigator.pop(ctx),
                       ),
                     ],
@@ -273,34 +315,71 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   const SizedBox(height: 18),
 
                   // 1. Machine Dropdown
-                  const Text('Machine', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Machine',
+                    style: TextStyle(
+                      color: Color(0xFF334155),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<int>(
                     key: ValueKey('machine_${tempMachine?['id']}'),
                     initialValue: tempMachine?['id'] as int?,
                     dropdownColor: Colors.white,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF0F172A),
+                    ),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Color(0xFF2563EB),
+                    ),
                     isExpanded: true,
                     decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
                       filled: true,
                       fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                          color: Color(0xFF2563EB),
+                          width: 2,
+                        ),
+                      ),
                     ),
                     items: _allMachines.map<DropdownMenuItem<int>>((m) {
                       final code = m['machine_code'] ?? 'Machine';
                       final name = m['name'] ?? '';
                       return DropdownMenuItem<int>(
                         value: m['id'] as int,
-                        child: Text('$code — $name', style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+                        child: Text(
+                          '$code — $name',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       );
                     }).toList(),
                     onChanged: (newMachineId) async {
                       if (newMachineId == null) return;
-                      final selected = _allMachines.firstWhere((m) => m['id'] == newMachineId);
+                      final selected = _allMachines.firstWhere(
+                        (m) => m['id'] == newMachineId,
+                      );
                       setModalState(() {
                         tempMachine = selected;
                         tempCompany = null;
@@ -311,7 +390,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         modalTemplates = [];
                       });
 
-                      final fetchedParts = await ApiService.getPartsByMachine(newMachineId);
+                      final fetchedParts = await ApiService.getPartsByMachine(
+                        newMachineId,
+                      );
                       setModalState(() {
                         modalParts = fetchedParts;
                         isFetchingParts = false;
@@ -320,9 +401,13 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         }
                       });
 
-                      if (tempPart != null && tempPart!['part_number'] != null) {
+                      if (tempPart != null &&
+                          tempPart!['part_number'] != null) {
                         setModalState(() => isFetchingTemplates = true);
-                        final fetchedTemplates = await ApiService.getTemplatesByPart(tempPart!['part_number'].toString());
+                        final fetchedTemplates =
+                            await ApiService.getTemplatesByPart(
+                              tempPart!['part_number'].toString(),
+                            );
                         setModalState(() {
                           modalTemplates = fetchedTemplates;
                           isFetchingTemplates = false;
@@ -337,24 +422,68 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   const SizedBox(height: 14),
 
                   // 2. Company Dropdown — sourced only from active inventory.
-                  const Text('Company', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Company',
+                    style: TextStyle(
+                      color: Color(0xFF334155),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('company_$tempCompany'),
                     initialValue: activeCompany,
                     dropdownColor: Colors.white,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF0F172A),
+                    ),
+                    icon: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Color(0xFF2563EB),
+                    ),
                     isExpanded: true,
                     decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                      filled: true, fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
                     ),
-                    hint: Text(tempMachine == null ? 'Select machine first' : companies.isEmpty ? 'No inventory available for this machine' : 'Select company', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),),
+                    hint: Text(
+                      tempMachine == null
+                          ? 'Select machine first'
+                          : companies.isEmpty
+                          ? 'No inventory available for this machine'
+                          : 'Select company',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
                     items: companies.map<DropdownMenuItem<String>>((company) {
-                      return DropdownMenuItem<String>(value: company, child: Text(company, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)));
+                      return DropdownMenuItem<String>(
+                        value: company,
+                        child: Text(
+                          company,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      );
                     }).toList(),
                     onChanged: (company) {
                       if (company == null) return;
@@ -370,41 +499,98 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   const SizedBox(height: 14),
 
                   // 3. Part Dropdown (Filtered by Company and Machine)
-                  const Text('Part (Filtered to Company & Machine)', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Part (Filtered to Company & Machine)',
+                    style: TextStyle(
+                      color: Color(0xFF334155),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   if (isFetchingParts)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
                     )
                   else
                     DropdownButtonFormField<int>(
                       key: ValueKey('part_${tempPart?['id']}'),
                       initialValue: tempPart?['id'] as int?,
                       dropdownColor: Colors.white,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF0F172A),
+                      ),
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Color(0xFF2563EB),
+                      ),
                       isExpanded: true,
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         filled: true,
                         fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF2563EB),
+                            width: 2,
+                          ),
+                        ),
                       ),
-                      hint: Text(tempCompany == null ? 'Select company first' : companyParts.isEmpty ? 'No inventory part available' : 'Select part', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+                      hint: Text(
+                        tempCompany == null
+                            ? 'Select company first'
+                            : companyParts.isEmpty
+                            ? 'No inventory part available'
+                            : 'Select part',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
                       items: companyParts.map<DropdownMenuItem<int>>((p) {
                         final pName = p['part_name'] ?? 'Part';
                         final pNum = p['part_number'] ?? '';
                         return DropdownMenuItem<int>(
                           value: p['id'] as int,
-                          child: Text('$pName ($pNum)', style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+                          child: Text(
+                            '$pName ($pNum)',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         );
                       }).toList(),
                       onChanged: (newPartId) async {
                         if (newPartId == null) return;
-                        final selected = companyParts.firstWhere((p) => p['id'] == newPartId);
+                        final selected = companyParts.firstWhere(
+                          (p) => p['id'] == newPartId,
+                        );
                         setModalState(() {
                           tempPart = selected;
                           tempTemplate = null;
@@ -412,7 +598,10 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                           modalTemplates = [];
                         });
 
-                        final fetchedTemplates = await ApiService.getTemplatesByPart(selected['part_number'].toString());
+                        final fetchedTemplates =
+                            await ApiService.getTemplatesByPart(
+                              selected['part_number'].toString(),
+                            );
                         setModalState(() {
                           modalTemplates = fetchedTemplates;
                           isFetchingTemplates = false;
@@ -426,44 +615,105 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   const SizedBox(height: 14),
 
                   // 4. Operation Dropdown (Filtered by Part)
-                  const Text('Operation / Template', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Operation / Template',
+                    style: TextStyle(
+                      color: Color(0xFF334155),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                   const SizedBox(height: 6),
                   if (isFetchingTemplates)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
                     )
                   else
                     DropdownButtonFormField<int>(
                       key: ValueKey('template_${tempTemplate?['id']}'),
                       initialValue: tempTemplate?['id'] as int?,
                       dropdownColor: Colors.white,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF0F172A),
+                      ),
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: Color(0xFF2563EB),
+                      ),
                       isExpanded: true,
                       decoration: InputDecoration(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
                         filled: true,
                         fillColor: Colors.white,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF2563EB),
+                            width: 2,
+                          ),
+                        ),
                       ),
-                      hint: Text(modalTemplates.isEmpty ? 'No operations configured' : 'Select Operation', style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
+                      hint: Text(
+                        modalTemplates.isEmpty
+                            ? 'No operations configured'
+                            : 'Select Operation',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
                       items: modalTemplates.map<DropdownMenuItem<int>>((t) {
-                        final opName = (t['name'] != null && t['name'].toString().trim().isNotEmpty)
+                        final opName =
+                            (t['name'] != null &&
+                                t['name'].toString().trim().isNotEmpty)
                             ? t['name'].toString()
-                            : (t['part_operation_name'] ?? 'Operation ${t['version'] ?? ''}');
-                        final ct = (t['cycle_time_mins'] as num?)?.toDouble() ?? 10.0;
-                        final ctDisplay = ct % 1 == 0 ? '${ct.toInt()} min' : '${ct.toStringAsFixed(1)} min';
+                            : (t['part_operation_name'] ??
+                                  'Operation ${t['version'] ?? ''}');
+                        final ct =
+                            (t['cycle_time_mins'] as num?)?.toDouble() ?? 10.0;
+                        final ctDisplay = ct % 1 == 0
+                            ? '${ct.toInt()} min'
+                            : '${ct.toStringAsFixed(1)} min';
                         return DropdownMenuItem<int>(
                           value: t['id'] as int,
-                          child: Text('$opName ($ctDisplay)', style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+                          child: Text(
+                            '$opName ($ctDisplay)',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                         );
                       }).toList(),
                       onChanged: (newTemplateId) {
                         if (newTemplateId == null) return;
-                        final selected = modalTemplates.firstWhere((t) => t['id'] == newTemplateId);
+                        final selected = modalTemplates.firstWhere(
+                          (t) => t['id'] == newTemplateId,
+                        );
                         setModalState(() {
                           tempTemplate = selected;
                         });
@@ -486,14 +736,31 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Shift Production Target', style: TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+                            const Text(
+                              'Shift Production Target',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF475569),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                             const SizedBox(height: 2),
-                            Text('420 min shift / ${modalCycleTime % 1 == 0 ? modalCycleTime.toInt() : modalCycleTime.toStringAsFixed(1)} min cycle', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                            Text(
+                              '420 min shift / ${modalCycleTime % 1 == 0 ? modalCycleTime.toInt() : modalCycleTime.toStringAsFixed(1)} min cycle',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
                           ],
                         ),
                         Text(
                           '$modalTarget pcs',
-                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                       ],
                     ),
@@ -503,7 +770,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                   // Apply Button
                   ElevatedButton(
-                    onPressed: (tempMachine != null && activeCompany != null && tempPart != null && tempTemplate != null)
+                    onPressed:
+                        (tempMachine != null &&
+                            activeCompany != null &&
+                            tempPart != null &&
+                            tempTemplate != null)
                         ? () {
                             setState(() {
                               _selectedMachine = tempMachine;
@@ -511,7 +782,10 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                               _selectedTemplate = tempTemplate;
                               _selectedCompany = activeCompany;
 
-                              final provider = Provider.of<InspectionProvider>(context, listen: false);
+                              final provider = Provider.of<InspectionProvider>(
+                                context,
+                                listen: false,
+                              );
                               provider.selectedMachine = tempMachine;
                               provider.selectedPart = tempPart;
                               provider.selectedTemplate = tempTemplate;
@@ -520,7 +794,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                             Navigator.pop(ctx);
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Station updated: ${_selectedMachine?['machine_code']} | ${_selectedPart?['part_name']}'),
+                                content: Text(
+                                  'Station updated: ${_selectedMachine?['machine_code']} | ${_selectedPart?['part_name']}',
+                                ),
                                 backgroundColor: const Color(0xFF059669),
                                 behavior: SnackBarBehavior.floating,
                               ),
@@ -531,9 +807,17 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                       backgroundColor: const Color(0xFF2563EB),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
-                    child: const Text('Apply Station & Update Target', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    child: const Text(
+                      'Apply Station & Update Target',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -558,9 +842,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
     String? err;
     if (completed != (correct + incorrect)) {
-      err = 'Validation Error: Jobs Completed ($completed) must equal Correct Jobs ($correct) + Incorrect Jobs ($incorrect).';
+      err =
+          'Validation Error: Jobs Completed ($completed) must equal Correct Jobs ($correct) + Incorrect Jobs ($incorrect).';
     } else if (incorrect != (cr + mr + rw)) {
-      err = 'Validation Error: Incorrect Jobs ($incorrect) must equal CR ($cr) + MR ($mr) + RW ($rw).';
+      err =
+          'Validation Error: Incorrect Jobs ($incorrect) must equal CR ($cr) + MR ($mr) + RW ($rw).';
     }
 
     setState(() {
@@ -597,7 +883,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     if (machineId == null || partId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select a valid Machine and Part before submitting.'),
+          content: Text(
+            'Please select a valid Machine and Part before submitting.',
+          ),
           backgroundColor: Color(0xFFDC2626),
           behavior: SnackBarBehavior.floating,
         ),
@@ -611,11 +899,14 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final auth = Provider.of<AuthProvider>(context, listen: false);
 
     final now = DateTime.now();
-    final dateStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+    final dateStr =
+        "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-    final operation = (_selectedTemplate?['name'] != null && _selectedTemplate!['name'].toString().trim().isNotEmpty)
+    final operation =
+        (_selectedTemplate?['name'] != null &&
+            _selectedTemplate!['name'].toString().trim().isNotEmpty)
         ? _selectedTemplate!['name'].toString().trim()
-        : (_selectedTemplate?['part_operation_name'] ?? 'Facing, Bore, I.D., O.D.');
+        : (_selectedTemplate?['part_operation_name'] ?? '—');
     // Preserve the shift captured when the active inspection started. A later
     // profile shift change must apply only to new reports.
     final shift = provider.sessionId != null && provider.shift.isNotEmpty
@@ -646,19 +937,32 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
     if (mounted) {
       if (res['success'] == true) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('pending_daily_report_key');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('pending_daily_report_key');
         showDialog(
           context: context,
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
             backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             title: const Row(
               children: [
-                Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 28),
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF059669),
+                  size: 28,
+                ),
                 SizedBox(width: 10),
-                Text('Report Submitted', style: TextStyle(color: Color(0xFF0F172A), fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(
+                  'Report Submitted',
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
             content: Text(
@@ -676,7 +980,7 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('OK'),
-              )
+              ),
             ],
           ),
         );
@@ -698,12 +1002,21 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
     final auth = Provider.of<AuthProvider>(context);
 
     final now = DateTime.now();
-    final dateDisplay = "${now.day.toString().padLeft(2, '0')}-${_monthAbbr(now.month)}-${now.year}";
-    final machineCode = _selectedMachine?['machine_code'] ?? provider.selectedMachine?['machine_code'] ?? 'CNC-01';
-    final partName = _selectedPart?['part_name'] ?? provider.selectedPart?['part_name'] ?? 'Brake Drum Rear';
-    final operation = (_selectedTemplate?['name'] != null && _selectedTemplate!['name'].toString().trim().isNotEmpty)
+    final dateDisplay =
+        "${now.day.toString().padLeft(2, '0')}-${_monthAbbr(now.month)}-${now.year}";
+    final machineCode =
+        _selectedMachine?['machine_code'] ??
+        provider.selectedMachine?['machine_code'] ??
+        '—';
+    final partName =
+        _selectedPart?['part_name'] ??
+        provider.selectedPart?['part_name'] ??
+        '—';
+    final operation =
+        (_selectedTemplate?['name'] != null &&
+            _selectedTemplate!['name'].toString().trim().isNotEmpty)
         ? _selectedTemplate!['name'].toString().trim()
-        : (_selectedTemplate?['part_operation_name'] ?? 'Facing, Bore, I.D., O.D.');
+        : (_selectedTemplate?['part_operation_name'] ?? '—');
     final shift = provider.sessionId != null && provider.shift.isNotEmpty
         ? provider.shift
         : (auth.assignedShift != 'ALL' ? auth.assignedShift : provider.shift);
@@ -718,7 +1031,10 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
         elevation: 1,
         shadowColor: const Color(0x1A000000),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, color: Color(0xFF2563EB)),
+          icon: const Icon(
+            Icons.arrow_back_ios_rounded,
+            color: Color(0xFF2563EB),
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Column(
@@ -726,7 +1042,12 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
           children: [
             Text(
               'DAILY PRODUCTION REPORT',
-              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 0.5),
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.bold,
+                fontSize: 15,
+                letterSpacing: 0.5,
+              ),
             ),
             Text(
               'End of Day Output & Rejection Log',
@@ -737,7 +1058,9 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
       ),
       body: SafeArea(
         child: _isLoadingContext
-            ? const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)))
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+              )
             : SingleChildScrollView(
                 padding: const EdgeInsets.all(20.0),
                 child: Form(
@@ -753,7 +1076,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                           boxShadow: const [
-                            BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
+                            BoxShadow(
+                              color: Color(0x06000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
                           ],
                         ),
                         child: Column(
@@ -774,20 +1101,33 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                                   onTap: _showChangeStationModal,
                                   borderRadius: BorderRadius.circular(6),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                                      border: Border.all(
+                                        color: const Color(0xFFCBD5E1),
+                                      ),
                                     ),
                                     child: const Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Icon(Icons.tune_rounded, size: 13, color: Color(0xFF2563EB)),
+                                        Icon(
+                                          Icons.tune_rounded,
+                                          size: 13,
+                                          color: Color(0xFF2563EB),
+                                        ),
                                         SizedBox(width: 5),
                                         Text(
                                           'Change Station',
-                                          style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
+                                          style: TextStyle(
+                                            color: Color(0xFF2563EB),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -796,11 +1136,26 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                               ],
                             ),
                             const Divider(height: 20, color: Color(0xFFF1F5F9)),
-                            _metaRow('Date:', dateDisplay, 'Shift:', 'Shift $shift'),
+                            _metaRow(
+                              'Date:',
+                              dateDisplay,
+                              'Shift:',
+                              'Shift $shift',
+                            ),
                             const SizedBox(height: 8),
-                            _metaRow('Machine:', machineCode, 'Operator:', operatorName),
+                            _metaRow(
+                              'Machine:',
+                              machineCode,
+                              'Operator:',
+                              operatorName,
+                            ),
                             const SizedBox(height: 8),
-                            _metaRow('Part:', partName, 'Operation:', operation),
+                            _metaRow(
+                              'Part:',
+                              partName,
+                              'Operation:',
+                              operation,
+                            ),
                             const SizedBox(height: 8),
                             _metaRow(
                               'Cycle Time:',
@@ -816,13 +1171,20 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                       // 2. PRODUCTION ACHIEVEMENT CARD
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                           boxShadow: const [
-                            BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
+                            BoxShadow(
+                              color: Color(0x06000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1),
+                            ),
                           ],
                         ),
                         child: Row(
@@ -833,13 +1195,19 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                               children: [
                                 const Text(
                                   'Production Achievement',
-                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
                                   '${_achievementPercentage.toStringAsFixed(1)}%',
                                   style: TextStyle(
-                                    color: isTargetMet ? const Color(0xFF16A34A) : const Color(0xFF2563EB),
+                                    color: isTargetMet
+                                        ? const Color(0xFF16A34A)
+                                        : const Color(0xFF2563EB),
                                     fontSize: 24,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -847,24 +1215,33 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                               ],
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 5,
+                              ),
                               decoration: BoxDecoration(
-                                color: isTargetMet ? const Color(0xFFDCFCE7) : const Color(0xFFEFF6FF),
+                                color: isTargetMet
+                                    ? const Color(0xFFDCFCE7)
+                                    : const Color(0xFFEFF6FF),
                                 borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: isTargetMet ? const Color(0xFF86EFAC) : const Color(0xFFBFDBFE),
+                                  color: isTargetMet
+                                      ? const Color(0xFF86EFAC)
+                                      : const Color(0xFFBFDBFE),
                                 ),
                               ),
                               child: Text(
                                 isTargetMet ? 'TARGET MET' : 'IN PROGRESS',
                                 style: TextStyle(
-                                  color: isTargetMet ? const Color(0xFF15803D) : const Color(0xFF1D4ED8),
+                                  color: isTargetMet
+                                      ? const Color(0xFF15803D)
+                                      : const Color(0xFF1D4ED8),
                                   fontWeight: FontWeight.w700,
                                   fontSize: 11,
                                   letterSpacing: 0.3,
                                 ),
                               ),
-                            )
+                            ),
                           ],
                         ),
                       ),
@@ -883,7 +1260,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                           ),
                           child: Text(
                             _validationError!,
-                            style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Color(0xFF991B1B),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
 
@@ -892,9 +1273,13 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         'Production Target',
                         _targetController,
                         readOnly: true,
-                        helperText: 'Standard: $_currentAvailableTime min available / ${_currentCycleTime % 1 == 0 ? _currentCycleTime.toInt() : _currentCycleTime.toStringAsFixed(1)} min cycle',
+                        helperText:
+                            'Standard: $_currentAvailableTime min available / ${_currentCycleTime % 1 == 0 ? _currentCycleTime.toInt() : _currentCycleTime.toStringAsFixed(1)} min cycle',
                         suffixBadge: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(4),
@@ -902,7 +1287,11 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                           ),
                           child: const Text(
                             'Auto-calculated',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 10, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ),
@@ -912,9 +1301,21 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                       Row(
                         children: [
-                          Expanded(child: _buildNumberInput('Correct Jobs', _correctController, color: const Color(0xFF059669))),
+                          Expanded(
+                            child: _buildNumberInput(
+                              'Correct Jobs',
+                              _correctController,
+                              color: const Color(0xFF059669),
+                            ),
+                          ),
                           const SizedBox(width: 12),
-                          Expanded(child: _buildNumberInput('Incorrect Jobs', _incorrectController, color: const Color(0xFFDC2626))),
+                          Expanded(
+                            child: _buildNumberInput(
+                              'Incorrect Jobs',
+                              _incorrectController,
+                              color: const Color(0xFFDC2626),
+                            ),
+                          ),
                         ],
                       ),
 
@@ -923,12 +1324,19 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                         children: [
                           Text(
                             'Rejection Breakdown',
-                            style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Color(0xFF334155),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           SizedBox(width: 6),
                           Text(
                             '(Must equal Incorrect Jobs)',
-                            style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontSize: 11,
+                            ),
                           ),
                         ],
                       ),
@@ -936,11 +1344,29 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
 
                       Row(
                         children: [
-                          Expanded(child: _buildNumberInput('CR (Customer)', _crController, isCompact: true)),
+                          Expanded(
+                            child: _buildNumberInput(
+                              'CR (Customer)',
+                              _crController,
+                              isCompact: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildNumberInput('MR (Machine)', _mrController, isCompact: true)),
+                          Expanded(
+                            child: _buildNumberInput(
+                              'MR (Machine)',
+                              _mrController,
+                              isCompact: true,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          Expanded(child: _buildNumberInput('RW (Rework)', _rwController, isCompact: true)),
+                          Expanded(
+                            child: _buildNumberInput(
+                              'RW (Rework)',
+                              _rwController,
+                              isCompact: true,
+                            ),
+                          ),
                         ],
                       ),
 
@@ -949,21 +1375,47 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                       // Remarks Input
                       const Text(
                         'Remarks (Optional)',
-                        style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: Color(0xFF334155),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: _remarksController,
                         maxLines: 3,
-                        style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13),
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 13,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'e.g. Tool change or downtime notes.',
-                          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                          hintStyle: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 12,
+                          ),
                           filled: true,
                           fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2)),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFCBD5E1),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFCBD5E1),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF2563EB),
+                              width: 2,
+                            ),
+                          ),
                         ),
                       ),
 
@@ -977,13 +1429,25 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: _isSubmitting
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
                             : const Text(
                                 'Submit Daily Production Report',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                       ),
                       const SizedBox(height: 20),
@@ -1003,8 +1467,17 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
             text: TextSpan(
               style: const TextStyle(fontSize: 12),
               children: [
-                TextSpan(text: '$label1 ', style: const TextStyle(color: Color(0xFF64748B))),
-                TextSpan(text: val1, style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+                TextSpan(
+                  text: '$label1 ',
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
+                TextSpan(
+                  text: val1,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1014,8 +1487,17 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
             text: TextSpan(
               style: const TextStyle(fontSize: 12),
               children: [
-                TextSpan(text: '$label2 ', style: const TextStyle(color: Color(0xFF64748B))),
-                TextSpan(text: val2, style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
+                TextSpan(
+                  text: '$label2 ',
+                  style: const TextStyle(color: Color(0xFF64748B)),
+                ),
+                TextSpan(
+                  text: val2,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -1041,7 +1523,14 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: const TextStyle(color: Color(0xFF334155), fontSize: 12, fontWeight: FontWeight.bold)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF334155),
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               if (suffixBadge != null) suffixBadge,
             ],
           ),
@@ -1053,7 +1542,10 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
           keyboardType: TextInputType.number,
           onTap: () {
             if (!readOnly && controller.text == '0') {
-              controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length);
+              controller.selection = TextSelection(
+                baseOffset: 0,
+                extentOffset: controller.text.length,
+              );
             }
           },
           style: TextStyle(
@@ -1066,25 +1558,67 @@ class _DailyProductionReportScreenState extends State<DailyProductionReportScree
             hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
             labelText: isCompact ? label : null,
             labelStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 11),
-            prefixIcon: icon != null ? Icon(icon, color: color, size: 20) : null,
+            prefixIcon: icon != null
+                ? Icon(icon, color: color, size: 20)
+                : null,
             filled: true,
             fillColor: readOnly ? const Color(0xFFF8FAFC) : Colors.white,
-            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: isCompact ? 10 : 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: readOnly ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: readOnly ? const Color(0xFFE2E8F0) : const Color(0xFFCBD5E1))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: color, width: 2)),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: isCompact ? 10 : 14,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: readOnly
+                    ? const Color(0xFFE2E8F0)
+                    : const Color(0xFFCBD5E1),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: readOnly
+                    ? const Color(0xFFE2E8F0)
+                    : const Color(0xFFCBD5E1),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: color, width: 2),
+            ),
           ),
         ),
         if (helperText != null) ...[
           const SizedBox(height: 4),
-          Text(helperText, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontStyle: FontStyle.italic)),
+          Text(
+            helperText,
+            style: const TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
         ],
       ],
     );
   }
 
   String _monthAbbr(int month) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return months[month - 1];
   }
 }

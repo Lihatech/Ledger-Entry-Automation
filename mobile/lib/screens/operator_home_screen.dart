@@ -37,7 +37,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   Future<void> _loadOperatorTemplates() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
-      
+
       if (provider.selectedMachine == null) {
         try {
           final machines = await ApiService.getMachines();
@@ -45,27 +45,44 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
             provider.selectMachine(machines.first);
           } else {
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('No machines available. Please select one manually.'),
-                backgroundColor: Color(0xFFF59E0B),
-              ));
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MachineSelectScreen()));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'No machines available. Please select one manually.',
+                  ),
+                  backgroundColor: Color(0xFFF59E0B),
+                ),
+              );
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+              );
             }
             return;
           }
         } catch (_) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-              content: Text('Network error. Please select a machine manually.'),
-              backgroundColor: Color(0xFFEF4444),
-            ));
-            Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MachineSelectScreen()));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Network error. Please select a machine manually.',
+                ),
+                backgroundColor: Color(0xFFEF4444),
+              ),
+            );
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+            );
           }
           return;
         }
       }
 
-      final machineId = provider.selectedMachine?['id'] ?? 1;
+      final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+      if (machineId == null) {
+        throw Exception('Selected machine has no master-data id.');
+      }
 
       await provider.fetchPendingRejections();
 
@@ -82,14 +99,16 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
       final parts = await ApiService.getPartsByMachine(machineId);
 
       List<dynamic> rawTemplates = [];
-      if (provider.selectedPart != null && provider.selectedPart?['part_number'] != null) {
-        rawTemplates = await ApiService.getTemplatesByPart(provider.selectedPart!['part_number']);
+      if (provider.selectedPart != null &&
+          provider.selectedPart?['part_number'] != null) {
+        rawTemplates = await ApiService.getTemplatesByPart(
+          provider.selectedPart!['part_number'],
+        );
       } else if (parts.isNotEmpty) {
         provider.selectPart(parts.first);
-        rawTemplates = await ApiService.getTemplatesByPart(parts.first['part_number']);
-      } else {
-        provider.selectPart({'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'});
-        rawTemplates = await ApiService.getTemplatesByPart('FBT00222');
+        rawTemplates = await ApiService.getTemplatesByPart(
+          parts.first['part_number'],
+        );
       }
 
       final List<dynamic> sorted = List.from(rawTemplates);
@@ -100,7 +119,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
       });
 
       // Fetch assigned Quality Inspector name for this station
-      String inspectorName = 'Samruddhi Bartakke';
+      String inspectorName = '—';
       try {
         final allUsers = await ApiService.getUsers();
         final inspectors = allUsers.where((u) {
@@ -110,7 +129,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
 
         if (inspectors.isNotEmpty) {
           final first = inspectors.first;
-          inspectorName = first['full_name'] ?? first['username'] ?? 'Samruddhi Bartakke';
+          inspectorName = first['full_name'] ?? first['username'] ?? '—';
         }
       } catch (_) {}
 
@@ -179,14 +198,29 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Operator Hourly Terminal', style: TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.bold)),
+            const Text(
+              'Operator Hourly Terminal',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             Row(
               children: [
-                const Icon(Icons.person_rounded, color: Color(0xFF059669), size: 12),
+                const Icon(
+                  Icons.person_rounded,
+                  color: Color(0xFF059669),
+                  size: 12,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   auth.fullName ?? auth.username ?? 'Production Operator',
-                  style: const TextStyle(color: Color(0xFF059669), fontSize: 11, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Color(0xFF059669),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -207,12 +241,17 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF10B981)),
             tooltip: 'Refresh Status',
             onPressed: () {
-              setState(() { _isLoading = true; });
+              setState(() {
+                _isLoading = true;
+              });
               _loadOperatorTemplates();
             },
           ),
           IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF38BDF8)),
+            icon: const Icon(
+              Icons.swap_horiz_rounded,
+              color: Color(0xFF38BDF8),
+            ),
             tooltip: 'Change Machine',
             onPressed: () {
               Navigator.push(
@@ -255,7 +294,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                     color: Colors.black.withValues(alpha: 0.04),
                     blurRadius: 10,
                     offset: const Offset(0, 3),
-                  )
+                  ),
                 ],
               ),
               child: Row(
@@ -267,7 +306,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: const Color(0xFFBFDBFE)),
                     ),
-                    child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF2563EB), size: 28),
+                    child: const Icon(
+                      Icons.precision_manufacturing_rounded,
+                      color: Color(0xFF2563EB),
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -275,17 +318,28 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          provider.selectedMachine?['name'] ?? 'CNC Turning Center 01',
-                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                          provider.selectedMachine?['name'] ??
+                              'Selected machine',
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'Code: ${provider.selectedMachine?['machine_code'] ?? 'CNC-01'}  •  Part: ${provider.selectedPart?['part_number'] ?? 'FBT00222'}',
-                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          'Code: ${provider.selectedMachine?['machine_code'] ?? '—'}  •  Part: ${provider.selectedPart?['part_number'] ?? '—'}',
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(6),
@@ -294,11 +348,19 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.verified_user_rounded, color: Color(0xFF2563EB), size: 12),
+                              const Icon(
+                                Icons.verified_user_rounded,
+                                color: Color(0xFF2563EB),
+                                size: 12,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 'Quality Inspector: $_assignedInspectorName',
-                                style: const TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  color: Color(0xFF2563EB),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -310,16 +372,30 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const MachineSelectScreen(),
+                        ),
                       );
                     },
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: Color(0xFF2563EB)),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    child: const Text('CHANGE', style: TextStyle(color: Color(0xFF2563EB), fontSize: 11, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'CHANGE',
+                      style: TextStyle(
+                        color: Color(0xFF2563EB),
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -332,8 +408,12 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
               ...provider.activeRejections.map((rej) {
                 final currentTrial = rej['trial_number'] ?? 1;
                 final nextTrial = currentTrial + 1;
-                final remark = rej['rejection_reason'] ?? rej['supervisor_remark'] ?? 'Targeted parameter correction requested.';
-                final List<dynamic> rejectedParams = rej['rejected_parameters'] ?? [];
+                final remark =
+                    rej['rejection_reason'] ??
+                    rej['supervisor_remark'] ??
+                    'Targeted parameter correction requested.';
+                final List<dynamic> rejectedParams =
+                    rej['rejected_parameters'] ?? [];
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 14),
@@ -341,31 +421,50 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                   decoration: BoxDecoration(
                     color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
+                    border: Border.all(
+                      color: const Color(0xFFF59E0B),
+                      width: 1.5,
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 24),
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Color(0xFFF59E0B),
+                            size: 24,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'TARGETED RE-ENTRY REQUEST (1ST PC #$nextTrial)',
-                            style: const TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold, fontSize: 13),
+                            style: const TextStyle(
+                              color: Color(0xFFF59E0B),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Supervisor Remark: "$remark"',
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontStyle: FontStyle.italic),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                        ),
                       ),
                       if (rejectedParams.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
                           'Targeted Parameters: ${rejectedParams.join(", ")}',
-                          style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 12, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Color(0xFFFDE68A),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                       const SizedBox(height: 10),
@@ -374,16 +473,27 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                         decoration: BoxDecoration(
                           color: const Color(0xFF0F172A),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFF59E0B).withValues(alpha: 0.4)),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFF59E0B,
+                            ).withValues(alpha: 0.4),
+                          ),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.info_outline_rounded, color: Color(0xFFF59E0B), size: 16),
+                            const Icon(
+                              Icons.info_outline_rounded,
+                              color: Color(0xFFF59E0B),
+                              size: 16,
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
                                 'Awaiting Quality Inspector ($_assignedInspectorName) to perform Corrective Trial (1ST PC #$nextTrial). Hourly logging paused.',
-                                style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 11),
+                                style: const TextStyle(
+                                  color: Color(0xFFFDE68A),
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
                           ],
@@ -401,10 +511,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF10B981).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: const Color(0xFF10B981),
-                  width: 1.5,
-                ),
+                border: Border.all(color: const Color(0xFF10B981), width: 1.5),
               ),
               child: Row(
                 children: [
@@ -429,7 +536,10 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                         const SizedBox(height: 4),
                         Text(
                           'Hourly In-Process Inspections (1/HR..${provider.shiftHours}/HR) active & ready for voice entry into the single report.',
-                          style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+                          style: const TextStyle(
+                            color: Color(0xFFCBD5E1),
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -445,27 +555,40 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const ReportSheetScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const ReportSheetScreen(),
+                        ),
                       );
                     },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF10B981),
                       side: const BorderSide(color: Color(0xFF10B981)),
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     icon: const Icon(Icons.table_chart_rounded, size: 16),
-                    label: const Text('VIEW FORM F02', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    label: const Text(
+                      'VIEW FORM F02',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      if (provider.completedHourlySlots.length < provider.shiftHours) {
+                      if (provider.completedHourlySlots.length <
+                          provider.shiftHours) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('🔒 You must complete all ${provider.shiftHours} hourly inspections before submitting the Daily Production Report.'),
+                            content: Text(
+                              '🔒 You must complete all ${provider.shiftHours} hourly inspections before submitting the Daily Production Report.',
+                            ),
                             backgroundColor: const Color(0xFFF59E0B),
                             behavior: SnackBarBehavior.floating,
                           ),
@@ -474,18 +597,41 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                       }
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const DailyProductionReportScreen()),
+                        MaterialPageRoute(
+                          builder: (_) => const DailyProductionReportScreen(),
+                        ),
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: provider.completedHourlySlots.length < provider.shiftHours ? const Color(0xFF94A3B8) : const Color(0xFFEA580C),
+                      backgroundColor:
+                          provider.completedHourlySlots.length <
+                              provider.shiftHours
+                          ? const Color(0xFF94A3B8)
+                          : const Color(0xFFEA580C),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: provider.completedHourlySlots.length < provider.shiftHours ? 0 : 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation:
+                          provider.completedHourlySlots.length <
+                              provider.shiftHours
+                          ? 0
+                          : 2,
                     ),
-                    icon: Icon(provider.completedHourlySlots.length < provider.shiftHours ? Icons.lock_rounded : Icons.bar_chart_rounded, size: 16),
-                    label: const Text('DAILY PRODUCTION', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    icon: Icon(
+                      provider.completedHourlySlots.length < provider.shiftHours
+                          ? Icons.lock_rounded
+                          : Icons.bar_chart_rounded,
+                      size: 16,
+                    ),
+                    label: const Text(
+                      'DAILY PRODUCTION',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -523,7 +669,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 28),
+                      child: const Icon(
+                        Icons.chat_bubble_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                     ),
                     const SizedBox(width: 14),
                     const Expanded(
@@ -549,7 +699,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                         ],
                       ),
                     ),
-                    const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 18),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                   ],
                 ),
               ),
@@ -563,18 +717,32 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
               children: [
                 const Text(
                   'HOURLY INSPECTION OPERATIONS',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                  style: TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
+                  ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isSetupApproved ? const Color(0xFF10B981).withValues(alpha: 0.2) : const Color(0xFFEF4444).withValues(alpha: 0.2),
+                    color: _isSetupApproved
+                        ? const Color(0xFF10B981).withValues(alpha: 0.2)
+                        : const Color(0xFFEF4444).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    _isSetupApproved ? 'SLOT $_activeSlot/HR UNLOCKED' : '🔒 LOCKED',
+                    _isSetupApproved
+                        ? 'SLOT $_activeSlot/HR UNLOCKED'
+                        : '🔒 LOCKED',
                     style: TextStyle(
-                      color: _isSetupApproved ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      color: _isSetupApproved
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFEF4444),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
@@ -588,7 +756,9 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                 ? const Center(
                     child: Padding(
                       padding: EdgeInsets.all(30.0),
-                      child: CircularProgressIndicator(color: Color(0xFF10B981)),
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF10B981),
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -606,14 +776,16 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: _isSetupApproved ? const Color(0xFFE2E8F0) : const Color(0xFFFDE68A),
+                            color: _isSetupApproved
+                                ? const Color(0xFFE2E8F0)
+                                : const Color(0xFFFDE68A),
                           ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 8,
                               offset: const Offset(0, 3),
-                            )
+                            ),
                           ],
                         ),
                         child: ListTile(
@@ -631,7 +803,11 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                           ),
                           title: Text(
                             title,
-                            style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
+                            style: const TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
                           ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -646,74 +822,111 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Icon(Icons.verified_user_rounded, color: Color(0xFF38BDF8), size: 12),
+                                  const Icon(
+                                    Icons.verified_user_rounded,
+                                    color: Color(0xFF38BDF8),
+                                    size: 12,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Quality Inspector: $_assignedInspectorName',
-                                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                      color: Color(0xFF38BDF8),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 6),
                               // Mini slot progress preview for this operation
-                              Builder(builder: (_) {
-                                final tid = t['id'] as int? ?? 0;
-                                final done = _opCompletedSlots[tid] ?? [];
-                                final active = _opActiveSlots[tid] ?? 1;
-                                return Wrap(
-                                  spacing: 4,
-                                  runSpacing: 4,
-                                  children: List.generate(
-                                    provider.shiftHours > 8 ? 8 : provider.shiftHours,
-                                    (i) {
-                                      final s = i + 1;
-                                      final isDone = done.contains(s);
-                                      final isAct = s == active && !isDone;
-                                      return Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: isDone
-                                              ? Colors.blueAccent.withValues(alpha: 0.15)
-                                              : isAct
-                                                  ? const Color(0xFF10B981).withValues(alpha: 0.15)
-                                                  : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: isDone
-                                                ? Colors.blueAccent
-                                                : isAct
-                                                    ? const Color(0xFF10B981)
-                                                    : const Color(0xFF334155),
+                              Builder(
+                                builder: (_) {
+                                  final tid = t['id'] as int? ?? 0;
+                                  final done = _opCompletedSlots[tid] ?? [];
+                                  final active = _opActiveSlots[tid] ?? 1;
+                                  return Wrap(
+                                    spacing: 4,
+                                    runSpacing: 4,
+                                    children: List.generate(
+                                      provider.shiftHours > 8
+                                          ? 8
+                                          : provider.shiftHours,
+                                      (i) {
+                                        final s = i + 1;
+                                        final isDone = done.contains(s);
+                                        final isAct = s == active && !isDone;
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
                                           ),
-                                        ),
-                                        child: Text(
-                                          isDone ? '✓$s' : isAct ? '▶$s' : '🔒$s',
-                                          style: TextStyle(
-                                            fontSize: 9,
+                                          decoration: BoxDecoration(
                                             color: isDone
-                                                ? Colors.blueAccent
+                                                ? Colors.blueAccent.withValues(
+                                                    alpha: 0.15,
+                                                  )
                                                 : isAct
-                                                    ? const Color(0xFF10B981)
-                                                    : const Color(0xFF64748B),
-                                            fontWeight: FontWeight.bold,
+                                                ? const Color(
+                                                    0xFF10B981,
+                                                  ).withValues(alpha: 0.15)
+                                                : Colors.transparent,
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            border: Border.all(
+                                              color: isDone
+                                                  ? Colors.blueAccent
+                                                  : isAct
+                                                  ? const Color(0xFF10B981)
+                                                  : const Color(0xFF334155),
+                                            ),
                                           ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                );
-                              }),
+                                          child: Text(
+                                            isDone
+                                                ? '✓$s'
+                                                : isAct
+                                                ? '▶$s'
+                                                : '🔒$s',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: isDone
+                                                  ? Colors.blueAccent
+                                                  : isAct
+                                                  ? const Color(0xFF10B981)
+                                                  : const Color(0xFF64748B),
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
                             ],
                           ),
                           trailing: Builder(
                             builder: (_) {
                               final tid = t['id'] as int? ?? 0;
                               final done = _opCompletedSlots[tid] ?? [];
-                              final isAllDone = done.length >= (provider.shiftHours > 0 ? provider.shiftHours : 8);
+                              final isAllDone =
+                                  done.length >=
+                                  (provider.shiftHours > 0
+                                      ? provider.shiftHours
+                                      : 8);
                               if (isAllDone) {
-                                return const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 20);
+                                return const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Color(0xFF10B981),
+                                  size: 20,
+                                );
                               }
-                              return const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF64748B), size: 16);
+                              return const Icon(
+                                Icons.arrow_forward_ios_rounded,
+                                color: Color(0xFF64748B),
+                                size: 16,
+                              );
                             },
                           ),
                           onTap: () {
@@ -735,7 +948,9 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
                               ),
                             ).then((_) {
                               // Refresh when returning from slot screen
-                              setState(() { _isLoading = true; });
+                              setState(() {
+                                _isLoading = true;
+                              });
                               _loadOperatorTemplates();
                             });
                           },

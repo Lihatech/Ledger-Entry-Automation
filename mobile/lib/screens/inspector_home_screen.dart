@@ -32,28 +32,52 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
   Future<void> _loadInspectorData() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
-      final machineId = provider.selectedMachine?['id'] ?? 2;
+      final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+      if (machineId == null) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Select a machine to load master-data parts and operations.',
+              ),
+              backgroundColor: Color(0xFFF59E0B),
+            ),
+          );
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
+          );
+        }
+        return;
+      }
 
       await provider.fetchPendingRejections();
       final parts = await ApiService.getPartsByMachine(machineId);
 
       List<dynamic> rawTemplates = [];
-      if (provider.selectedPart != null && provider.selectedPart?['part_number'] != null) {
-        rawTemplates = await ApiService.getTemplatesByPart(provider.selectedPart!['part_number']);
+      if (provider.selectedPart != null &&
+          provider.selectedPart?['part_number'] != null) {
+        rawTemplates = await ApiService.getTemplatesByPart(
+          provider.selectedPart!['part_number'],
+        );
       } else if (parts.isNotEmpty) {
         provider.selectPart(parts.first);
-        rawTemplates = await ApiService.getTemplatesByPart(parts.first['part_number']);
-      } else {
-        provider.selectPart({'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY'});
-        rawTemplates = await ApiService.getTemplatesByPart('FBT00222');
+        rawTemplates = await ApiService.getTemplatesByPart(
+          parts.first['part_number'],
+        );
       }
 
       final fpiOnly = rawTemplates.where((t) {
         final type = (t['inspection_type'] ?? '').toString().toLowerCase();
-        return type == 'first_piece' || type.contains('first') || type.contains('fpi');
+        return type == 'first_piece' ||
+            type.contains('first') ||
+            type.contains('fpi');
       }).toList();
 
-      final List<dynamic> sorted = List.from(fpiOnly.isNotEmpty ? fpiOnly : rawTemplates);
+      final List<dynamic> sorted = List.from(
+        fpiOnly.isNotEmpty ? fpiOnly : rawTemplates,
+      );
       sorted.sort((a, b) {
         final vA = int.tryParse(a['version']?.toString() ?? '0') ?? 0;
         final vB = int.tryParse(b['version']?.toString() ?? '0') ?? 0;
@@ -99,7 +123,10 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     await provider.loadParameters(target, isFirstPiece: true);
   }
 
-  Future<void> _startFpiTrial(Map<String, dynamic> template, int trialNumber) async {
+  Future<void> _startFpiTrial(
+    Map<String, dynamic> template,
+    int trialNumber,
+  ) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     provider.clearPendingValues();
     if (trialNumber == 1) {
@@ -108,13 +135,18 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
       await provider.loadParametersForRetrial(template, trial: trialNumber);
     }
 
-    final started = await provider.startSession(trial: trialNumber, inspectionType: 'first_piece');
+    final started = await provider.startSession(
+      trial: trialNumber,
+      inspectionType: 'first_piece',
+    );
     if (started && mounted) {
       if (trialNumber > 1) {
         final count = provider.parameters.length;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('🎯 Corrective Trial 1ST PC #$trialNumber: Re-measuring $count failed parameter(s).'),
+            content: Text(
+              '🎯 Corrective Trial 1ST PC #$trialNumber: Re-measuring $count failed parameter(s).',
+            ),
             backgroundColor: const Color(0xFFF59E0B),
             behavior: SnackBarBehavior.floating,
           ),
@@ -122,9 +154,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
       }
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => const InspectionVoiceScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const InspectionVoiceScreen()),
       );
     }
   }
@@ -134,13 +164,22 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     final auth = Provider.of<AuthProvider>(context);
     final provider = Provider.of<InspectionProvider>(context);
 
-    final inspectorName = auth.fullName ?? auth.username ?? 'Samruddhi Bartakke';
-    final initials = inspectorName.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join('').toUpperCase();
+    final inspectorName =
+        auth.fullName ?? auth.username ?? 'Samruddhi Bartakke';
+    final initials = inspectorName
+        .split(' ')
+        .map((e) => e.isNotEmpty ? e[0] : '')
+        .take(2)
+        .join('')
+        .toUpperCase();
 
-    final machineCode = provider.selectedMachine?['machine_code'] ?? 'MCH-001';
-    final machineName = provider.selectedMachine?['name'] ?? 'CNC Turning Center 1';
-    final partNumber = provider.selectedPart?['part_number'] ?? 'FBT00222';
-    final partName = provider.selectedPart?['part_name'] ?? 'POLY V PULLEY';
+    final machineCode =
+        provider.selectedMachine?['machine_code']?.toString() ?? '—';
+    final machineName =
+        provider.selectedMachine?['name']?.toString() ?? 'Selected machine';
+    final partNumber = provider.selectedPart?['part_number']?.toString() ?? '—';
+    final partName =
+        provider.selectedPart?['part_name']?.toString() ?? 'No part selected';
     final targetTemplate = _fpiTemplates.isNotEmpty
         ? _fpiTemplates[_selectedOpIndex.clamp(0, _fpiTemplates.length - 1)]
         : null;
@@ -153,12 +192,20 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.verified_user_rounded, color: Color(0xFF38BDF8), size: 20),
+            Icon(
+              Icons.verified_user_rounded,
+              color: Color(0xFF38BDF8),
+              size: 20,
+            ),
             SizedBox(width: 8),
             Flexible(
               child: Text(
                 'Quality Inspector Terminal',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.white,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -166,7 +213,10 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.swap_horiz_rounded, color: Color(0xFF38BDF8)),
+            icon: const Icon(
+              Icons.swap_horiz_rounded,
+              color: Color(0xFF38BDF8),
+            ),
             tooltip: 'Switch Machine',
             onPressed: () {
               Navigator.push(
@@ -202,500 +252,726 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-
               // 1. INSPECTOR USER PROFILE BLOCK
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF0F172A),
-                    const Color(0xFF1E293B).withValues(alpha: 0.7),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      const Color(0xFF0F172A),
+                      const Color(0xFF1E293B).withValues(alpha: 0.7),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Profile Avatar
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.2),
-                    child: Text(
-                      initials.isNotEmpty ? initials : 'QI',
-                      style: const TextStyle(
-                        color: Color(0xFF38BDF8),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                child: Row(
+                  children: [
+                    // Profile Avatar
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: const Color(
+                        0xFF38BDF8,
+                      ).withValues(alpha: 0.2),
+                      child: Text(
+                        initials.isNotEmpty ? initials : 'QI',
+                        style: const TextStyle(
+                          color: Color(0xFF38BDF8),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                inspectorName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: const Color(
+                                      0xFF10B981,
+                                    ).withValues(alpha: 0.4),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'ACTIVE',
+                                  style: TextStyle(
+                                    color: Color(0xFF10B981),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(
+                                    0xFF38BDF8,
+                                  ).withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  '🛡️ QUALITY INSPECTOR',
+                                  style: TextStyle(
+                                    color: Color(0xFF38BDF8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // 2. MACHINE & PART PROFILE BLOCK
+              Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF1E293B)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFF38BDF8,
+                            ).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: const Color(
+                                0xFF38BDF8,
+                              ).withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.precision_manufacturing_rounded,
+                            color: Color(0xFF38BDF8),
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                machineName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Station Code: $machineCode',
+                                style: const TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        OutlinedButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const MachineSelectScreen(),
+                              ),
+                            );
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(color: Color(0xFF38BDF8)),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            minimumSize: Size.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text(
+                            'CHANGE',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(color: Color(0xFF1E293B)),
+                    const SizedBox(height: 8),
+
+                    // Part Info Sub-block
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.inventory_2_rounded,
+                              color: Color(0xFF94A3B8),
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Part: $partName',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1E293B),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'PN: $partNumber',
+                            style: const TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Active Rejection Warning Block
+              if (provider.activeRejections.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                ...provider.activeRejections.map((rej) {
+                  final currentTrial = rej['trial_number'] ?? 1;
+                  final nextTrial = currentTrial + 1;
+                  final remark =
+                      rej['rejection_reason'] ??
+                      rej['supervisor_remark'] ??
+                      'Targeted parameter correction requested.';
+                  final List<dynamic> rejectedParams =
+                      rej['rejected_parameters'] ?? [];
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFF59E0B),
+                        width: 1.5,
+                      ),
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            Text(
-                              inspectorName,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              color: Color(0xFFF59E0B),
+                              size: 24,
                             ),
                             const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
-                              ),
-                              child: const Text('ACTIVE', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text('🛡️ QUALITY INSPECTOR', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // 2. MACHINE & PART PROFILE BLOCK
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF1E293B)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  )
-                ],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.3)),
-                        ),
-                        child: const Icon(Icons.precision_manufacturing_rounded, color: Color(0xFF38BDF8), size: 24),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
                             Text(
-                              machineName,
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Station Code: $machineCode',
-                              style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 12, fontWeight: FontWeight.bold),
+                              'TARGETED RE-ENTRY REQUEST (1ST PC #$nextTrial)',
+                              style: const TextStyle(
+                                color: Color(0xFFF59E0B),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const MachineSelectScreen()),
-                          );
-                        },
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Color(0xFF38BDF8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          minimumSize: Size.zero,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        child: const Text('CHANGE', style: TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(color: Color(0xFF1E293B)),
-                  const SizedBox(height: 8),
-
-                  // Part Info Sub-block
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.inventory_2_rounded, color: Color(0xFF94A3B8), size: 16),
-                          const SizedBox(width: 6),
-                          Text('Part: $partName', style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E293B),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text('PN: $partNumber', style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            // Active Rejection Warning Block
-            if (provider.activeRejections.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ...provider.activeRejections.map((rej) {
-                final currentTrial = rej['trial_number'] ?? 1;
-                final nextTrial = currentTrial + 1;
-                final remark = rej['rejection_reason'] ?? rej['supervisor_remark'] ?? 'Targeted parameter correction requested.';
-                final List<dynamic> rejectedParams = rej['rejected_parameters'] ?? [];
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFF59E0B), width: 1.5),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 24),
-                          const SizedBox(width: 8),
-                          Text(
-                            'TARGETED RE-ENTRY REQUEST (1ST PC #$nextTrial)',
-                            style: const TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Supervisor Remark: "$remark"',
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontStyle: FontStyle.italic),
-                      ),
-                      if (rejectedParams.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
-                          'Targeted Parameters: ${rejectedParams.join(", ")}',
-                          style: const TextStyle(color: Color(0xFFFDE68A), fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              }),
-            ],
-
-            const SizedBox(height: 22),
-
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(30.0),
-                  child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
-                ),
-              )
-            else ...[
-              // 2. WORKSHOP OPERATION SELECTOR BAR
-              if (_fpiTemplates.length > 1) ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: const Color(0xFF1E293B)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(Icons.tune_rounded, color: Color(0xFF38BDF8), size: 16),
-                              SizedBox(width: 6),
-                              Text(
-                                'WORKSHOP OPERATION SELECTOR',
-                                style: TextStyle(
-                                  color: Color(0xFF38BDF8),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ],
+                          'Supervisor Remark: "$remark"',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontStyle: FontStyle.italic,
                           ),
+                        ),
+                        if (rejectedParams.isNotEmpty) ...[
+                          const SizedBox(height: 6),
                           Text(
-                            '${_fpiTemplates.length} Operations',
-                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+                            'Targeted Parameters: ${rejectedParams.join(", ")}',
+                            style: const TextStyle(
+                              color: Color(0xFFFDE68A),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 10),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: List.generate(_fpiTemplates.length, (idx) {
-                            final t = _fpiTemplates[idx];
-                            final isSelected = idx == _selectedOpIndex;
-                            final v = t['version']?.toString() ?? '${idx + 1}';
-                            final name = t['name']?.toString() ?? 'Op $v';
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: ChoiceChip(
-                                label: Text(
-                                  'OP $v: $name',
-                                  style: TextStyle(
-                                    color: isSelected ? Colors.black : Colors.white70,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 11,
-                                  ),
-                                ),
-                                selected: isSelected,
-                                selectedColor: const Color(0xFF38BDF8),
-                                backgroundColor: const Color(0xFF1E293B),
-                                side: BorderSide(
-                                  color: isSelected ? const Color(0xFF38BDF8) : const Color(0xFF334155),
-                                ),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                onSelected: (_) => _selectOperation(idx),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                      ],
+                    ),
+                  );
+                }),
               ],
 
-              // 3. DISPATCHED TEMPLATE BROADCAST CARD
-              if (targetTemplate != null) ...[
-                Container(
-                  margin: const EdgeInsets.only(bottom: 20),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF10B981), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      )
-                    ],
+              const SizedBox(height: 22),
+
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(30.0),
+                    child: CircularProgressIndicator(color: Color(0xFF38BDF8)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Row(
+                )
+              else ...[
+                // 2. WORKSHOP OPERATION SELECTOR BAR
+                if (_fpiTemplates.length > 1) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF1E293B)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(Icons.bolt_rounded, color: Color(0xFF10B981), size: 18),
+                                Icon(
+                                  Icons.tune_rounded,
+                                  color: Color(0xFF38BDF8),
+                                  size: 16,
                                 ),
-                                const SizedBox(width: 8),
-                                const Flexible(
-                                  child: Text(
-                                    'ACTIVE DISPATCHED TEMPLATE',
-                                    style: TextStyle(
-                                      color: Color(0xFF10B981),
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 12,
-                                      letterSpacing: 0.5,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
+                                SizedBox(width: 6),
+                                Text(
+                                  'WORKSHOP OPERATION SELECTOR',
+                                  style: TextStyle(
+                                    color: Color(0xFF38BDF8),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.8,
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                            Text(
+                              '${_fpiTemplates.length} Operations',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 10,
+                              ),
                             ),
-                            child: const Text('READY FOR FPI', style: TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        targetTemplate['name']?.toString().isNotEmpty == true
-                            ? targetTemplate['name'].toString()
-                            : '1st Side Finish Turning',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Part: $partNumber ($partName) · Target: ${targetTemplate['target_parameter_count'] ?? 18} Params',
-                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ParameterListScreen(template: targetTemplate),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: List.generate(_fpiTemplates.length, (
+                              idx,
+                            ) {
+                              final t = _fpiTemplates[idx];
+                              final isSelected = idx == _selectedOpIndex;
+                              final v =
+                                  t['version']?.toString() ?? '${idx + 1}';
+                              final name = t['name']?.toString() ?? 'Op $v';
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: ChoiceChip(
+                                  label: Text(
+                                    'OP $v: $name',
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? Colors.black
+                                          : Colors.white70,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
                                   ),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF38BDF8),
-                                side: const BorderSide(color: Color(0xFF38BDF8)),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.grid_view_rounded, size: 16),
-                              label: const Text('3-COL GRID (P1-P18)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                            ),
+                                  selected: isSelected,
+                                  selectedColor: const Color(0xFF38BDF8),
+                                  backgroundColor: const Color(0xFF1E293B),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? const Color(0xFF38BDF8)
+                                        : const Color(0xFF334155),
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  onSelected: (_) => _selectOperation(idx),
+                                ),
+                              );
+                            }),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () => _startFpiTrial(targetTemplate, 1),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0284C7),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.mic_rounded, size: 16),
-                              label: const Text('START FPI ENTRY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF10B981),
-                                side: const BorderSide(color: Color(0xFF10B981)),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.table_chart_rounded, size: 14),
-                              label: const Text('F02 LIVE REPORT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF818CF8),
-                                side: const BorderSide(color: Color(0xFF818CF8)),
-                                padding: const EdgeInsets.symmetric(vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.assignment_turned_in_rounded, size: 14),
-                              label: const Text('SET UP REPORT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
+
+                // 3. DISPATCHED TEMPLATE BROADCAST CARD
+                if (targetTemplate != null) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFF10B981),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(
+                            0xFF10B981,
+                          ).withValues(alpha: 0.15),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.bolt_rounded,
+                                      color: Color(0xFF10B981),
+                                      size: 18,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Flexible(
+                                    child: Text(
+                                      'ACTIVE DISPATCHED TEMPLATE',
+                                      style: TextStyle(
+                                        color: Color(0xFF10B981),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 12,
+                                        letterSpacing: 0.5,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(
+                                  0xFF10B981,
+                                ).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFF10B981,
+                                  ).withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: const Text(
+                                'READY FOR FPI',
+                                style: TextStyle(
+                                  color: Color(0xFF10B981),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          targetTemplate['name']?.toString().isNotEmpty == true
+                              ? targetTemplate['name'].toString()
+                              : 'Unnamed operation',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Part: $partNumber ($partName) · Target: ${targetTemplate['target_parameter_count'] ?? '—'} Params',
+                          style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ParameterListScreen(
+                                        template: targetTemplate,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF38BDF8),
+                                  side: const BorderSide(
+                                    color: Color(0xFF38BDF8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.grid_view_rounded,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  '3-COL GRID (P1-P18)',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () =>
+                                    _startFpiTrial(targetTemplate, 1),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0284C7),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.mic_rounded, size: 16),
+                                label: const Text(
+                                  'START FPI ENTRY',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ReportSheetScreen(
+                                        template: targetTemplate,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF10B981),
+                                  side: const BorderSide(
+                                    color: Color(0xFF10B981),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.table_chart_rounded,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'F02 LIVE REPORT',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const SetupApprovalReportScreen(),
+                                    ),
+                                  );
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF818CF8),
+                                  side: const BorderSide(
+                                    color: Color(0xFF818CF8),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.assignment_turned_in_rounded,
+                                  size: 14,
+                                ),
+                                label: const Text(
+                                  'SET UP REPORT',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // 3. FIRST PIECE TRIALS LAUNCH PAD (1PC#1 · 1PC#2 · 1PC#3)
+                _buildFpiTrialPad(targetTemplate),
+                const SizedBox(height: 20),
+
+                // 4. SETUP APPROVAL ENTRY CARD
+                // Process Parameters are ONLY accessed here — not in the FPI flow.
+                _buildSetupApprovalCard(targetTemplate),
+                const SizedBox(height: 20),
+
+                // 5. First Piece Inspection Matrix Table (real data)
+                _buildFirstPieceTableMatrix(targetTemplate),
+                const SizedBox(height: 24),
+
+                // 6. REPORTS SECTION (PART 5 — TWO DISTINCT REPORT TYPES)
+                _buildReportsSection(context, targetTemplate),
+                const SizedBox(height: 24),
               ],
-
-              // 3. FIRST PIECE TRIALS LAUNCH PAD (1PC#1 · 1PC#2 · 1PC#3)
-              _buildFpiTrialPad(targetTemplate),
-              const SizedBox(height: 20),
-
-              // 4. SETUP APPROVAL ENTRY CARD
-              // Process Parameters are ONLY accessed here — not in the FPI flow.
-              _buildSetupApprovalCard(targetTemplate),
-              const SizedBox(height: 20),
-
-              // 5. First Piece Inspection Matrix Table (real data)
-              _buildFirstPieceTableMatrix(targetTemplate),
-              const SizedBox(height: 24),
-
-              // 6. REPORTS SECTION (PART 5 — TWO DISTINCT REPORT TYPES)
-              _buildReportsSection(context, targetTemplate),
-              const SizedBox(height: 24),
             ],
-          ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildFpiTrialPad(Map<String, dynamic>? targetTemplate) {
     return Column(
@@ -722,11 +998,17 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                border: Border.all(
+                  color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
+                ),
               ),
               child: const Text(
                 'INSPECTOR EXCLUSIVE',
-                style: TextStyle(color: Color(0xFF38BDF8), fontSize: 10, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Color(0xFF38BDF8),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -794,7 +1076,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             color: color.withValues(alpha: 0.08),
             blurRadius: 8,
             offset: const Offset(0, 3),
-          )
+          ),
         ],
       ),
       child: Column(
@@ -803,7 +1085,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
           const SizedBox(height: 6),
           Text(
             title,
-            style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 13),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: 13,
+            ),
           ),
           Text(
             subtitle,
@@ -818,16 +1104,23 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: color,
-                foregroundColor: (color == const Color(0xFFF59E0B) || color == const Color(0xFF38BDF8))
+                foregroundColor:
+                    (color == const Color(0xFFF59E0B) ||
+                        color == const Color(0xFF38BDF8))
                     ? Colors.black
                     : Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 6),
                 minimumSize: Size.zero,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: Text(
                 'START #$trialNumber',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
@@ -855,7 +1148,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             color: const Color(0xFF818CF8).withValues(alpha: 0.15),
             blurRadius: 12,
             offset: const Offset(0, 4),
-          )
+          ),
         ],
       ),
       child: Row(
@@ -865,9 +1158,15 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF818CF8).withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF818CF8).withValues(alpha: 0.5)),
+              border: Border.all(
+                color: const Color(0xFF818CF8).withValues(alpha: 0.5),
+              ),
             ),
-            child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF818CF8), size: 28),
+            child: const Icon(
+              Icons.settings_suggest_rounded,
+              color: Color(0xFF818CF8),
+              size: 28,
+            ),
           ),
           const SizedBox(width: 14),
           const Expanded(
@@ -896,16 +1195,23 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => SetupApprovalScreen(template: targetTemplate)),
+                MaterialPageRoute(
+                  builder: (_) => SetupApprovalScreen(template: targetTemplate),
+                ),
               );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF818CF8),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
-            child: const Text('OPEN', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            child: const Text(
+              'OPEN',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -929,7 +1235,9 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     // Build rows — use parameters if available, else fall back to byCode keys
     final paramList = parameters.isNotEmpty
         ? parameters
-        : byCode.keys.map((code) => {'parameter_code': code, 'parameter_name': code}).toList();
+        : byCode.keys
+              .map((code) => {'parameter_code': code, 'parameter_name': code})
+              .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -943,7 +1251,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                 children: [
                   Text(
                     'FIRST PIECE INSPECTION MATRIX (F02)',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   SizedBox(height: 2),
@@ -958,16 +1270,30 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             const SizedBox(width: 8),
             ElevatedButton.icon(
               onPressed: () => targetTemplate != null
-                  ? Navigator.push(context, MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)))
+                  ? Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ReportSheetScreen(template: targetTemplate),
+                      ),
+                    )
                   : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF0F172A),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               icon: const Icon(Icons.table_chart_rounded, size: 15),
-              label: const Text('FULL REPORT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
+              label: const Text(
+                'FULL REPORT',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10),
+              ),
             ),
           ],
         ),
@@ -979,7 +1305,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: const Color(0xFF1E293B)),
             boxShadow: [
-              BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, offset: const Offset(0, 4))
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
           child: paramList.isEmpty
@@ -988,11 +1318,18 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                   child: Center(
                     child: Column(
                       children: [
-                        Icon(Icons.assignment_outlined, color: Color(0xFF475569), size: 36),
+                        Icon(
+                          Icons.assignment_outlined,
+                          color: Color(0xFF475569),
+                          size: 36,
+                        ),
                         SizedBox(height: 8),
                         Text(
                           'No inspection data yet.\nComplete a First PC trial to see results here.',
-                          style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -1004,16 +1341,54 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
-                      headingRowColor: WidgetStateProperty.all(const Color(0xFF1E293B)),
+                      headingRowColor: WidgetStateProperty.all(
+                        const Color(0xFF1E293B),
+                      ),
                       dataRowMinHeight: 48,
                       dataRowMaxHeight: 56,
                       horizontalMargin: 16,
                       columnSpacing: 18,
                       columns: const [
-                        DataColumn(label: Text('PARAMETER', style: TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11))),
-                        DataColumn(label: Text('1ST PC #1', style: TextStyle(color: Color(0xFF38BDF8), fontWeight: FontWeight.bold, fontSize: 11))),
-                        DataColumn(label: Text('1ST PC #2', style: TextStyle(color: Color(0xFFF59E0B), fontWeight: FontWeight.bold, fontSize: 11))),
-                        DataColumn(label: Text('1ST PC #3', style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.bold, fontSize: 11))),
+                        DataColumn(
+                          label: Text(
+                            'PARAMETER',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            '1ST PC #1',
+                            style: TextStyle(
+                              color: Color(0xFF38BDF8),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            '1ST PC #2',
+                            style: TextStyle(
+                              color: Color(0xFFF59E0B),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        DataColumn(
+                          label: Text(
+                            '1ST PC #3',
+                            style: TextStyle(
+                              color: Color(0xFF10B981),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
                       ],
                       rows: paramList.map((param) {
                         final code = param['parameter_code']?.toString() ?? '';
@@ -1029,8 +1404,21 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(code, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                                  Text(name, style: const TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                                  Text(
+                                    code,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontSize: 10,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -1049,7 +1437,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
   }
 
   Widget _matrixCell(Map<String, dynamic>? data) {
-    if (data == null) return const Text('\u2014', style: TextStyle(color: Color(0xFF475569), fontSize: 12));
+    if (data == null)
+      return const Text(
+        '\u2014',
+        style: TextStyle(color: Color(0xFF475569), fontSize: 12),
+      );
     final value = data['measured_value']?.toString() ?? '\u2014';
     final isOk = (data['status']?.toString() ?? 'ok') == 'ok';
     return Row(
@@ -1077,7 +1469,10 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
   /// Displays exactly TWO distinct report options:
   ///   1. First PC Inspection & In-process Reports
   ///   2. Set Up Approval Reports
-  Widget _buildReportsSection(BuildContext context, Map<String, dynamic>? targetTemplate) {
+  Widget _buildReportsSection(
+    BuildContext context,
+    Map<String, dynamic>? targetTemplate,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1098,7 +1493,9 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => ReportSheetScreen(template: targetTemplate)),
+              MaterialPageRoute(
+                builder: (_) => ReportSheetScreen(template: targetTemplate),
+              ),
             );
           },
           child: Container(
@@ -1127,7 +1524,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.table_chart_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -1145,12 +1546,19 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                       SizedBox(height: 4),
                       Text(
                         'View Product + In-process inspection',
-                        style: TextStyle(color: Color(0xFFBAE6FD), fontSize: 12),
+                        style: TextStyle(
+                          color: Color(0xFFBAE6FD),
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -1164,7 +1572,9 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const SetupApprovalReportScreen()),
+              MaterialPageRoute(
+                builder: (_) => const SetupApprovalReportScreen(),
+              ),
             );
           },
           child: Container(
@@ -1193,7 +1603,11 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                     color: Colors.white.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.assignment_turned_in_rounded, color: Colors.white, size: 24),
+                  child: const Icon(
+                    Icons.assignment_turned_in_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -1211,12 +1625,19 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
                       SizedBox(height: 4),
                       Text(
                         'View Setup Approval inspection',
-                        style: TextStyle(color: Color(0xFFC7D2FE), fontSize: 12),
+                        style: TextStyle(
+                          color: Color(0xFFC7D2FE),
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 16),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
               ],
             ),
           ),
@@ -1225,4 +1646,3 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     );
   }
 }
-

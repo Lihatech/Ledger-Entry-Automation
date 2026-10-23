@@ -33,21 +33,15 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
         final loaded = await ApiService.getPartsByMachine(machineId);
         if (mounted) {
           setState(() {
-            _parts = loaded.isNotEmpty
-                ? loaded
-                : [
-                    {'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY', 'drawing_number': 'DWG-9901'},
-                    {'part_number': 'PN-101', 'part_name': 'CRANKSHAFT HUB', 'drawing_number': 'DWG-1010'},
-                  ];
+            _parts = loaded;
             _isLoading = false;
           });
         }
       } else {
         if (mounted) {
           setState(() {
-            _parts = [
-              {'part_number': 'FBT00222', 'part_name': 'POLY V PULLEY', 'drawing_number': 'DWG-9901'},
-            ];
+            _parts = [];
+            _error = 'Select a machine before loading its master-data parts.';
             _isLoading = false;
           });
         }
@@ -77,8 +71,9 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
   Widget build(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context);
     final selectedMachine = provider.selectedMachine;
-    final machineCode = selectedMachine?['machine_code'] ?? 'CNC-01';
-    final machineName = selectedMachine?['name'] ?? 'CNC Turning Center 01';
+    final machineCode = selectedMachine?['machine_code']?.toString() ?? '—';
+    final machineName =
+        selectedMachine?['name']?.toString() ?? 'Selected machine';
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -94,11 +89,19 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
           children: [
             const Text(
               'Step 2 of 5: Select Part',
-              style: TextStyle(color: Color(0xFF4F46E5), fontSize: 12, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Color(0xFF4F46E5),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             Text(
               'Machine: $machineCode',
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ),
@@ -122,7 +125,6 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // Flow Breadcrumb Header
               Container(
                 padding: const EdgeInsets.all(14),
@@ -133,12 +135,20 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.account_tree_rounded, color: Color(0xFF4F46E5), size: 20),
+                    const Icon(
+                      Icons.account_tree_rounded,
+                      color: Color(0xFF4F46E5),
+                      size: 20,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'FLOW: Home ➔ $machineCode ➔ Part ➔ Operation ➔ Parameter ➔ Data Entry',
-                        style: const TextStyle(color: Color(0xFF3730A3), fontSize: 11.5, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          color: Color(0xFF3730A3),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -149,7 +159,11 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
 
               Text(
                 'Parts Manufactured on $machineName',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF64748B),
+                ),
               ),
 
               const SizedBox(height: 14),
@@ -160,9 +174,16 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
                     child: CircularProgressIndicator(color: Color(0xFF4F46E5)),
                   ),
                 )
-              else if (_error != null)
-                Center(
-                  child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+              else if (_error != null || _parts.isEmpty)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _error ??
+                          'No parts are configured for this machine in the master database.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
                 )
               else
                 Expanded(
@@ -170,9 +191,10 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
                     itemCount: _parts.length,
                     itemBuilder: (context, index) {
                       final p = _parts[index];
-                      final partNo = p['part_number'] ?? 'PN-${index + 1}';
-                      final partName = p['part_name'] ?? 'Part $partNo';
-                      final dwg = p['drawing_number'] ?? 'DWG-000';
+                      final partNo = p['part_number']?.toString() ?? '—';
+                      final partName =
+                          p['part_name']?.toString() ?? 'Unnamed part';
+                      final dwg = p['drawing_number']?.toString() ?? '—';
 
                       return Container(
                         margin: const EdgeInsets.only(bottom: 14),
@@ -185,7 +207,7 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
                               color: Colors.black.withValues(alpha: 0.04),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
-                            )
+                            ),
                           ],
                         ),
                         child: Material(
@@ -203,38 +225,65 @@ class _PartSelectScreenState extends State<PartSelectScreen> {
                                       color: const Color(0xFFEEF2FF),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
-                                    child: const Icon(Icons.inventory_2_rounded, color: Color(0xFF4F46E5), size: 24),
+                                    child: const Icon(
+                                      Icons.inventory_2_rounded,
+                                      color: Color(0xFF4F46E5),
+                                      size: 24,
+                                    ),
                                   ),
                                   const SizedBox(width: 14),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 3,
+                                          ),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFF4F46E5).withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(6),
+                                            color: const Color(
+                                              0xFF4F46E5,
+                                            ).withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(
+                                              6,
+                                            ),
                                           ),
                                           child: Text(
                                             partNo,
-                                            style: const TextStyle(color: Color(0xFF4F46E5), fontWeight: FontWeight.bold, fontSize: 12),
+                                            style: const TextStyle(
+                                              color: Color(0xFF4F46E5),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                            ),
                                           ),
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
                                           partName,
-                                          style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
                                           'Drawing No: $dwg',
-                                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 12,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF4F46E5), size: 18),
+                                  const Icon(
+                                    Icons.arrow_forward_ios_rounded,
+                                    color: Color(0xFF4F46E5),
+                                    size: 18,
+                                  ),
                                 ],
                               ),
                             ),
