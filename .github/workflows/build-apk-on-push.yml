@@ -10,6 +10,7 @@ on:
       - 'mobile/lib/**'
       - 'mobile/pubspec.yaml'
       - 'mobile/android/**'
+      - '.github/workflows/build-apk-on-push.yml'
 
 jobs:
   build:
