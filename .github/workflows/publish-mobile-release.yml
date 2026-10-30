@@ -57,7 +57,7 @@ jobs:
         working-directory: mobile
         run: |
           flutter pub get
-          flutter build apk --release --dart-define=API_BASE_URL=https://backend-production-d87b.up.railway.app/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
+          flutter build apk --release --dart-define=API_BASE_URL=http://ledgerautomation.duckdns.org/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
 
       - name: Publish APK to Railway
         env:

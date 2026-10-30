@@ -13,7 +13,7 @@ RUN flutter pub get
 COPY . .
 
 # Build Flutter web release
-ARG API_BASE_URL=https://backend-production-d87b.up.railway.app/api
+ARG API_BASE_URL=http://ledgerautomation.duckdns.org/api
 ARG SENTRY_DSN=
 RUN flutter build web --release \
     --dart-define=API_BASE_URL=${API_BASE_URL} \
