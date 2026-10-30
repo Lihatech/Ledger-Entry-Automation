@@ -42,6 +42,33 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             'machine_sequence',
         ]
 
+    def to_internal_value(self, data):
+        """Populate an unambiguous plant before DRF validates model fields."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if self.instance is None and not data.get('plant'):
+            payload = data.copy()
+            user_plant_id = getattr(user, 'plant_id', None) or getattr(getattr(user, 'plant', None), 'pk', None)
+            if user_plant_id:
+                payload['plant'] = user_plant_id
+            else:
+                steps = payload.get('machine_sequence_steps') or []
+                if isinstance(steps, list):
+                    machine_ids = [
+                        step.get('machine_id') for step in steps
+                        if isinstance(step, dict) and step.get('machine_id')
+                    ]
+                    machines = list(Machine.objects.filter(pk__in=machine_ids))
+                    plant_ids = {machine.plant_id for machine in machines if machine.plant_id}
+                    if len(plant_ids) == 1 and len(machines) == len(set(machine_ids)):
+                        payload['plant'] = plant_ids.pop()
+                    else:
+                        active_plants = list(Plant.objects.filter(is_active=True).order_by('pk')[:2])
+                        if len(active_plants) == 1:
+                            payload['plant'] = active_plants[0].pk
+            data = payload
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
