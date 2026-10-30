@@ -11,6 +11,8 @@ on:
       - 'mobile/pubspec.lock'
       - 'mobile/android/**'
       - 'mobile/assets/**'
+      - '.github/workflows/build-apk-on-push.yml'
+  workflow_dispatch:
 
 jobs:
   build:
