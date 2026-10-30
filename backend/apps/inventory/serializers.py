@@ -45,7 +45,8 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        user_plant_id = getattr(user, 'plant_id', None)
+        user_plant = getattr(user, 'plant', None)
+        user_plant_id = getattr(user, 'plant_id', None) or getattr(user_plant, 'pk', None)
         submitted_plant = attrs.get('plant')
 
         if self.instance:
@@ -141,6 +142,22 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
         if self.instance is None and not attrs.get('plant'):
             raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
         return attrs
+
+    def validate_machine_sequence_steps(self, value):
+        """Reject malformed routes before plant inference can mask the error."""
+        if not isinstance(value, list) or any(not isinstance(step, dict) for step in value):
+            raise serializers.ValidationError('Each machine step must be an object.')
+        for step in value:
+            try:
+                machine_id = int(step.get('machine_id'))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError('Each machine must have a valid numeric ID.')
+            if machine_id < 1:
+                raise serializers.ValidationError('Each machine must have a valid numeric ID.')
+            if not str(step.get('operation') or '').strip():
+                raise serializers.ValidationError('Each step must include an operation name.')
+            step['machine_id'] = machine_id
+        return value
 
     def get_status_label(self, obj):
         if obj.dispatched_quantity >= obj.received_quantity:

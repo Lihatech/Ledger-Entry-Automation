@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Sum
 
 
-def reconcile_receipt_from_reports(receipt):
+def reconcile_receipt_from_reports(receipt, *, preserve_manual=True):
     """Rebuild receipt quantities from submitted end-of-shift reports."""
     from .models import InventoryReceipt
 
@@ -86,10 +86,12 @@ def reconcile_receipt_from_reports(receipt):
             completed = previous_good if stages else min(
                 sum(good_by_machine.values()), locked_receipt.received_quantity,
             )
-        else:
+        elif preserve_manual:
             # Preserve legacy/manual completion totals when an intake is
             # recorded before production reports have been migrated.
             completed = min(locked_receipt.completed_quantity, locked_receipt.received_quantity)
+        else:
+            completed = 0
         # For a sequenced receipt, use the largest stage total: parts move
         # between stages, so summing stage totals would count the same units
         # more than once. For an unsequenced receipt, all production reports
@@ -101,11 +103,13 @@ def reconcile_receipt_from_reports(receipt):
                 ),
                 locked_receipt.received_quantity,
             )
-        else:
+        elif preserve_manual:
             started = min(
                 max(locked_receipt.completed_quantity, locked_receipt.in_process_quantity),
                 locked_receipt.received_quantity,
             )
+        else:
+            started = 0
         defect_capacity = max(locked_receipt.received_quantity - completed, 0)
         rework = min(rework, defect_capacity)
         rejected = min(rejected, defect_capacity - rework)

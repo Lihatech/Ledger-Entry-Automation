@@ -465,7 +465,7 @@ class DailyProductionReport(models.Model):
                 from apps.inventory.services import reconcile_receipt_from_reports
                 receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
                 if receipt:
-                    reconciled = reconcile_receipt_from_reports(receipt)
+                    reconciled = reconcile_receipt_from_reports(receipt, preserve_manual=False)
                     if reconciled.completed_quantity < reconciled.dispatched_quantity:
                         raise ValidationError(
                             'This report deletion would reduce completed quantity below parts already dispatched.'

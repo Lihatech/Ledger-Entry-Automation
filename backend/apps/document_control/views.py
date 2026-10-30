@@ -624,7 +624,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             if not can_preview and doc.status == Document.Status.APPROVED:
                 allowed_role_slugs = [r.slug for r in doc.allowed_roles.all()]
                 user_role = getattr(user, 'role', '')
-                if not allowed_role_slugs or user_role in allowed_role_slugs:
+                if allowed_role_slugs and user_role in allowed_role_slugs:
                     can_preview = True
 
             if not can_preview:
