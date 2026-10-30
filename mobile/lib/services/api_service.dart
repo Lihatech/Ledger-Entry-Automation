@@ -34,7 +34,7 @@ class ApiService {
       // Defaults to localhost:8000 (compatible with `adb reverse tcp:8000 tcp:8000` for physical devices, web, and desktop)
       return 'http://localhost:8000/api';
     }
-    return 'https://backend-production-d87b.up.railway.app/api';
+    return 'https://ledgerautomation.duckdns.org/api';
   }
 
   // Secure storage for JWT tokens — EncryptedSharedPreferences on Android / Keychain on iOS

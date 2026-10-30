@@ -17,7 +17,7 @@ load_dotenv(BASE_DIR / '.env')
 # ─── Security ─────────────────────────────────────────────────
 SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-insecure-key')
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,10.0.2.2,ledger-entry-backend.onrender.com').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,10.0.2.2,ledger-entry-backend.onrender.com,ledgerautomation.duckdns.org').split(',')
 
 
 # ─── Installed Apps ───────────────────────────────────────────
@@ -347,7 +347,7 @@ LOGGING = {
 }
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
-_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5173,https://ledger-entry-backend.onrender.com').split(',')
+_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5173,https://ledger-entry-backend.onrender.com,https://ledgerautomation.duckdns.org').split(',')
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_origins if origin.strip()]
 
 
