@@ -140,7 +140,13 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({'machine_sequence_steps': 'All machines must belong to the receipt plant.'})
 
         if self.instance is None and not attrs.get('plant'):
-            raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
+            # Keep the assignment deterministic even when the request user
+            # exposes a related Plant object but not a populated plant_id
+            # attribute (for example, with lightweight test/auth objects).
+            if user_plant is not None:
+                attrs['plant'] = user_plant
+            else:
+                raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
         return attrs
 
     def validate_machine_sequence_steps(self, value):
