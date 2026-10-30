@@ -15,6 +15,7 @@ def reconcile_receipt_from_reports(receipt):
     with transaction.atomic():
         locked_receipt = InventoryReceipt.objects.select_for_update().get(pk=receipt.pk)
         reports = locked_receipt.production_reports.filter(status='SUBMITTED').select_related('machine')
+        has_reports = reports.exists()
         good_by_machine = defaultdict(int)
         good_by_step_id = defaultdict(int)
         good_by_step_code = defaultdict(int)
@@ -81,19 +82,30 @@ def reconcile_receipt_from_reports(receipt):
         rejected = (totals['customer_reject'] or 0) + (totals['machine_reject'] or 0)
         # Legacy receipts may not have a route. Even then, report totals must
         # never manufacture more completed parts than physically received.
-        completed = previous_good if stages else min(
-            sum(good_by_machine.values()), locked_receipt.received_quantity,
-        )
+        if has_reports:
+            completed = previous_good if stages else min(
+                sum(good_by_machine.values()), locked_receipt.received_quantity,
+            )
+        else:
+            # Preserve legacy/manual completion totals when an intake is
+            # recorded before production reports have been migrated.
+            completed = min(locked_receipt.completed_quantity, locked_receipt.received_quantity)
         # For a sequenced receipt, use the largest stage total: parts move
         # between stages, so summing stage totals would count the same units
         # more than once. For an unsequenced receipt, all production reports
         # belong to the same flow and can be summed directly.
-        started = min(
-            max(stage_started, default=0) if stages else sum(
-                report.jobs_completed or 0 for report in reports
-            ),
-            locked_receipt.received_quantity,
-        )
+        if has_reports:
+            started = min(
+                max(stage_started, default=0) if stages else sum(
+                    report.jobs_completed or 0 for report in reports
+                ),
+                locked_receipt.received_quantity,
+            )
+        else:
+            started = min(
+                max(locked_receipt.completed_quantity, locked_receipt.in_process_quantity),
+                locked_receipt.received_quantity,
+            )
         defect_capacity = max(locked_receipt.received_quantity - completed, 0)
         rework = min(rework, defect_capacity)
         rejected = min(rejected, defect_capacity - rework)

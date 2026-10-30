@@ -69,23 +69,23 @@ class DowntimeReportTestCase(TestCase):
         )
 
     def test_total_downtime_calculation(self):
-        downtime = DowntimeReport.objects.create(
-            production_report=self.prod1,
-            no_load=10,
-            no_operator=0,
-            um=5,
-            setting=10,
-            inspection_wait=5,
-            tool_change=8,
-            power_off=0,
-            rework=3,
-            tool_problem=4,
-            remarks='Tool replacement required'
-        )
+        downtime = DowntimeReport.objects.get(production_report=self.prod1)
+        downtime.no_load = 10
+        downtime.no_operator = 0
+        downtime.um = 5
+        downtime.setting = 10
+        downtime.inspection_wait = 5
+        downtime.tool_change = 8
+        downtime.power_off = 0
+        downtime.rework = 3
+        downtime.tool_problem = 4
+        downtime.save()
         self.assertEqual(downtime.total_downtime, 45)
 
     def test_one_to_one_constraint(self):
-        DowntimeReport.objects.create(production_report=self.prod1, no_load=10)
+        downtime = DowntimeReport.objects.get(production_report=self.prod1)
+        downtime.no_load = 10
+        downtime.save()
         from django.db import IntegrityError
         with self.assertRaises(IntegrityError):
             DowntimeReport.objects.create(production_report=self.prod1, no_load=20)

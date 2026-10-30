@@ -60,6 +60,24 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                         'machine_sequence_steps': 'The machine sequence cannot change after production or dispatch history exists.'
                     })
 
+        # Validate the shape before plant inference so malformed route data
+        # reports the useful field-level error instead of a secondary plant
+        # inference error.
+        steps = attrs.get('machine_sequence_steps')
+        if steps is not None:
+            if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+                raise serializers.ValidationError({'machine_sequence_steps': 'Each machine step must be an object.'})
+            for step in steps:
+                try:
+                    machine_id = int(step.get('machine_id'))
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                if machine_id < 1:
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                step['machine_id'] = machine_id
+                if not str(step.get('operation') or '').strip():
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each step must include an operation name.'})
+
         # A plant-assigned user cannot create or move a receipt into another
         # plant. If omitted, their assigned plant is used automatically.
         if user_plant_id:

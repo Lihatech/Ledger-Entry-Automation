@@ -76,8 +76,9 @@ class InventoryReceipt(models.Model):
                 f"{step.get('machine_code') or step.get('machine_name') or 'Machine'} / {step.get('operation') or 'Operation'}"
                 for step in self.machine_sequence_steps
             )
-        elif self.machine_sequence_steps == []:
-            self.machine_sequence = ''
+        # Preserve the legacy text route when no structured steps exist. This
+        # field is still used by older receipts and should not be erased by an
+        # unrelated save.
         if self._state.adding and not self.not_started_quantity:
             self.not_started_quantity = self.received_quantity
         super().save(*args, **kwargs)

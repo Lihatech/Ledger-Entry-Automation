@@ -103,11 +103,12 @@ class DocumentListSerializer(serializers.ModelSerializer):
         if perm and perm.can_preview:
             return True
 
-        # Approved documents are readable by permitted roles (or all if allowed_roles is empty)
+        # Approved documents require an explicit allowed role. Empty role
+        # assignments must not expose private document URLs by default.
         if obj.status == Document.Status.APPROVED:
             allowed_role_slugs = [role.slug for role in obj.allowed_roles.all()]
             user_role = getattr(user, 'role', '')
-            if not allowed_role_slugs or user_role in allowed_role_slugs:
+            if allowed_role_slugs and user_role in allowed_role_slugs:
                 return True
 
         return False
@@ -147,12 +148,11 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
         # Check role-based permission for approved documents
         is_approved = obj.status == Document.Status.APPROVED
-        role_allowed = True
+        role_allowed = False
         if is_approved:
             allowed_role_slugs = [role.slug for role in obj.allowed_roles.all()]
             user_role = getattr(user, 'role', '')
-            if allowed_role_slugs and user_role not in allowed_role_slugs:
-                role_allowed = False
+            role_allowed = user_role in allowed_role_slugs
 
         can_view_approved = is_approved and role_allowed
 
