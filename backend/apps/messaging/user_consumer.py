@@ -1,4 +1,6 @@
+import asyncio
 import json
+from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
@@ -17,12 +19,20 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Accept WebSocket connection after authentication."""
         self.user = None
+        self.authenticated = False
 
         await self.accept()
-        self.authenticated = False
+        query_token = self._query_token()
+        if query_token:
+            if not await self.authenticate_token(query_token):
+                await self.close(code=4001)
+                return
+        else:
+            self.auth_timeout_task = asyncio.create_task(self._auth_timeout())
 
     async def disconnect(self, close_code):
         """Leave notification group on disconnect."""
+        self._cancel_auth_timeout()
         if hasattr(self, 'user_group_name'):
             await self.channel_layer.group_discard(
                 self.user_group_name,
@@ -37,18 +47,9 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
                 if data.get('action') != 'auth' or not data.get('token'):
                     await self.close(code=4001)
                     return
-                access_token = AccessToken(data['token'])
-                self.user = await self.get_user(access_token['user_id'])
-                if not self.user:
+                if not await self.authenticate_token(data['token']):
                     await self.close(code=4001)
                     return
-                self.user_group_name = f'user_notifications_{self.user.id}'
-                await self.channel_layer.group_add(self.user_group_name, self.channel_name)
-                self.authenticated = True
-                await self.send(text_data=json.dumps({
-                    'type': 'connection_established',
-                    'message': f'Connected to user notifications for user {self.user.id}'
-                }))
                 return
             action = data.get('action')
 
@@ -64,6 +65,39 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
 
         except (json.JSONDecodeError, TokenError, KeyError, TypeError):
             await self.close(code=4001)
+
+    async def authenticate_token(self, token):
+        try:
+            access_token = AccessToken(token)
+            self.user = await self.get_user(access_token['user_id'])
+        except (TokenError, KeyError, TypeError):
+            self.user = None
+        if not self.user:
+            return False
+
+        self.user_group_name = f'user_notifications_{self.user.id}'
+        await self.channel_layer.group_add(self.user_group_name, self.channel_name)
+        self.authenticated = True
+        self._cancel_auth_timeout()
+        await self.send(text_data=json.dumps({
+            'type': 'connection_established',
+            'message': f'Connected to user notifications for user {self.user.id}'
+        }))
+        return True
+
+    def _query_token(self):
+        query_string = self.scope.get('query_string', b'').decode('utf-8')
+        return parse_qs(query_string).get('token', [None])[0]
+
+    async def _auth_timeout(self):
+        await asyncio.sleep(10)
+        if not self.authenticated:
+            await self.close(code=4001)
+
+    def _cancel_auth_timeout(self):
+        task = getattr(self, 'auth_timeout_task', None)
+        if task and task is not asyncio.current_task() and not task.done():
+            task.cancel()
 
     async def new_message_notification(self, event):
         """Send new message notification to user."""

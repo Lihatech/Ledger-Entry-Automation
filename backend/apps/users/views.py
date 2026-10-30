@@ -311,7 +311,7 @@ class UpdateProfilePhotoView(APIView):
             image = Image.open(photo)
             image.verify()
             photo.seek(0)
-        except (UnidentifiedImageError, OSError):
+        except (Image.DecompressionBombError, UnidentifiedImageError, OSError):
             return Response({'error': 'The uploaded profile image is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user

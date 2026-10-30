@@ -12,6 +12,8 @@ from django.utils import timezone
 from django.core.cache import cache
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction, ConversationClearHistory
 from apps.messaging.serializers import (
@@ -695,6 +697,28 @@ class FileUploadView(generics.CreateAPIView):
             # Fall back to generic binary if detection fails
             import mimetypes
             file_type = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
+
+        # OOXML documents are ZIP containers, so libmagic/filetype commonly
+        # reports them as application/zip. Confirm the container markers and
+        # map the extension to its Office MIME type before applying the allow-list.
+        office_types = {
+            '.docx': ('word/', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+            '.xlsx': ('xl/', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            '.pptx': ('ppt/', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'),
+        }
+        office_type = office_types.get(Path(file.name).suffix.lower())
+        if office_type and file_type == 'application/zip':
+            try:
+                with ZipFile(file) as archive:
+                    names = archive.namelist()
+                if '[Content_Types].xml' in names and any(
+                    name.startswith(office_type[0]) for name in names
+                ):
+                    file_type = office_type[1]
+            except (BadZipFile, OSError):
+                pass
+            finally:
+                file.seek(0)
 
         allowed_document_types = {
             'application/pdf', 'text/plain', 'text/csv',
