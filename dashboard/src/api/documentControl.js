@@ -57,13 +57,26 @@ export const reviseDocument = (id, formData) =>
 export const getDocumentHistory = (id) => api.get(`/documents/${id}/history/`);
 
 export const getDownloadUrl = (id) => {
-  const token = localStorage.getItem('access_token');
-  return `${BASE}/api/document-control/documents/${id}/download/${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  return `${BASE}/api/document-control/documents/${id}/download/`;
 };
 
 export const getPreviewUrl = (id) => {
-  const token = localStorage.getItem('access_token');
-  return `${BASE}/api/document-control/documents/${id}/preview/${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  return `${BASE}/api/document-control/documents/${id}/preview/`;
+};
+
+export const downloadDocument = async (id, fallbackName = 'document') => {
+  const response = await api.get(`/documents/${id}/download/`, { responseType: 'blob' });
+  const disposition = response.headers['content-disposition'] || '';
+  const match = disposition.match(/filename\*?=(?:UTF-8''|"?)([^;"\r\n]+)/i);
+  const filename = match?.[1] ? decodeURIComponent(match[1].trim()) : fallbackName;
+  const blobUrl = URL.createObjectURL(response.data);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(blobUrl);
 };
 
 export const markObsolete = (id, comment = '') =>

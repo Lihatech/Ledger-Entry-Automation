@@ -21,6 +21,7 @@ from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from django.shortcuts import get_object_or_404
 from django.utils.text import slugify
 from django.db import transaction
+from PIL import Image, UnidentifiedImageError
 
 from .models import User, AccessRole, AccessEvent
 
@@ -305,6 +306,13 @@ class UpdateProfilePhotoView(APIView):
         # Validate file size (max 5 MB)
         if photo.size > 5 * 1024 * 1024:
             return Response({'error': 'Photo must be smaller than 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            image = Image.open(photo)
+            image.verify()
+            photo.seek(0)
+        except (UnidentifiedImageError, OSError):
+            return Response({'error': 'The uploaded profile image is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user
         user.profile_photo = photo

@@ -8,6 +8,7 @@ export function WebSocketProvider({ children, plantId }) {
   const [events, setEvents]         = useState([]);   // last N live events
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
+  const connectRef = useRef(null);
 
   const connect = useCallback(() => {
     if (!plantId) return;
@@ -39,13 +40,14 @@ export function WebSocketProvider({ children, plantId }) {
     ws.onclose = () => {
       setConnected(false);
       // Auto-reconnect after 3 seconds
-      reconnectTimer.current = setTimeout(connect, 3000);
+      reconnectTimer.current = setTimeout(() => connectRef.current?.(), 3000);
     };
 
     ws.onerror = () => ws.close();
   }, [plantId]);
 
   useEffect(() => {
+    connectRef.current = connect;
     connect();
     return () => {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);

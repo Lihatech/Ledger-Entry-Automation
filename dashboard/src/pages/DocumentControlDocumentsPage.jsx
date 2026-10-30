@@ -12,7 +12,7 @@ import { can } from '../utils/access';
 import {
   getDocuments, getDocumentById, uploadDocument,
   approveDocument, rejectDocument, submitForReview,
-  getDocumentHistory, getDownloadUrl, getAssignableUsers,
+  getDocumentHistory, getDownloadUrl, downloadDocument, getAssignableUsers,
   getDocumentRoles, getDocumentAccess, saveDocumentAccess,
   markObsolete, deleteDocument,
 } from '../api/documentControl';
@@ -1307,6 +1307,7 @@ export default function DocumentControlDocumentsPage() {
                       {canDownloadDocument(doc) && (
                         <a
                           href={getDownloadUrl(doc.id)}
+                          onClick={(event) => { event.preventDefault(); downloadDocument(doc.id, doc.file_name); }}
                           target="_blank"
                           rel="noreferrer"
                           title="Download document file"

@@ -69,28 +69,10 @@ jobs:
         working-directory: mobile
         run: flutter build apk --release --dart-define=API_BASE_URL=https://ledgerautomation.duckdns.org/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
 
-      - name: Copy APK to repo root
-        run: cp mobile/build/app/outputs/flutter-apk/app-release.apk Inspection_Hub.apk
-
-      - name: Commit updated APK and launcher icons
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Inspection_Hub.apk
-          git add mobile/assets/images/new_app_icon.png
-          git add mobile/android/app/src/main/res/
-          git add mobile/ios/Runner/Assets.xcassets/ || true
-          if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "chore(auto): rebuild APK with updated company launcher icon [skip ci]"
-            git push origin samruddhi_contri
-          fi
-
       - name: Upload APK as downloadable artifact
         uses: actions/upload-artifact@v4
         with:
           name: Inspection_Hub_latest
-          path: Inspection_Hub.apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
           if-no-files-found: error

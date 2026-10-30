@@ -10,6 +10,7 @@ from django.conf import settings
 from .models import BugReport
 from .serializers import BugReportSerializer
 from apps.users.permissions import HasAccess
+from PIL import Image, UnidentifiedImageError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,11 @@ class BugReportListCreateView(generics.ListCreateAPIView):
 
         if screenshot_file and cloudinary:
             try:
+                if screenshot_file.size <= 0 or screenshot_file.size > 5 * 1024 * 1024:
+                    raise ValueError('Screenshot must be larger than 0 bytes and no larger than 5 MB.')
+                image = Image.open(screenshot_file)
+                image.verify()
+                screenshot_file.seek(0)
                 upload_result = cloudinary.uploader.upload(
                     screenshot_file,
                     folder='bug_reports/screenshots',
@@ -124,7 +130,7 @@ class BugReportListCreateView(generics.ListCreateAPIView):
                 screenshot_url = upload_result.get('secure_url')
                 screenshot_public_id = upload_result.get('public_id')
                 logger.info(f"Bug report screenshot uploaded to Cloudinary: {screenshot_public_id}")
-            except Exception as e:
+            except (UnidentifiedImageError, OSError, ValueError) as e:
                 logger.warning(f"Cloudinary upload failed, continuing without screenshot: {e}")
         elif screenshot_file and not cloudinary:
             logger.warning("Cloudinary not configured — screenshot will not be stored.")

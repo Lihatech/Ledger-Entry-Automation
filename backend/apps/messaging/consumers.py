@@ -1,5 +1,4 @@
 import json
-from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
@@ -24,47 +23,8 @@ class MessagingConsumer(AsyncWebsocketConsumer):
         self.room_group_name = f'messaging_{self.conversation_id}'
         self.user = None
 
-        # Authenticate user from token - use proper query string parsing
-        query_string = self.scope['query_string'].decode()
-        parsed_qs = parse_qs(query_string)
-        token = parsed_qs.get('token', [None])[0]
-
-        if not token:
-            await self.close(code=4001)
-            return
-
-        try:
-            access_token = AccessToken(token)
-            user_id = access_token['user_id']
-            self.user = await self.get_user(user_id)
-
-            if not self.user:
-                await self.close(code=4001)
-                return
-
-            # Verify user is participant in conversation
-            is_participant = await self.verify_participant()
-            if not is_participant:
-                await self.close(code=4003)
-                return
-
-        except TokenError:
-            await self.close(code=4001)
-            return
-
-        # Join room group
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
-
         await self.accept()
-
-        # Send connection confirmation
-        await self.send(text_data=json.dumps({
-            'type': 'connection_established',
-            'message': f'Connected to conversation {self.conversation_id}'
-        }))
+        self.authenticated = False
 
     async def disconnect(self, close_code):
         """Leave room group on disconnect."""
@@ -76,6 +36,11 @@ class MessagingConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """Receive message from WebSocket and handle different actions."""
+        if not self.authenticated:
+            if not await self.authenticate(text_data):
+                await self.close(code=4001)
+            return
+
         # Enforce active-participant authorization for every action
         is_participant = await self.verify_participant()
         if not is_participant:
@@ -112,6 +77,27 @@ class MessagingConsumer(AsyncWebsocketConsumer):
                 'type': 'error',
                 'message': str(e)
             }))
+
+    async def authenticate(self, text_data):
+        """Authenticate using the first WebSocket message, never the URL."""
+        try:
+            data = json.loads(text_data)
+            if data.get('action') != 'auth' or not data.get('token'):
+                return False
+            access_token = AccessToken(data['token'])
+            self.user = await self.get_user(access_token['user_id'])
+            if not self.user or not await self.verify_participant():
+                return False
+        except (json.JSONDecodeError, TokenError, KeyError, TypeError):
+            return False
+
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        self.authenticated = True
+        await self.send(text_data=json.dumps({
+            'type': 'connection_established',
+            'message': f'Connected to conversation {self.conversation_id}'
+        }))
+        return True
 
     async def handle_send_message(self, data):
         """Handle sending a new message."""

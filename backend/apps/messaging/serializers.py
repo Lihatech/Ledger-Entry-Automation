@@ -117,13 +117,15 @@ class ConversationSerializer(serializers.ModelSerializer):
 
     def get_last_message(self, obj):
         """Get the last message in the conversation."""
-        queryset = obj.messages.filter(is_deleted=False)
         clear_history = self._get_clear_history(obj)
-        
-        if clear_history:
-            queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
-            
-        last_message = queryset.order_by('-created_at').first()
+        prefetched = getattr(obj, 'prefetched_recent_messages', None)
+        if prefetched is not None and not clear_history:
+            last_message = prefetched[0] if prefetched else None
+        else:
+            queryset = obj.messages.filter(is_deleted=False)
+            if clear_history:
+                queryset = queryset.filter(created_at__gt=clear_history.cleared_at)
+            last_message = queryset.order_by('-created_at').first()
         if last_message:
             return {
                 'id': str(last_message.id),
