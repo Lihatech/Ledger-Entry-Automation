@@ -173,7 +173,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
     <Modal
       isOpen={true}
       onClose={onClose}
-      title={isSetupReport ? "Official First Piece Setup Approval Report (Form F02)" : "Official 1st Piece Cum In-Process Inspection Report (Form F02)"}
+      title={isSetupReport ? "Setup Approval Report (Form F02)" : "Official 1st Piece Cum In-Process Inspection Report (Form F02)"}
       size="2xl"
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
@@ -217,7 +217,7 @@ export default function OfficialFormF02Modal({ session, onClose, autoDownload = 
               <td style={{ width: '73%', padding: '4px 10px', borderRight: '1.5px solid #000000', textAlign: 'center' }}>
                 <div style={{ fontSize: 14, fontWeight: 'bold', letterSpacing: '0.5px', color: '#000000' }}>{companyName.toUpperCase()}</div>
                 <div style={{ fontSize: 11, fontWeight: 'bold', marginTop: 1, color: '#000000' }}>
-                  {isSetupReport ? 'FIRST PIECE SETUP APPROVAL REPORT : PROCESS NO. 10' : '1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. 10'}
+                  {isSetupReport ? 'SETUP APPROVAL REPORT : PROCESS NO. 10' : '1ST PIECE CUM IN-PROCESS INSPECTION REPORT : PROCESS NO. 10'}
                 </div>
               </td>
               <td style={{ width: '15%', padding: '4px 6px', textAlign: 'right', fontSize: 8.5, color: '#000000' }}>

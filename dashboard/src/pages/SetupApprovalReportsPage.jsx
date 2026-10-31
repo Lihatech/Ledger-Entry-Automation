@@ -136,14 +136,14 @@ export default function SetupApprovalReportsPage() {
   return (
     <>
       <Header
-        title="Set Up Approval Report"
+        title="Setup Approval Report"
         subtitle="Live F02 Setup Approval view based on inspector data entry"
       />
 
       <div className="page-content" style={{ padding: '24px', background: '#F1F5F9', minHeight: '100vh' }}>
         <Breadcrumbs items={[
           { label: 'Quality Analyzer', to: '/quality-analyzer' },
-          { label: 'Set Up Approval Report' }
+          { label: 'Setup Approval Report' }
         ]} />
 
         {/* Filters & Actions Bar */}
