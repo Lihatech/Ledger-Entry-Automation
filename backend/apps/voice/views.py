@@ -47,6 +47,12 @@ class VoiceTranscribeView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if audio_file.size <= 0 or audio_file.size > 20 * 1024 * 1024:
+            return Response(
+                {'error': 'Audio files must be larger than 0 bytes and no larger than 20 MB.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         file_size_kb = round(audio_file.size / 1024, 2)
         upload_dir = Path(settings.MEDIA_ROOT) / 'voice_uploads'
         upload_dir.mkdir(parents=True, exist_ok=True)

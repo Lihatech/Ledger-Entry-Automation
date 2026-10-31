@@ -1,3 +1,4 @@
+import asyncio
 import json
 from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -35,61 +36,63 @@ class PresenceConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Accept WebSocket connection and mark user as online."""
         self.user = None
-
-        # Authenticate user from token
-        query_string = self.scope['query_string'].decode()
-        parsed_qs = parse_qs(query_string)
-        token = parsed_qs.get('token', [None])[0]
-
-        if not token:
-            await self.close(code=4001)
-            return
-
-        try:
-            access_token = AccessToken(token)
-            user_id = access_token['user_id']
-            self.user = await self.get_user(user_id)
-
-            if not self.user:
-                await self.close(code=4001)
-                return
-
-        except TokenError:
-            await self.close(code=4001)
-            return
-
-        # Mark user as online and increment their connection counter.
-        await self.mark_user_online(self.user.id)
-
-        # Join presence broadcast group
-        await self.channel_layer.group_add(
-            'presence_updates',
-            self.channel_name
-        )
+        self.authenticated = False
 
         await self.accept()
+        query_token = self._query_token()
+        if query_token:
+            if not await self.authenticate_token(query_token):
+                await self.close(code=4001)
+                return
+        else:
+            self.auth_timeout_task = asyncio.create_task(self._auth_timeout())
 
-        # Get all currently online users
+    async def receive(self, text_data):
+        """Authenticate on the first message, then handle presence pings."""
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            await self.close(code=4001)
+            return
+
+        if not self.authenticated:
+            if data.get('action') != 'auth' or not data.get('token'):
+                await self.close(code=4001)
+                return
+            if not await self.authenticate_token(data['token']):
+                await self.close(code=4001)
+                return
+            return
+
+        if data.get('action') == 'ping':
+            await self.mark_user_online(self.user.id)
+            await self.send(text_data=json.dumps({'type': 'pong'}))
+        else:
+            await self.send(text_data=json.dumps({
+                'type': 'error',
+                'message': f"Unknown action: {data.get('action')}"
+            }))
+
+    async def authenticate_token(self, token):
+        try:
+            access_token = AccessToken(token)
+            self.user = await self.get_user(access_token['user_id'])
+        except (TokenError, KeyError, TypeError):
+            self.user = None
+        if not self.user:
+            return False
+
+        self.authenticated = True
+        self._cancel_auth_timeout()
+        await self.mark_user_online(self.user.id)
+        await self.channel_layer.group_add('presence_updates', self.channel_name)
+
         online_user_ids = await self.get_all_online_users()
-
-        # Send initial presence + connection confirmation.
-        # Only suppress genuine WebSocket send errors (client gone mid-handshake).
-        # Channel-layer errors are re-raised so we can clean up properly.
         try:
             await self.send(text_data=json.dumps({
                 'type': 'initial_presence',
-                'data': {
-                    'online_users': online_user_ids
-                }
+                'data': {'online_users': online_user_ids}
             }))
-        except Exception:
-            # Client disconnected before initial data could be delivered.
-            # Clean up group membership and presence state then bail out.
-            await self._cleanup_on_failed_connect()
-            return
-
-        try:
-            # Broadcast to all users that this user is now online
             await self.channel_layer.group_send(
                 'presence_updates',
                 {
@@ -98,22 +101,27 @@ class PresenceConsumer(AsyncWebsocketConsumer):
                     'status': 'online'
                 }
             )
-        except Exception:
-            # Channel-layer failure during online broadcast — clean up so the
-            # user is not left in a half-connected state.
-            await self._cleanup_on_failed_connect()
-            return
-
-        try:
-            # Send connection confirmation
             await self.send(text_data=json.dumps({
                 'type': 'connection_established',
                 'message': f'Presence tracking connected for user {self.user.id}'
             }))
         except Exception:
-            # Client disconnected just before confirmation — already online in
-            # the group; disconnect() will handle full cleanup.
-            pass
+            await self._cleanup_on_failed_connect()
+        return True
+
+    def _query_token(self):
+        query_string = self.scope.get('query_string', b'').decode('utf-8')
+        return parse_qs(query_string).get('token', [None])[0]
+
+    async def _auth_timeout(self):
+        await asyncio.sleep(10)
+        if not self.authenticated:
+            await self.close(code=4001)
+
+    def _cancel_auth_timeout(self):
+        task = getattr(self, 'auth_timeout_task', None)
+        if task and task is not asyncio.current_task() and not task.done():
+            task.cancel()
 
     async def _cleanup_on_failed_connect(self):
         """Remove user from group and undo online marking after a failed connect."""
@@ -128,6 +136,7 @@ class PresenceConsumer(AsyncWebsocketConsumer):
 
     async def disconnect(self, close_code):
         """Mark user as offline when they disconnect."""
+        self._cancel_auth_timeout()
         if hasattr(self, 'user') and self.user:
             # Mark user as offline (decrements connection counter; only removes
             # from presence index when the last connection closes).
@@ -156,32 +165,6 @@ class PresenceConsumer(AsyncWebsocketConsumer):
                         'status': 'offline'
                     }
                 )
-
-    async def receive(self, text_data):
-        """Handle ping/pong to keep connection alive and update last seen."""
-        try:
-            data = json.loads(text_data)
-            action = data.get('action')
-
-            if action == 'ping':
-                # Update last seen timestamp
-                if self.user:
-                    await self.mark_user_online(self.user.id)
-
-                await self.send(text_data=json.dumps({
-                    'type': 'pong'
-                }))
-            else:
-                await self.send(text_data=json.dumps({
-                    'type': 'error',
-                    'message': f'Unknown action: {action}'
-                }))
-
-        except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Invalid JSON'
-            }))
 
     async def user_status_changed(self, event):
         """Broadcast user status change to connected clients."""

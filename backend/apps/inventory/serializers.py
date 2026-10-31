@@ -42,10 +42,38 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
             'machine_sequence',
         ]
 
+    def to_internal_value(self, data):
+        """Populate an unambiguous plant before DRF validates model fields."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if self.instance is None and not data.get('plant'):
+            payload = data.copy()
+            user_plant_id = getattr(user, 'plant_id', None) or getattr(getattr(user, 'plant', None), 'pk', None)
+            if user_plant_id:
+                payload['plant'] = user_plant_id
+            else:
+                steps = payload.get('machine_sequence_steps') or []
+                if isinstance(steps, list):
+                    machine_ids = [
+                        step.get('machine_id') for step in steps
+                        if isinstance(step, dict) and step.get('machine_id')
+                    ]
+                    machines = list(Machine.objects.filter(pk__in=machine_ids))
+                    plant_ids = {machine.plant_id for machine in machines if machine.plant_id}
+                    if len(plant_ids) == 1 and len(machines) == len(set(machine_ids)):
+                        payload['plant'] = plant_ids.pop()
+                    else:
+                        active_plants = list(Plant.objects.filter(is_active=True).order_by('pk')[:2])
+                        if len(active_plants) == 1:
+                            payload['plant'] = active_plants[0].pk
+            data = payload
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
-        user_plant_id = getattr(user, 'plant_id', None)
+        user_plant = getattr(user, 'plant', None)
+        user_plant_id = getattr(user, 'plant_id', None) or getattr(user_plant, 'pk', None)
         submitted_plant = attrs.get('plant')
 
         if self.instance:
@@ -59,6 +87,24 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({
                         'machine_sequence_steps': 'The machine sequence cannot change after production or dispatch history exists.'
                     })
+
+        # Validate the shape before plant inference so malformed route data
+        # reports the useful field-level error instead of a secondary plant
+        # inference error.
+        steps = attrs.get('machine_sequence_steps')
+        if steps is not None:
+            if not isinstance(steps, list) or any(not isinstance(step, dict) for step in steps):
+                raise serializers.ValidationError({'machine_sequence_steps': 'Each machine step must be an object.'})
+            for step in steps:
+                try:
+                    machine_id = int(step.get('machine_id'))
+                except (TypeError, ValueError):
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                if machine_id < 1:
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each machine must have a valid numeric ID.'})
+                step['machine_id'] = machine_id
+                if not str(step.get('operation') or '').strip():
+                    raise serializers.ValidationError({'machine_sequence_steps': 'Each step must include an operation name.'})
 
         # A plant-assigned user cannot create or move a receipt into another
         # plant. If omitted, their assigned plant is used automatically.
@@ -121,8 +167,30 @@ class InventoryReceiptSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({'machine_sequence_steps': 'All machines must belong to the receipt plant.'})
 
         if self.instance is None and not attrs.get('plant'):
-            raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
+            # Keep the assignment deterministic even when the request user
+            # exposes a related Plant object but not a populated plant_id
+            # attribute (for example, with lightweight test/auth objects).
+            if user_plant is not None:
+                attrs['plant'] = user_plant
+            else:
+                raise serializers.ValidationError({'plant': 'Plant is required for a new receipt.'})
         return attrs
+
+    def validate_machine_sequence_steps(self, value):
+        """Reject malformed routes before plant inference can mask the error."""
+        if not isinstance(value, list) or any(not isinstance(step, dict) for step in value):
+            raise serializers.ValidationError('Each machine step must be an object.')
+        for step in value:
+            try:
+                machine_id = int(step.get('machine_id'))
+            except (TypeError, ValueError):
+                raise serializers.ValidationError('Each machine must have a valid numeric ID.')
+            if machine_id < 1:
+                raise serializers.ValidationError('Each machine must have a valid numeric ID.')
+            if not str(step.get('operation') or '').strip():
+                raise serializers.ValidationError('Each step must include an operation name.')
+            step['machine_id'] = machine_id
+        return value
 
     def get_status_label(self, obj):
         if obj.dispatched_quantity >= obj.received_quantity:

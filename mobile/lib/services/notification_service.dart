@@ -68,10 +68,12 @@ class NotificationService {
     if (token == null || token.isEmpty) return;
 
     final uri = Uri.parse(
-      '${MessagingService.wsUrl}/ws/messaging/notifications/'
-      '?token=${Uri.encodeQueryComponent(token)}',
+      '${MessagingService.wsUrl}/ws/messaging/notifications/',
     );
     _messageChannel = WebSocketChannel.connect(uri);
+    _messageChannel!.sink.add(
+      jsonEncode({'type': 'auth', 'action': 'auth', 'token': token}),
+    );
     _messageSubscription = _messageChannel!.stream.listen(
       (rawEvent) {
         try {

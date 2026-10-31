@@ -10,6 +10,7 @@ Handles:
 import mimetypes
 import logging
 from datetime import datetime
+from pathlib import Path
 
 from django.db import transaction
 from django.db.models import Q
@@ -21,7 +22,7 @@ from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 try:
@@ -74,6 +75,30 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 FILE_SIZE_LIMIT = 50 * 1024 * 1024  # 50 MB
+DOCUMENT_EXTENSIONS = {
+    '.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.txt', '.csv',
+    '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+}
+
+
+def _validate_document_upload(file):
+    """Validate size, extension, and magic bytes before storage."""
+    if file.size <= 0 or file.size > FILE_SIZE_LIMIT:
+        return 'Document files must be larger than 0 bytes and no larger than 50 MB.'
+    extension = Path(file.name).suffix.lower()
+    if extension not in DOCUMENT_EXTENSIONS:
+        return 'Unsupported document extension.'
+    header = file.read(16)
+    file.seek(0)
+    signatures = {
+        '.pdf': b'%PDF-', '.png': b'\x89PNG\r\n\x1a\n',
+        '.jpg': b'\xff\xd8\xff', '.jpeg': b'\xff\xd8\xff', '.gif': b'GIF8',
+        '.webp': b'RIFF',
+    }
+    signature = signatures.get(extension)
+    if signature and not header.startswith(signature):
+        return 'File contents do not match the selected file type.'
+    return None
 
 
 def _generate_document_number():
@@ -141,8 +166,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
-        if self.action in ['preview', 'download']:
-            return [AllowAny()]
         return super().get_permissions()
 
     def _authenticate_request_user(self, request):
@@ -150,20 +173,6 @@ class DocumentViewSet(viewsets.ModelViewSet):
             if not request.user.is_active:
                 return None
             return request.user
-        token = request.query_params.get('token')
-        if token:
-            from rest_framework_simplejwt.tokens import AccessToken
-            try:
-                valid_token = AccessToken(token)
-                user_id = valid_token.get('user_id')
-                User = get_user_model()
-                user = User.objects.get(id=user_id)
-                if not user.is_active:
-                    return None
-                request.user = user
-                return user
-            except Exception:
-                return None
         return None
 
     def get_queryset(self):
@@ -238,8 +247,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'A file is required.'}, status=400)
 
-        if file.size > FILE_SIZE_LIMIT:
-            return Response({'error': 'Document files must be under 50 MB.'}, status=400)
+        validation_error = _validate_document_upload(file)
+        if validation_error:
+            return Response({'error': validation_error}, status=400)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -523,6 +533,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'A new revision file is required.'}, status=400)
 
+        validation_error = _validate_document_upload(file)
+        if validation_error:
+            return Response({'error': validation_error}, status=400)
+
         next_rev_num = original.revision_number + 1
         rev_letter = chr(ord('A') + next_rev_num - 1) if next_rev_num <= 26 else str(next_rev_num)
         rev_label = f'Rev {rev_letter}'
@@ -610,7 +624,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             if not can_preview and doc.status == Document.Status.APPROVED:
                 allowed_role_slugs = [r.slug for r in doc.allowed_roles.all()]
                 user_role = getattr(user, 'role', '')
-                if not allowed_role_slugs or user_role in allowed_role_slugs:
+                if allowed_role_slugs and user_role in allowed_role_slugs:
                     can_preview = True
 
             if not can_preview:

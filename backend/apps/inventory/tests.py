@@ -96,6 +96,20 @@ class InventoryReceiptPlantScopeTests(APITestCase):
         self.assertEqual(self.receipt_a.dispatched_quantity, 2)
         self.assertEqual(self.receipt_a.dispatch_events.count(), 1)
 
+    def test_retried_intake_is_idempotent(self):
+        payload = {'quantity': 3, 'idempotency_key': 'intake-retry-001', 'vehicle_number': 'MH-01'}
+        first = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/intake/', payload, format='json',
+        )
+        retry = self.client.post(
+            f'/api/inventory/receipts/{self.receipt_a.id}/intake/', payload, format='json',
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(retry.status_code, 200)
+        self.receipt_a.refresh_from_db()
+        self.assertEqual(self.receipt_a.received_quantity, 13)
+        self.assertEqual(self.receipt_a.intake_events.count(), 1)
+
     def test_report_correction_cannot_reduce_below_dispatched(self):
         report = DailyProductionReport.objects.create(
             date=date.today(), machine=self.machine_a, part=self.part_a,

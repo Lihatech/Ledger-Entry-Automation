@@ -1,3 +1,4 @@
+import asyncio
 import json
 from urllib.parse import parse_qs
 from channels.generic.websocket import AsyncWebsocketConsumer
@@ -23,51 +24,23 @@ class MessagingConsumer(AsyncWebsocketConsumer):
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
         self.room_group_name = f'messaging_{self.conversation_id}'
         self.user = None
-
-        # Authenticate user from token - use proper query string parsing
-        query_string = self.scope['query_string'].decode()
-        parsed_qs = parse_qs(query_string)
-        token = parsed_qs.get('token', [None])[0]
-
-        if not token:
-            await self.close(code=4001)
-            return
-
-        try:
-            access_token = AccessToken(token)
-            user_id = access_token['user_id']
-            self.user = await self.get_user(user_id)
-
-            if not self.user:
-                await self.close(code=4001)
-                return
-
-            # Verify user is participant in conversation
-            is_participant = await self.verify_participant()
-            if not is_participant:
-                await self.close(code=4003)
-                return
-
-        except TokenError:
-            await self.close(code=4001)
-            return
-
-        # Join room group
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
+        self.authenticated = False
 
         await self.accept()
 
-        # Send connection confirmation
-        await self.send(text_data=json.dumps({
-            'type': 'connection_established',
-            'message': f'Connected to conversation {self.conversation_id}'
-        }))
+        # Keep supporting existing clients that authenticate with ?token=...
+        # while allowing newer clients to send a first-frame auth message.
+        query_token = self._query_token()
+        if query_token:
+            if not await self.authenticate_token(query_token):
+                await self.close(code=4001)
+                return
+        else:
+            self.auth_timeout_task = asyncio.create_task(self._auth_timeout())
 
     async def disconnect(self, close_code):
         """Leave room group on disconnect."""
+        self._cancel_auth_timeout()
         if hasattr(self, 'room_group_name'):
             await self.channel_layer.group_discard(
                 self.room_group_name,
@@ -76,6 +49,11 @@ class MessagingConsumer(AsyncWebsocketConsumer):
 
     async def receive(self, text_data):
         """Receive message from WebSocket and handle different actions."""
+        if not self.authenticated:
+            if not await self.authenticate(text_data):
+                await self.close(code=4001)
+            return
+
         # Enforce active-participant authorization for every action
         is_participant = await self.verify_participant()
         if not is_participant:
@@ -112,6 +90,49 @@ class MessagingConsumer(AsyncWebsocketConsumer):
                 'type': 'error',
                 'message': str(e)
             }))
+
+    async def authenticate(self, text_data):
+        """Authenticate using the first WebSocket message."""
+        try:
+            data = json.loads(text_data)
+            if data.get('action') != 'auth' or not data.get('token'):
+                return False
+        except (json.JSONDecodeError, TypeError):
+            return False
+        return await self.authenticate_token(data['token'])
+
+    async def authenticate_token(self, token):
+        """Validate a token and join the conversation group."""
+        try:
+            access_token = AccessToken(token)
+            self.user = await self.get_user(access_token['user_id'])
+            if not self.user or not await self.verify_participant():
+                return False
+        except (TokenError, KeyError, TypeError):
+            return False
+
+        await self.channel_layer.group_add(self.room_group_name, self.channel_name)
+        self.authenticated = True
+        self._cancel_auth_timeout()
+        await self.send(text_data=json.dumps({
+            'type': 'connection_established',
+            'message': f'Connected to conversation {self.conversation_id}'
+        }))
+        return True
+
+    def _query_token(self):
+        query_string = self.scope.get('query_string', b'').decode('utf-8')
+        return parse_qs(query_string).get('token', [None])[0]
+
+    async def _auth_timeout(self):
+        await asyncio.sleep(10)
+        if not self.authenticated:
+            await self.close(code=4001)
+
+    def _cancel_auth_timeout(self):
+        task = getattr(self, 'auth_timeout_task', None)
+        if task and task is not asyncio.current_task() and not task.done():
+            task.cancel()
 
     async def handle_send_message(self, data):
         """Handle sending a new message."""

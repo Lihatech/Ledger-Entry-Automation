@@ -221,8 +221,9 @@ class MessagingService {
     }
 
     try {
-      final uri = Uri.parse('$wsUrl/ws/messaging/$conversationId/?token=$token');
+      final uri = Uri.parse('$wsUrl/ws/messaging/$conversationId/');
       _channel = WebSocketChannel.connect(uri);
+      _channel!.sink.add(json.encode({'type': 'auth', 'action': 'auth', 'token': token}));
 
       _channel!.stream.listen(
         (message) {
@@ -449,8 +450,9 @@ class MessagingService {
     final token = await _getToken();
     if (token == null) return;
     try {
-      final uri = Uri.parse('$wsUrl/ws/presence/?token=$token');
+      final uri = Uri.parse('$wsUrl/ws/presence/');
       _presenceChannel = WebSocketChannel.connect(uri);
+      _presenceChannel!.sink.add(json.encode({'type': 'auth', 'action': 'auth', 'token': token}));
       _presenceChannel!.stream.listen(
         (message) {
           final data = json.decode(message);

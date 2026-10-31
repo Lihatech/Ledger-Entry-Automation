@@ -2,12 +2,24 @@
 
 ## Current Implementation
 
-The messaging module uses JWT authentication via query string parameters for WebSocket connections.
+The messaging module supports JWT authentication through either the legacy query
+string protocol or a first-frame authentication message. New clients should use
+the first-frame protocol; the query-string form remains available for existing
+mobile and third-party clients during migration.
 
 ### Connection Format
 ```
 ws://localhost:8000/ws/messaging/{conversation_id}/?token={jwt_token}
 ```
+
+New clients should connect without a token in the URL and immediately send:
+
+```json
+{"action":"auth","token":"<jwt_token>"}
+```
+
+Connections without a valid URL token or first-frame authentication message are
+closed after 10 seconds.
 
 ## Security Considerations
 
@@ -72,7 +84,7 @@ Implement monitoring for suspicious patterns:
 3. ✅ Document token rotation policy
 
 ### Future Enhancements
-1. Evaluate post-connection authentication pattern
+1. Remove the legacy query-string protocol after all clients have migrated
 2. Implement connection-specific tokens
 3. Add token revocation monitoring
 

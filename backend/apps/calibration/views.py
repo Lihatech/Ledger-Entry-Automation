@@ -403,6 +403,8 @@ class CalibrationReportDownloadView(APIView):
     permission_classes = [IsCalibratorOrAdmin]
 
     def get_permissions(self):
+        # PDF history cards contain short-lived, record-scoped evidence links.
+        # They are not JWTs and expire after five minutes (see get()).
         if self.request.query_params.get('token'):
             return [AllowAny()]
         return super().get_permissions()
@@ -411,7 +413,7 @@ class CalibrationReportDownloadView(APIView):
         token = request.query_params.get('token')
         if token:
             try:
-                signed_pk = signing.loads(token, salt='calibration-report')
+                signed_pk = signing.loads(token, salt='calibration-report', max_age=300)
             except signing.BadSignature:
                 return Response({'detail': 'Invalid evidence link.'}, status=status.HTTP_403_FORBIDDEN)
             if signed_pk != pk:
@@ -424,6 +426,7 @@ class CalibrationReportDownloadView(APIView):
             request.query_params.get('download') == '1', record.report_file_name
         )
         response['X-Content-Type-Options'] = 'nosniff'
+        response['Referrer-Policy'] = 'no-referrer'
         return response
 
 

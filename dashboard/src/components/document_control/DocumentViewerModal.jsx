@@ -4,7 +4,7 @@ import {
   Maximize2, Minimize2, Edit3, Calendar, Tag, CheckCircle, Shield, RefreshCw, AlertTriangle, Printer
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { submitForReview, approveDocument, rejectDocument, getDownloadUrl } from '../../api/documentControl';
+import { submitForReview, approveDocument, rejectDocument, getDownloadUrl, downloadDocument } from '../../api/documentControl';
 
 const LEVEL_COLORS = {
   L1: { bg: '#f5f3ff', color: '#7c3aed', border: '#ddd6fe', label: 'L1 : Quality Manual' },
@@ -418,6 +418,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
             {canDownloadDoc && (
               <a
                 href={getDownloadUrl(currentDoc.id)}
+                onClick={(event) => { event.preventDefault(); downloadDocument(currentDoc.id, currentDoc.file_name); }}
                 target="_blank"
                 rel="noreferrer"
                 title="Download original document file"
@@ -604,6 +605,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
               {canDownloadDoc && (
                 <a
                   href={getDownloadUrl(currentDoc.id)}
+                  onClick={(event) => { event.preventDefault(); downloadDocument(currentDoc.id, currentDoc.file_name); }}
                   target="_blank"
                   rel="noreferrer"
                   style={{
@@ -695,6 +697,7 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
                 </p>
                 <a
                   href={canDownloadDoc ? getDownloadUrl(currentDoc.id) : documentUrl}
+                  onClick={canDownloadDoc ? (event) => { event.preventDefault(); downloadDocument(currentDoc.id, currentDoc.file_name); } : undefined}
                   target="_blank"
                   rel="noreferrer"
                   style={{

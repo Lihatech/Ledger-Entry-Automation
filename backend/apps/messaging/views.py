@@ -1,16 +1,19 @@
 from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Max
+from django.db.models import Q, Max, Prefetch
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.core.cache import cache
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+from pathlib import Path
+from zipfile import BadZipFile, ZipFile
 
 from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction, ConversationClearHistory
 from apps.messaging.serializers import (
@@ -52,10 +55,26 @@ class ConversationViewSet(viewsets.ModelViewSet):
         if getattr(self, 'action', None) in ['list', 'retrieve']:
             return Conversation.objects.filter(
                 Q(participants=self.request.user) | Q(past_participants=self.request.user)
-            ).distinct().prefetch_related('participants', 'messages')
+            ).distinct().prefetch_related(
+                'participants',
+                Prefetch(
+                    'messages',
+                    queryset=Message.objects.filter(is_deleted=False)
+                    .select_related('sender').order_by('-created_at')[:1],
+                    to_attr='prefetched_recent_messages',
+                ),
+            )
         return Conversation.objects.filter(
             participants=self.request.user
-        ).prefetch_related('participants', 'messages')
+        ).prefetch_related(
+            'participants',
+            Prefetch(
+                'messages',
+                queryset=Message.objects.filter(is_deleted=False)
+                .select_related('sender').order_by('-created_at')[:1],
+                to_attr='prefetched_recent_messages',
+            ),
+        )
 
     def get_serializer_class(self):
         """Use detailed serializer for retrieve action."""
@@ -97,10 +116,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
             if conversation.admin != user:
                 # Only allow admin to update
                 if 'name' in serializer.validated_data or 'description' in serializer.validated_data:
-                    return Response(
-                        {'error': 'Only group admin can update name/description'},
-                        status=status.HTTP_403_FORBIDDEN
-                    )
+                    raise PermissionDenied('Only group admin can update name/description')
 
         serializer.save()
 
@@ -393,10 +409,7 @@ class MessageViewSet(viewsets.ModelViewSet):
         """Update message (only sender can edit)."""
         message = self.get_object()
         if message.sender != self.request.user:
-            return Response(
-                {'error': 'Only sender can edit message'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            raise PermissionDenied('Only sender can edit message')
 
         serializer.save(edited_at=timezone.now())
 
@@ -684,6 +697,37 @@ class FileUploadView(generics.CreateAPIView):
             # Fall back to generic binary if detection fails
             import mimetypes
             file_type = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
+
+        # OOXML documents are ZIP containers, so libmagic/filetype commonly
+        # reports them as application/zip. Confirm the container markers and
+        # map the extension to its Office MIME type before applying the allow-list.
+        office_types = {
+            '.docx': ('word/', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+            '.xlsx': ('xl/', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+            '.pptx': ('ppt/', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'),
+        }
+        office_type = office_types.get(Path(file.name).suffix.lower())
+        if office_type and file_type == 'application/zip':
+            try:
+                with ZipFile(file) as archive:
+                    names = archive.namelist()
+                if '[Content_Types].xml' in names and any(
+                    name.startswith(office_type[0]) for name in names
+                ):
+                    file_type = office_type[1]
+            except (BadZipFile, OSError):
+                pass
+            finally:
+                file.seek(0)
+
+        allowed_document_types = {
+            'application/pdf', 'text/plain', 'text/csv',
+            'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        }
+        if not file_type.startswith('image/') and file_type not in allowed_document_types:
+            return Response({'error': 'Unsupported attachment type.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Determine attachment type
         if file_type.startswith('image/'):

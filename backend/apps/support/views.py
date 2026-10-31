@@ -1,7 +1,7 @@
 import json
 import os
 
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -10,6 +10,7 @@ from django.conf import settings
 from .models import BugReport
 from .serializers import BugReportSerializer
 from apps.users.permissions import HasAccess
+from PIL import Image, UnidentifiedImageError
 import logging
 
 logger = logging.getLogger(__name__)
@@ -114,20 +115,30 @@ class BugReportListCreateView(generics.ListCreateAPIView):
         screenshot_public_id = None
         screenshot_file = self.request.FILES.get('screenshot')
 
-        if screenshot_file and cloudinary:
+        if screenshot_file:
             try:
-                upload_result = cloudinary.uploader.upload(
-                    screenshot_file,
-                    folder='bug_reports/screenshots',
-                    resource_type='image',
-                )
-                screenshot_url = upload_result.get('secure_url')
-                screenshot_public_id = upload_result.get('public_id')
-                logger.info(f"Bug report screenshot uploaded to Cloudinary: {screenshot_public_id}")
-            except Exception as e:
-                logger.warning(f"Cloudinary upload failed, continuing without screenshot: {e}")
-        elif screenshot_file and not cloudinary:
-            logger.warning("Cloudinary not configured — screenshot will not be stored.")
+                if screenshot_file.size <= 0 or screenshot_file.size > 5 * 1024 * 1024:
+                    raise ValueError('Screenshot must be larger than 0 bytes and no larger than 5 MB.')
+                image = Image.open(screenshot_file)
+                image.verify()
+                screenshot_file.seek(0)
+            except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as e:
+                raise serializers.ValidationError({'screenshot': str(e)})
+
+            if cloudinary:
+                try:
+                    upload_result = cloudinary.uploader.upload(
+                        screenshot_file,
+                        folder='bug_reports/screenshots',
+                        resource_type='image',
+                    )
+                    screenshot_url = upload_result.get('secure_url')
+                    screenshot_public_id = upload_result.get('public_id')
+                    logger.info(f"Bug report screenshot uploaded to Cloudinary: {screenshot_public_id}")
+                except Exception:
+                    logger.exception('Cloudinary screenshot upload failed; saving bug report without screenshot.')
+            else:
+                logger.warning("Cloudinary not configured — screenshot will not be stored.")
 
         bug_report = serializer.save(
             user=self.request.user,

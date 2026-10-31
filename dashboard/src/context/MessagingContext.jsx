@@ -159,10 +159,11 @@ export const MessagingProvider = ({ children }) => {
       wsRef.current.close();
     }
 
-    const wsUrl = `${WS_BASE}/ws/messaging/${conversationId}/?token=${token}`;
+    const wsUrl = `${WS_BASE}/ws/messaging/${conversationId}/`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', action: 'auth', token }));
       console.log('WebSocket connected');
     };
 
@@ -513,10 +514,11 @@ export const MessagingProvider = ({ children }) => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
 
-    const wsUrl = `${WS_BASE}/ws/messaging/notifications/?token=${token}`;
+    const wsUrl = `${WS_BASE}/ws/messaging/notifications/`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', action: 'auth', token }));
       console.log('User notification WebSocket connected');
     };
 
@@ -630,10 +632,11 @@ export const MessagingProvider = ({ children }) => {
     const token = localStorage.getItem('access_token');
     if (!token) return;
 
-    const wsUrl = `${WS_BASE}/ws/presence/?token=${token}`;
+    const wsUrl = `${WS_BASE}/ws/presence/`;
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', action: 'auth', token }));
       console.log('Presence WebSocket connected');
     };
 

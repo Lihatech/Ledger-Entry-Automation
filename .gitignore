@@ -18,6 +18,10 @@ ENV/
 backend/media/
 *.m4a
 *.m4v
+*.log
+backend/*.log
+dashboard*.log
+mobile*.log
 
 # PDF files (generated reports & inspection docs)
 *.pdf

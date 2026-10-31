@@ -393,7 +393,9 @@ class DailyProductionReport(models.Model):
         previous_receipt_id = None
         previous_status = None
 
-        # Auto-calculate target from available time and cycle time
+        # Calculate a target only when the caller did not provide one. A
+        # submitted report must retain the target captured by the operator;
+        # recalculating it on every save changes historical report data.
         available_time = 420
         if self.machine and self.machine.plant:
             plant = self.machine.plant
@@ -406,17 +408,18 @@ class DailyProductionReport(models.Model):
         if available_time <= 0:
             available_time = 420
         
-        from apps.parts.models import InspectionTemplate
-        template = InspectionTemplate.objects.filter(
-            part=self.part, name=self.operation
-        ).first()
-        if not template:
-            template = InspectionTemplate.objects.filter(part=self.part).first()
-        
-        if template and getattr(template, 'cycle_time_mins', 0) > 0:
-            self.production_target = int(available_time / template.cycle_time_mins)
-        else:
-            self.production_target = int(available_time / 10.0)
+        if not self.production_target:
+            from apps.parts.models import InspectionTemplate
+            template = InspectionTemplate.objects.filter(
+                part=self.part, name=self.operation
+            ).first()
+            if not template:
+                template = InspectionTemplate.objects.filter(part=self.part).first()
+
+            if template and getattr(template, 'cycle_time_mins', 0) > 0:
+                self.production_target = int(available_time / template.cycle_time_mins)
+            else:
+                self.production_target = int(available_time / 10.0)
 
         if self.production_target > 0:
             self.achievement_percentage = round((self.jobs_completed / self.production_target) * 100, 2)
@@ -462,7 +465,7 @@ class DailyProductionReport(models.Model):
                 from apps.inventory.services import reconcile_receipt_from_reports
                 receipt = InventoryReceipt.objects.filter(pk=receipt_id).first()
                 if receipt:
-                    reconciled = reconcile_receipt_from_reports(receipt)
+                    reconciled = reconcile_receipt_from_reports(receipt, preserve_manual=False)
                     if reconciled.completed_quantity < reconciled.dispatched_quantity:
                         raise ValidationError(
                             'This report deletion would reduce completed quantity below parts already dispatched.'
