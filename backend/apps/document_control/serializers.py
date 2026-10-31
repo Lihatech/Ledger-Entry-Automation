@@ -255,6 +255,16 @@ class DocumentCreateSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get('request')
         user = getattr(request, 'user', None)
+        if attrs.get('status') == Document.Status.APPROVED:
+            raise serializers.ValidationError({'status': 'New documents must complete review and approval before publication.'})
+        for field in ('reviewed_by', 'approved_by'):
+            assignee = attrs.get(field)
+            if assignee and not assignee.is_active:
+                raise serializers.ValidationError({field: 'Select an active user.'})
+        if attrs.get('status') == Document.Status.UNDER_REVIEW or attrs.get('reviewed_by'):
+            for field in ('reviewed_by', 'approved_by'):
+                if not attrs.get(field):
+                    raise serializers.ValidationError({field: 'An assigned reviewer and approver are required.'})
         if user and user.is_authenticated:
             reviewed_by = attrs.get('reviewed_by')
             approved_by = attrs.get('approved_by')
