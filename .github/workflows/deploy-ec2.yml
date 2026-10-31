@@ -1,8 +1,8 @@
 name: Deploy to EC2
 
 on:
-  push:
-    branches: [main]
+  pull_request:
+    types: [closed]
   workflow_dispatch:
 
 concurrency:
@@ -15,6 +15,7 @@ permissions:
 jobs:
   deploy:
     name: Deploy production stack
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -48,6 +49,37 @@ jobs:
             "$EC2_USER@$EC2_HOST" 'bash -se' <<'REMOTE'
           set -Eeuo pipefail
           cd /home/ubuntu/Ledger-Entry-Automation
+
+          previous_sha="$(git rev-parse main 2>/dev/null || true)"
+          rollback_ready=false
+          rollback_backend="ledger-entry-automation-backend:rollback"
+          rollback_frontend="ledger-entry-automation-frontend:rollback"
+
+          rollback() {
+            status=$?
+            echo "Deployment failed with exit code $status; attempting rollback."
+            if [ -n "$previous_sha" ]; then
+              git reset --hard "$previous_sha" || true
+            fi
+            if [ "$rollback_ready" = true ]; then
+              sudo docker image tag "$rollback_backend" ledger-entry-automation-backend:latest || true
+              sudo docker image tag "$rollback_frontend" ledger-entry-automation-frontend:latest || true
+              sudo docker compose up -d --force-recreate backend frontend || true
+            fi
+            exit "$status"
+          }
+          trap rollback ERR
+
+          if [ -x /usr/local/bin/ledger-db-backup.sh ]; then
+            sudo /usr/local/bin/ledger-db-backup.sh
+          fi
+
+          if sudo docker image inspect ledger-entry-automation-backend:latest >/dev/null 2>&1 \
+            && sudo docker image inspect ledger-entry-automation-frontend:latest >/dev/null 2>&1; then
+            sudo docker image tag ledger-entry-automation-backend:latest "$rollback_backend"
+            sudo docker image tag ledger-entry-automation-frontend:latest "$rollback_frontend"
+            rollback_ready=true
+          fi
 
           git fetch origin main
           git switch main
