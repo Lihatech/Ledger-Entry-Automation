@@ -1354,6 +1354,48 @@ class SetupStatusView(APIView):
         })
 
 # ─── Finalize First Piece Inspection ──────────────────────────────────────
+def _sync_setup_approval_from_first_piece(session, inspector):
+    """Create the combined Setup Approval record for a finalized first-piece run.
+
+    The first-piece workflow records product readings in InspectionSession and
+    process readings in its JSON document.  The Setup Approval report uses a
+    SetupApproval row as its index, so keep that row in sync without requiring
+    a second mobile submission.
+    """
+    from .models import SetupApproval
+    from . import document_utils as doc_utils
+
+    doc = doc_utils.get_document(session) or {}
+    entries = doc.get('process_param_entries') or []
+    today = timezone.now().date()
+    setup = SetupApproval.objects.filter(
+        template_id=session.template_id,
+        machine_id=session.machine_id,
+        submitted_at__date=today,
+    ).order_by('-submitted_at').first()
+
+    values = {
+        'part_number': session.part.part_number if session.part else '',
+        'inspector': inspector,
+        'inspector_name': inspector.get_full_name(),
+        # Do not erase process readings submitted through the dedicated
+        # Setup Approval screen when the first-piece workflow has none.
+        'process_param_entries': entries or (setup.process_param_entries if setup else []),
+        'status': 'submitted',
+    }
+    if setup:
+        for field, value in values.items():
+            setattr(setup, field, value)
+        setup.save(update_fields=[*values.keys()])
+    else:
+        SetupApproval.objects.create(
+            template_id=session.template_id,
+            machine_id=session.machine_id,
+            submitted_at=timezone.now(),
+            **values,
+        )
+
+
 class FinalizeFirstPieceView(APIView):
     """
     POST /api/inspections/<session_id>/finalize/
@@ -1365,6 +1407,15 @@ class FinalizeFirstPieceView(APIView):
     def post(self, request, session_id):
         try:
             session = _service.finalize_first_piece_session(session_id, request.user)
+            try:
+                _sync_setup_approval_from_first_piece(session, request.user)
+            except Exception:
+                # Finalization has already succeeded; keep that result intact
+                # while recording enough detail to diagnose report sync issues.
+                logger.exception(
+                    'Failed to sync Setup Approval record for first-piece session %s',
+                    session_id,
+                )
             return Response(InspectionSessionSerializer(session).data)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

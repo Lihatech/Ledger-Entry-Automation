@@ -281,7 +281,7 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
               ),
             ),
             Text(
-              'Official First Piece & Process Setup Sheet',
+              'Setup Approval Report',
               style: TextStyle(color: Color(0xFF64748B), fontSize: 10),
             ),
           ],
