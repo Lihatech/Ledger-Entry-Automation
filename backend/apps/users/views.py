@@ -2,6 +2,8 @@
 Views for the users app : auth, profile, user management.
 """
 
+import logging
+
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -24,6 +26,8 @@ from django.db import transaction
 from PIL import Image, UnidentifiedImageError
 
 from .models import User, AccessRole, AccessEvent
+
+logger = logging.getLogger(__name__)
 
 
 def available_shift_values(user):
@@ -315,8 +319,14 @@ class UpdateProfilePhotoView(APIView):
             return Response({'error': 'The uploaded profile image is invalid.'}, status=status.HTTP_400_BAD_REQUEST)
 
         user = request.user
+        old_photo_name = user.profile_photo.name if user.profile_photo else None
         user.profile_photo = photo
         user.save(update_fields=['profile_photo'])
+        if old_photo_name and old_photo_name != user.profile_photo.name:
+            try:
+                user.profile_photo.storage.delete(old_photo_name)
+            except Exception:
+                logger.exception('Unable to remove replaced profile photo %s', old_photo_name)
 
         serializer = UserProfileSerializer(user, context={'request': request})
         return Response({

@@ -26,13 +26,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 try:
-    import cloudinary
-    import cloudinary.uploader
-    CLOUDINARY_AVAILABLE = True
-except ImportError:
-    CLOUDINARY_AVAILABLE = False
-
-try:
     import filetype as filetype_lib
     FILETYPE_AVAILABLE = True
 except ImportError:
@@ -70,6 +63,7 @@ from .services.doc_mailer import (
     notify_doc_rejected,
 )
 from .services.dcr_pdf import generate_dcr_pdf
+from common.file_storage import save_uploaded_file
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -134,23 +128,13 @@ def _detect_mime(file):
     return mime or 'application/octet-stream'
 
 
-def _upload_to_cloudinary(file, file_type):
-    """Upload document file to Cloudinary."""
-    if not CLOUDINARY_AVAILABLE:
-        raise RuntimeError('Cloudinary is not configured.')
-
+def _upload_document(file, file_type, category_name=None):
+    """Upload a controlled document to private media storage."""
     year = datetime.now().year
-    resource_type = 'image' if file_type.startswith('image/') else 'raw'
-    folder = f'document_control/{year}'
-
-    result = cloudinary.uploader.upload(
-        file,
-        folder=folder,
-        resource_type=resource_type,
-        use_filename=True,
-        unique_filename=True,
-    )
-    return result
+    category = (category_name or 'general').strip('/').replace('..', '')
+    stored = save_uploaded_file(file, f'document_control/{year}/{category}')
+    # Preserve the response shape used by the existing persistence code.
+    return {'secure_url': None, 'public_id': stored.key}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -254,9 +238,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         file_type = _detect_mime(file)
 
         try:
-            upload_result = _upload_to_cloudinary(file, file_type)
+            upload_result = _upload_document(file, file_type)
         except Exception as exc:
-            logger.error('Cloudinary upload failed: %s', exc)
+            logger.error('Document upload failed: %s', exc)
             return Response({'error': f'File upload failed: {exc}'}, status=500)
 
         custom_doc_number = (request.data.get('document_number') or '').strip()
@@ -545,7 +529,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         category_name = original.category.name.lower().replace(' ', '_') if original.category else 'general'
 
         try:
-            upload_result = _upload_to_cloudinary(file, file_type, category_name)
+            upload_result = _upload_document(file, file_type, category_name)
         except Exception as exc:
             return Response({'error': f'Upload failed: {exc}'}, status=500)
 
@@ -605,7 +589,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         doc = self.get_object()
-        if not doc.cloudinary_url:
+        if not (doc.cloudinary_public_id or doc.cloudinary_url):
             return Response({'error': 'No file attached.'}, status=404)
 
         # Enforce preview permission
@@ -640,7 +624,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
 
         doc = self.get_object()
-        if not doc.cloudinary_url:
+        if not (doc.cloudinary_public_id or doc.cloudinary_url):
             return Response({'error': 'No file attached.'}, status=404)
 
         # Enforce download permission

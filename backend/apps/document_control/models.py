@@ -9,9 +9,12 @@ Two models:
 import uuid
 from django.conf import settings
 from django.db import models, transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 from common.dcr_numbers import next_dcr_number
+from common.file_storage import delete_stored_file
 
 
 class Document(models.Model):
@@ -444,4 +447,9 @@ class DCRNotification(models.Model):
 
     def __str__(self):
         return f'{self.recipient} : {self.title} ({self.created_at})'
+
+
+@receiver(post_delete, sender=Document)
+def delete_document_file(sender, instance, **kwargs):
+    delete_stored_file(instance.cloudinary_public_id)
 

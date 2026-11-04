@@ -15,6 +15,15 @@ class UserBasicSerializer(serializers.ModelSerializer):
 
 class MessageAttachmentSerializer(serializers.ModelSerializer):
     """Serializer for message attachments."""
+    cloudinary_url = serializers.SerializerMethodField()
+    thumbnail_url = serializers.SerializerMethodField()
+
+    def get_cloudinary_url(self, obj):
+        return obj.delivery_url
+
+    def get_thumbnail_url(self, obj):
+        return obj.thumbnail_delivery_url
+
     class Meta:
         model = MessageAttachment
         fields = [

@@ -4,11 +4,10 @@ from .models import BugReport
 class BugReportSerializer(serializers.ModelSerializer):
     user = serializers.ReadOnlyField(source='user.username')
     user_email = serializers.ReadOnlyField(source='user.email')
-    # Return the Cloudinary URL directly — already a full https:// URL
     screenshot = serializers.SerializerMethodField()
 
     def get_screenshot(self, obj):
-        return obj.screenshot_url or None
+        return obj.screenshot_delivery_url
 
     class Meta:
         model = BugReport

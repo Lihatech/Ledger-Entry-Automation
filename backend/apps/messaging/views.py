@@ -14,6 +14,7 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
+from common.file_storage import save_uploaded_file
 
 from apps.messaging.models import Conversation, Message, MessageAttachment, MessageRead, MessageReaction, ConversationClearHistory
 from apps.messaging.serializers import (
@@ -24,12 +25,6 @@ from apps.messaging.serializers import (
     MessageReactionSerializer,
     UserSearchSerializer
 )
-
-try:
-    import cloudinary
-    import cloudinary.uploader
-except ImportError:
-    cloudinary = None
 
 try:
     import filetype
@@ -656,7 +651,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 class FileUploadView(generics.CreateAPIView):
     """
     Upload file attachments for messages.
-    Hybrid storage: Images to Cloudinary, Documents to PostgreSQL.
+    Hybrid storage: images to private media storage, documents to PostgreSQL.
     """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
@@ -760,31 +755,8 @@ class FileUploadView(generics.CreateAPIView):
         # Upload based on type
         try:
             if attachment_type == MessageAttachment.AttachmentType.IMAGE:
-                # Check if Cloudinary is available
-                if not cloudinary:
-                    attachment.delete()
-                    return Response(
-                        {'error': 'Image upload service not configured'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
-
-                # Upload to Cloudinary
-                upload_result = cloudinary.uploader.upload(
-                    file,
-                    folder='messaging/images',
-                    resource_type='image'
-                )
-                attachment.cloudinary_url = upload_result['secure_url']
-                attachment.cloudinary_public_id = upload_result['public_id']
-
-                # Generate thumbnail
-                thumbnail_result = cloudinary.uploader.explicit(
-                    upload_result['public_id'],
-                    type='upload',
-                    eager=[{'width': 200, 'height': 200, 'crop': 'thumb'}]
-                )
-                if thumbnail_result.get('eager'):
-                    attachment.thumbnail_url = thumbnail_result['eager'][0]['secure_url']
+                stored = save_uploaded_file(file, 'messaging/images')
+                attachment.cloudinary_public_id = stored.key
             else:
                 # Store in PostgreSQL
                 attachment.file_data = file.read()
@@ -903,10 +875,10 @@ class DownloadAttachmentView(APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            # For images, redirect to Cloudinary URL
+            # For images, return a fresh short-lived media URL.
             if attachment.attachment_type == MessageAttachment.AttachmentType.IMAGE:
                 return Response({
-                    'url': attachment.cloudinary_url
+                    'url': attachment.delivery_url
                 })
 
             # For documents, serve from PostgreSQL

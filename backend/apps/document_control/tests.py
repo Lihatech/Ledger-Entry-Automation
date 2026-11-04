@@ -1,11 +1,30 @@
 import io
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.core.files.base import ContentFile
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 from apps.document_control.models import Document, DocumentChangeRequest, DCRNotification, DocumentUserPermission
+from apps.document_control.views import _upload_document
 
 User = get_user_model()
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class DocumentStorageTests(SimpleTestCase):
+    def test_upload_returns_storage_key_without_persisted_signed_url(self):
+        upload = ContentFile(b'%PDF-1.4 example', name='work-instruction.pdf')
+
+        result = _upload_document(upload, 'application/pdf')
+
+        self.assertTrue(result['public_id'].startswith('document_control/'))
+        self.assertTrue(result['public_id'].endswith('.pdf'))
+        self.assertIsNone(result['secure_url'])
 
 
 class AssignedDocumentWorkflowTests(TestCase):

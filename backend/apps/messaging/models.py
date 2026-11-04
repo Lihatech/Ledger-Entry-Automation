@@ -1,6 +1,9 @@
 import uuid
 from django.db import models
 from django.conf import settings
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+from common.file_storage import delete_stored_file, stored_file_url
 
 
 class Conversation(models.Model):
@@ -133,7 +136,7 @@ class Message(models.Model):
 class MessageAttachment(models.Model):
     """
     File attachments for messages.
-    Hybrid storage: Images in Cloudinary, Documents in PostgreSQL.
+    Hybrid storage: images in private media storage, documents in PostgreSQL.
     """
     class AttachmentType(models.TextChoices):
         IMAGE = 'image', 'Image'
@@ -155,7 +158,8 @@ class MessageAttachment(models.Model):
         choices=AttachmentType.choices
     )
 
-    # For images: Cloudinary URL
+    # Compatibility columns: cloudinary_public_id stores the media object key;
+    # cloudinary_url is a fallback for older records and API compatibility.
     cloudinary_url = models.URLField(blank=True, null=True)
     cloudinary_public_id = models.CharField(max_length=255, blank=True, null=True)
 
@@ -172,6 +176,26 @@ class MessageAttachment(models.Model):
 
     def __str__(self):
         return f"Attachment: {self.file_name}"
+
+    @property
+    def delivery_url(self):
+        return stored_file_url(self.cloudinary_public_id, self.cloudinary_url)
+
+    @property
+    def thumbnail_delivery_url(self):
+        return stored_file_url(self.cloudinary_public_id, self.thumbnail_url or self.cloudinary_url)
+
+
+@receiver(post_delete, sender=MessageAttachment)
+def delete_message_attachment_file(sender, instance, **kwargs):
+    if (
+        instance.attachment_type == MessageAttachment.AttachmentType.IMAGE
+        and instance.cloudinary_public_id
+        and not MessageAttachment.objects.filter(
+            cloudinary_public_id=instance.cloudinary_public_id
+        ).exists()
+    ):
+        delete_stored_file(instance.cloudinary_public_id)
 
 
 class MessageRead(models.Model):
