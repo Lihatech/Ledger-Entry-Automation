@@ -1,5 +1,4 @@
 import os
-import uuid
 import logging
 import threading
 from rest_framework import generics, status
@@ -12,6 +11,7 @@ from .models import Factory, Plant, Machine
 from .serializers import FactorySerializer, PlantSerializer, MachineSerializer, MachineListSerializer
 from apps.users.permissions import HasAccess
 from apps.users.access import OPERATIONAL_READ
+from common.file_storage import stored_file_url
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +112,7 @@ class FactoryUploadLogoView(APIView):
     """
     POST /api/machines/factories/<id>/upload-logo/
     Uploads a new company logo image file (multipart/form-data with 'logo' or 'file').
-    Saves to Cloudinary if configured, or local media storage.
-    Updates factory.logo and factory.logo_url with full absolute URL.
+    Saves to private media storage (S3 in production).
 
     DELETE /api/machines/factories/<id>/upload-logo/
     Removes the custom uploaded logo and resets logo_url to empty.
@@ -153,60 +152,33 @@ class FactoryUploadLogoView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 1. Try Cloudinary if available and configured
-        uploaded_to_cloudinary = False
         try:
-            import cloudinary
-            import cloudinary.uploader
-            if os.getenv('CLOUDINARY_CLOUD_NAME'):
-                upload_res = cloudinary.uploader.upload(
-                    file_obj,
-                    folder='company_logos',
-                    resource_type='image',
-                    public_id=f"factory_{factory.id}_{uuid.uuid4().hex[:8]}"
-                )
-                if upload_res and 'secure_url' in upload_res:
-                    secure_url = upload_res['secure_url']
-                    # Use .update() to safely bypass any bugged CloudinaryField pre_save
-                    Factory.objects.filter(pk=factory.pk).update(
-                        logo_url=secure_url,
-                        logo=upload_res.get('public_id', '')
-                    )
-                    factory.logo_url = secure_url
-                    uploaded_to_cloudinary = True
+            if factory.logo:
+                factory.logo.delete(save=False)
+            factory.logo = file_obj
+            factory.logo_url = ''
+            factory.save(update_fields=['logo', 'logo_url'])
+            # The asynchronous APK build may remain queued, so its download
+            # link is valid for one day rather than the normal short API TTL.
+            logo_url = stored_file_url(factory.logo.name, expires=86400)
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Cloudinary upload failed: {e}")
-
-        # 2. Local media storage fallback
-        if not uploaded_to_cloudinary:
-            try:
-                factory.logo = file_obj
-                factory.save()
-                absolute_url = request.build_absolute_uri(factory.logo.url)
-                factory.logo_url = absolute_url
-                Factory.objects.filter(pk=factory.pk).update(logo_url=absolute_url)
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Fallback local upload failed: {e}")
-                return Response(
-                    {'detail': 'Failed to upload logo. Ensure Cloudinary variables are configured.'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            logger.error('Company logo storage failed: %s', e)
+            return Response(
+                {'detail': 'Failed to upload logo.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         # Trigger async APK rebuild with the new launcher icon (non-blocking)
         threading.Thread(
             target=_trigger_apk_rebuild,
-            args=(factory.logo_url,),
+            args=(logo_url,),
             daemon=True,
         ).start()
 
         return Response({
             'success': True,
             'message': 'Company logo uploaded successfully.',
-            'logo_url': factory.logo_url,
+            'logo_url': logo_url,
             'factory_id': factory.id,
             'factory_name': factory.name,
         }, status=status.HTTP_200_OK)

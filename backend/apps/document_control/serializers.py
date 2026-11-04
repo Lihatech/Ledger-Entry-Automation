@@ -120,7 +120,7 @@ class DocumentListSerializer(serializers.ModelSerializer):
 
     def get_cloudinary_url(self, obj):
         if self._user_can_preview(obj):
-            return obj.cloudinary_url
+            return document_delivery_url(obj)
         return None
 
     def get_allowed_roles(self, obj):
@@ -481,7 +481,7 @@ class DCRDetailSerializer(DCRListSerializer):
     approved_by_name   = serializers.SerializerMethodField()
     rejected_by_name   = serializers.SerializerMethodField()
     implemented_by_name = serializers.SerializerMethodField()
-    cloudinary_url     = serializers.CharField(source='document.cloudinary_url', read_only=True)
+    cloudinary_url     = serializers.SerializerMethodField()
     company_name       = serializers.SerializerMethodField()
     company_logo_url   = serializers.SerializerMethodField()
 
@@ -505,7 +505,17 @@ class DCRDetailSerializer(DCRListSerializer):
     def get_company_logo_url(self, obj):
         from apps.machines.models import Factory
         f = Factory.objects.filter(is_active=True).first() or Factory.objects.first()
-        return f.logo_url if (f and f.logo_url) else ''
+        if not f:
+            return ''
+        try:
+            if f.logo and f.logo.name:
+                return f.logo.url
+        except Exception:
+            pass
+        return f.logo_url or ''
+
+    def get_cloudinary_url(self, obj):
+        return document_delivery_url(obj.document) if obj.document else None
 
     def get_reviewed_by_name(self, obj):
         return get_user_display(obj.reviewed_by)

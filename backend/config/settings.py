@@ -260,31 +260,35 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 25 * 1024 * 1024
 
 
-# ─── Cloudinary Configuration ──────────────────────────────────
-# For messaging module image storage (documents stored in PostgreSQL)
-try:
-    import cloudinary
-    cloudinary.config(
-        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME', ''),
-        api_key=os.getenv('CLOUDINARY_API_KEY', ''),
-        api_secret=os.getenv('CLOUDINARY_API_SECRET', ''),
-        secure=True
-    )
-except ImportError:
-    pass
+# ─── Private media storage ─────────────────────────────────────
+# Production uses a private S3 bucket through the EC2 instance IAM role. Local
+# development and tests continue using the filesystem when no bucket is set.
+AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '').strip()
+AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'ap-south-1').strip()
+AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL') or None
+AWS_S3_SIGNATURE_VERSION = 's3v4'
+AWS_QUERYSTRING_AUTH = True
+AWS_QUERYSTRING_EXPIRE = int(os.getenv('AWS_S3_PRESIGNED_EXPIRY', '900'))
+AWS_DEFAULT_ACL = None
+AWS_S3_FILE_OVERWRITE = False
+AWS_S3_OBJECT_PARAMETERS = {
+    'CacheControl': 'private, max-age=300',
+}
 
-# Railway containers are ephemeral. Store user uploads in the already-configured
-# Cloudinary account in production, while keeping local development dependency-free.
-_cloudinary_configured = all(os.getenv(key) for key in (
-    'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET',
-))
+_s3_configured = bool(AWS_STORAGE_BUCKET_NAME)
 STORAGES = {
     'default': {
-        'BACKEND': (
-            'common.storage.CloudinaryMediaStorage'
-            if _cloudinary_configured
-            else 'django.core.files.storage.FileSystemStorage'
-        ),
+        'BACKEND': 'storages.backends.s3.S3Storage' if _s3_configured else 'django.core.files.storage.FileSystemStorage',
+        'OPTIONS': {
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'region_name': AWS_S3_REGION_NAME,
+            'endpoint_url': AWS_S3_ENDPOINT_URL,
+            'location': 'media',
+            'default_acl': None,
+            'file_overwrite': False,
+            'querystring_auth': True,
+            'querystring_expire': AWS_QUERYSTRING_EXPIRE,
+        } if _s3_configured else {},
     },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',

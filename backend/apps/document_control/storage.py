@@ -1,11 +1,6 @@
-"""Helpers for delivering files stored in Cloudinary."""
+"""Helpers for delivering controlled documents from private media storage."""
 
-import os
-
-try:
-    from cloudinary.utils import private_download_url
-except ImportError:  # pragma: no cover - Cloudinary is required in deployment
-    private_download_url = None
+from common.file_storage import stored_file_url
 
 
 def _to_https(url):
@@ -16,34 +11,5 @@ def _to_https(url):
 
 def document_delivery_url(document):
     """Return a browser-readable URL for a stored document file."""
-    if not document.cloudinary_url or not document.cloudinary_public_id:
-        return _to_https(document.cloudinary_url)
-
-    # Images already use a public image delivery URL. Raw files (PDF, DOCX,
-    # XLSX, etc.) require Cloudinary's signed download endpoint in this cloud.
-    if document.file_type and document.file_type.startswith('image/'):
-        return _to_https(document.cloudinary_url)
-    if private_download_url is None:
-        return _to_https(document.cloudinary_url)
-
-    extension = os.path.splitext(document.file_name or '')[1].lstrip('.').lower()
-    if not extension:
-        return _to_https(document.cloudinary_url)
-
-    url = document.cloudinary_url
-    try:
-        url = private_download_url(
-            document.cloudinary_public_id,
-            format=extension,
-            resource_type='raw',
-            type='upload',
-            attachment=False,
-            secure=True,
-        )
-    except Exception:
-        url = document.cloudinary_url
-
-    if url and url.startswith('http://'):
-        url = 'https://' + url[7:]
-    return url
+    return _to_https(stored_file_url(document.cloudinary_public_id, document.cloudinary_url))
 

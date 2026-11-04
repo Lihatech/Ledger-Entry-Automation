@@ -10,6 +10,7 @@ from django.conf import settings
 from .models import BugReport
 from .serializers import BugReportSerializer
 from apps.users.permissions import HasAccess
+from common.file_storage import save_uploaded_file, stored_file_url
 from PIL import Image, UnidentifiedImageError
 import logging
 
@@ -89,14 +90,6 @@ class MobileUpdateView(APIView):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-# Try to import Cloudinary — gracefully degrade if not configured
-try:
-    import cloudinary
-    import cloudinary.uploader
-except ImportError:
-    cloudinary = None
-
-
 class BugReportListCreateView(generics.ListCreateAPIView):
     serializer_class = BugReportSerializer
     parser_classes = (MultiPartParser, FormParser)
@@ -110,7 +103,8 @@ class BugReportListCreateView(generics.ListCreateAPIView):
         return BugReport.objects.all()
 
     def perform_create(self, serializer):
-        # ── Upload screenshot to Cloudinary if provided ──────────────
+        # Store screenshots in the configured private media storage (S3 in
+        # production, filesystem in development).
         screenshot_url = None
         screenshot_public_id = None
         screenshot_file = self.request.FILES.get('screenshot')
@@ -125,25 +119,24 @@ class BugReportListCreateView(generics.ListCreateAPIView):
             except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as e:
                 raise serializers.ValidationError({'screenshot': str(e)})
 
-            if cloudinary:
-                try:
-                    upload_result = cloudinary.uploader.upload(
-                        screenshot_file,
-                        folder='bug_reports/screenshots',
-                        resource_type='image',
-                    )
-                    screenshot_url = upload_result.get('secure_url')
-                    screenshot_public_id = upload_result.get('public_id')
-                    logger.info(f"Bug report screenshot uploaded to Cloudinary: {screenshot_public_id}")
-                except Exception:
-                    logger.exception('Cloudinary screenshot upload failed; saving bug report without screenshot.')
-            else:
-                logger.warning("Cloudinary not configured — screenshot will not be stored.")
+            try:
+                stored = save_uploaded_file(screenshot_file, 'bug_reports/screenshots')
+                screenshot_public_id = stored.key
+                logger.info('Bug report screenshot stored: %s', screenshot_public_id)
+            except Exception:
+                logger.exception('Screenshot storage failed; saving bug report without screenshot.')
 
         bug_report = serializer.save(
             user=self.request.user,
             screenshot_url=screenshot_url,
             screenshot_public_id=screenshot_public_id,
+        )
+        # Email links remain valid for one day. Dashboard/API requests generate
+        # a fresh short-lived URL each time.
+        screenshot_delivery_url = stored_file_url(
+            bug_report.screenshot_public_id,
+            bug_report.screenshot_url,
+            expires=86400,
         )
 
         from django.utils.html import escape
@@ -174,7 +167,7 @@ class BugReportListCreateView(generics.ListCreateAPIView):
                             <p style="white-space: pre-wrap; margin-bottom: 0;">{safe_message}</p>
                         </div>
 
-                        {f'<p><strong>Screenshot:</strong> <a href="{bug_report.screenshot_url}">View Screenshot</a></p>' if bug_report.screenshot_url else ''}
+                        {f'<p><strong>Screenshot:</strong> <a href="{screenshot_delivery_url}">View Screenshot</a></p>' if screenshot_delivery_url else ''}
 
                         <p style="font-size: 14px; color: #6c757d; margin-bottom: 0;">Please check the admin dashboard for more details.</p>
                     </div>
@@ -189,7 +182,7 @@ User: {bug_report.user.username} ({bug_report.user.email})
 Status: {bug_report.get_status_display()}
 Message:
 {bug_report.message}
-{f"Screenshot: {bug_report.screenshot_url}" if bug_report.screenshot_url else ""}
+{f"Screenshot: {screenshot_delivery_url}" if screenshot_delivery_url else ""}
 
 Please check the admin dashboard for more details.
 """

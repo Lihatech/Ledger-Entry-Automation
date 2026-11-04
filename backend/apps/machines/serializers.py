@@ -18,15 +18,16 @@ class FactorySerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         ret = super().to_representation(instance)
-        # Safely resolve logo_url — CloudinaryField.url can raise if not configured
-        url = ret.get('logo_url') or ''
+        # Prefer a freshly generated storage URL because private S3 URLs expire.
+        url = ''
+        try:
+            logo = getattr(instance, 'logo', None)
+            if logo and logo.name:
+                url = logo.url
+        except Exception:
+            url = ''
         if not url:
-            try:
-                logo = getattr(instance, 'logo', None)
-                if logo and logo.name:  # name is None/empty when no file is stored
-                    url = logo.url
-            except Exception:
-                url = ''
+            url = ret.get('logo_url') or ''
         if url:
             if not (url.startswith('http://') or url.startswith('https://')):
                 request = self.context.get('request')

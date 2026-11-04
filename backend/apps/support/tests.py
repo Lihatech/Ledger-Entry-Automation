@@ -2,6 +2,9 @@ import io
 import json
 from unittest.mock import MagicMock, patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -40,6 +43,32 @@ class BugReportCreateTests(APITestCase):
             user=self.user,
             message='Second slot does not open',
         ).exists())
+
+    @override_settings(
+        STORAGES={
+            'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+            'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+        }
+    )
+    @patch('django.core.mail.EmailMultiAlternatives.send', return_value=1)
+    def test_screenshot_is_saved_with_storage_key(self, _send):
+        image_bytes = io.BytesIO()
+        Image.new('RGB', (4, 4), color='red').save(image_bytes, format='PNG')
+        screenshot = SimpleUploadedFile(
+            'problem.png', image_bytes.getvalue(), content_type='image/png'
+        )
+
+        response = self.client.post(
+            '/api/support/bug-reports/',
+            {'message': 'Screenshot example', 'screenshot': screenshot},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        report = BugReport.objects.get(message='Screenshot example')
+        self.assertTrue(report.screenshot_public_id.startswith('bug_reports/screenshots/'))
+        self.assertFalse(report.screenshot_url)
+        self.assertIn('bug_reports/screenshots/', response.data['screenshot'])
 
 
 class MobileUpdateTests(APITestCase):
