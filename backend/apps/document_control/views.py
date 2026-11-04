@@ -182,17 +182,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
         user = self.request.user
         if not user.has_access('document.view_unapproved'):
-            qs = qs.filter(status=Document.Status.APPROVED)
+            qs = qs.filter(Q(status=Document.Status.APPROVED) | Q(uploaded_by=user) | Q(reviewed_by=user) | Q(approved_by=user))
 
-        # Documents without an allow-list remain visible to all users with
-        # document access. A role allow-list is enforced for every non-admin
-        # viewer, including users who can upload documents; the uploader keeps
-        # owner visibility so they can continue managing their document.
         # ── Per-user permission visibility filter ────────────────────────────
         # A document is visible if:
         #   1. User is admin / superuser → no filter (sees everything)
         #   2. User is the uploader → always visible
         #   3. User has a DocumentUserPermission row with at least one True flag
+        #   4. User is the assigned reviewer or approver
         # Legacy allowed_roles is ignored going forward.
         is_manager = (
             user.is_superuser or
@@ -207,7 +204,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             ).values_list('document_id', flat=True)
 
             qs = qs.filter(
-                Q(id__in=accessible_doc_ids) | Q(uploaded_by=user)
+                Q(id__in=accessible_doc_ids) | Q(uploaded_by=user) | Q(reviewed_by=user) | Q(approved_by=user)
             ).distinct()
 
         params = self.request.query_params
@@ -433,11 +430,11 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='submit_review')
     def submit_review(self, request, pk=None):
         doc = self.get_object()
-        if not request.user.has_access('document.upload'):
+        if not (doc.reviewed_by_id == request.user.id or request.user.has_access('document.upload')):
             return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
-        # Allow assigned reviewer, uploader, or admin/supervisor
+        # Assignment grants workflow access without general upload permission.
         if doc.reviewed_by and doc.reviewed_by != user and getattr(user, 'role', '') not in ('admin', 'supervisor'):
             return Response({'error': 'Only the assigned reviewer or an admin can submit review.'}, status=403)
         if doc.reviewed_at is not None or doc.status not in (Document.Status.DRAFT, Document.Status.UNDER_REVIEW):
@@ -464,14 +461,14 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def approve(self, request, pk=None):
         doc = self.get_object()
-        if not request.user.has_access('document.approve'):
+        if not (doc.approved_by_id == request.user.id or request.user.has_access('document.approve')):
             return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
         # Allow assigned approver or admin
         if doc.approved_by and doc.approved_by != user and getattr(user, 'role', '') != 'admin':
             return Response({'error': 'Only the assigned approver or an admin can approve this document.'}, status=403)
-        if doc.status not in (Document.Status.DRAFT, Document.Status.UNDER_REVIEW, Document.Status.AWAITING_APPROVAL):
+        if doc.status != Document.Status.AWAITING_APPROVAL or doc.reviewed_at is None:
             return Response({'error': f'Cannot approve document with status {doc.status}.'}, status=400)
 
         doc.status = Document.Status.APPROVED
@@ -496,7 +493,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         doc = self.get_object()
-        if not request.user.has_access('document.approve'):
+        if not (request.user.id in (doc.reviewed_by_id, doc.approved_by_id) or request.user.has_access('document.approve')):
             return Response({'error': 'Permission denied.'}, status=403)
         user = request.user
 
@@ -507,6 +504,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
         )
         if not is_authorized:
             return Response({'error': 'Permission denied.'}, status=403)
+
+        if doc.status not in (Document.Status.UNDER_REVIEW, Document.Status.AWAITING_APPROVAL):
+            return Response({'error': 'Only documents awaiting review or approval can be rejected.'}, status=400)
 
         doc.status = Document.Status.REJECTED
         doc.save(update_fields=['status', 'updated_at'])

@@ -1,10 +1,56 @@
 import io
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 from apps.document_control.models import Document, DocumentChangeRequest, DCRNotification, DocumentUserPermission
 
 User = get_user_model()
+
+
+class AssignedDocumentWorkflowTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.owner = User.objects.create(username='workflow_owner', role='admin')
+        self.reviewer = User.objects.create(username='workflow_reviewer', role='operator', access_denials=['document.view_unapproved', 'document.upload', 'document.approve'])
+        self.approver = User.objects.create(username='workflow_approver', role='operator', access_denials=['document.view_unapproved', 'document.upload', 'document.approve'])
+        self.outsider = User.objects.create(username='workflow_outsider', role='operator')
+        self.doc = Document.objects.create(document_number='WORKFLOW-01', title='Workflow test', uploaded_by=self.owner, reviewed_by=self.reviewer, approved_by=self.approver, status='under_review')
+        self.url = f'/api/document-control/documents/{self.doc.pk}/'
+
+    def test_assignment_visibility_and_privacy(self):
+        for user in (self.reviewer, self.approver):
+            self.client.force_authenticate(user)
+            response = self.client.get(self.url)
+            self.assertEqual(response.status_code, 200)
+            self.assertTrue(response.data['my_permissions']['can_preview'])
+            response = self.client.get('/api/document-control/documents/')
+            rows = response.data.get('results', []) if isinstance(response.data, dict) else response.data
+            self.assertIn(str(self.doc.pk), [str(row['id']) for row in rows])
+        self.client.force_authenticate(self.outsider)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    @patch('apps.document_control.services.doc_mailer._send_async_email')
+    def test_sequential_review_approval_and_notification(self, mail):
+        self.client.force_authenticate(self.owner)
+        self.assertEqual(self.client.post(self.url + 'approve/').status_code, 400)
+        self.assertFalse(DCRNotification.objects.filter(document=self.doc).exists())
+        self.client.force_authenticate(self.reviewer)
+        self.assertEqual(self.client.post(self.url + 'submit_review/').status_code, 200)
+        self.assertTrue(DCRNotification.objects.filter(document=self.doc, recipient=self.approver, action_type='doc_approval_requested').exists())
+        self.assertEqual(self.client.post(self.url + 'submit_review/').status_code, 400)
+        self.client.force_authenticate(self.approver)
+        self.assertEqual(self.client.post(self.url + 'approve/').status_code, 200)
+        self.doc.refresh_from_db()
+        self.assertEqual(self.doc.status, 'approved')
+        self.assertIsNotNone(self.doc.reviewed_at)
+        self.assertEqual(self.client.post(self.url + 'reject/').status_code, 400)
+
+    @patch('apps.document_control.services.doc_mailer._send_async_email')
+    def test_assigned_reviewer_can_reject(self, mail):
+        self.client.force_authenticate(self.reviewer)
+        self.assertEqual(self.client.post(self.url + 'reject/', {'comment': 'Needs correction'}).status_code, 200)
+
 
 class DocumentControlSystemTests(TestCase):
     def setUp(self):

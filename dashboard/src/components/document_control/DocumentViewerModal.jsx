@@ -84,16 +84,14 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
 
   // Review is strictly visible ONLY before review is done
   const canReview = isReviewer && currentDoc.status === 'under_review' && !isReviewAlreadyDone;
-  // Approver sees only Approve once review is completed (awaiting_approval) or admin when under_review
-  const canApprove = isApprover && (currentDoc.status === 'awaiting_approval' || (userRole === 'admin' && currentDoc.status === 'under_review'));
-  const canReject = (isReviewer || isApprover) && ['draft', 'under_review', 'awaiting_approval'].includes(currentDoc.status);
+  // Approval is available only after review has completed, including for admins.
+  const canApprove = isApprover && currentDoc.status === 'awaiting_approval' && Boolean(currentDoc.reviewed_at);
+  const canReject = (isReviewer || isApprover) && ['under_review', 'awaiting_approval'].includes(currentDoc.status);
 
   const handleReview = async () => {
-    const comment = window.prompt("Optional review comment (e.g., 'Checked and recommended for approval'):", "Reviewed and recommended.");
-    if (comment === null) return;
     setActionLoading(true);
     try {
-      const res = await submitForReview(currentDoc.id, comment);
+      const res = await submitForReview(currentDoc.id);
       const updatedDoc = res.data?.document;
       const userDisplayName = (user?.first_name || user?.last_name) ? `${user.first_name} ${user.last_name}`.trim() : user?.username;
       setCurrentDoc(prev => ({
@@ -113,11 +111,9 @@ export default function DocumentViewerModal({ doc, onClose, onRequestDCR, canReq
   };
 
   const handleApprove = async () => {
-    const comment = window.prompt("Approval comment (optional):", "Approved and officially released.");
-    if (comment === null) return;
     setActionLoading(true);
     try {
-      const res = await approveDocument(currentDoc.id, comment);
+      const res = await approveDocument(currentDoc.id);
       const updatedDoc = res.data?.document;
       const userDisplayName = (user?.first_name || user?.last_name) ? `${user.first_name} ${user.last_name}`.trim() : user?.username;
       setCurrentDoc(prev => ({

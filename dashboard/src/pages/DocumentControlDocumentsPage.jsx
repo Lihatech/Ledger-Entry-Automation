@@ -804,26 +804,37 @@ export default function DocumentControlDocumentsPage() {
   const [filters, setFilters] = useState({ status: '', search: '' });
   const [searchParams, setSearchParams] = useSearchParams();
   const previewId = searchParams.get('preview');
+  const [previewError, setPreviewError] = useState('');
 
   useEffect(() => {
+    let cancelled = false;
+    setPreviewError('');
     if (previewId) {
       if (docs.length > 0) {
         const found = docs.find(d => String(d.id) === String(previewId));
         if (found) {
           if (canPreviewDocument(found)) {
             setSelectedViewerDoc(found);
+          } else {
+            setPreviewError('You do not have permission to preview this document.');
           }
           return;
         }
       }
       getDocumentById(previewId)
         .then(res => {
+          if (cancelled) return;
           if (res.data && canPreviewDocument(res.data)) {
             setSelectedViewerDoc(res.data);
+          } else {
+            setPreviewError('You do not have permission to preview this document.');
           }
         })
-        .catch(err => console.error("Failed to load document preview from URL", err));
+        .catch(() => {
+          if (!cancelled) setPreviewError('The document could not be opened. It may be unavailable or you may not have access. Please refresh or contact the uploader.');
+        });
     }
+    return () => { cancelled = true; };
   }, [previewId, docs]);
 
   // Modals state
@@ -964,6 +975,7 @@ export default function DocumentControlDocumentsPage() {
       />
 
       <div className="page-content bg-gradient-animated">
+        {previewError && <div role="alert" style={{ padding: '12px', marginBottom: '16px', color: '#b91c1c', background: '#fef2f2' }}>{previewError}</div>}
         <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
           <Breadcrumbs items={[{ label: 'Document Control', to: '/document-control' }, { label: 'Documents (L1 : L4)' }]} />
         {/* Action Toolbar */}
