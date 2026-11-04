@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.users.models import User
-from .models import Conversation, Message, MessageAttachment
+from apps.messaging.models import Conversation, Message, MessageAttachment
 
 
 @override_settings(
