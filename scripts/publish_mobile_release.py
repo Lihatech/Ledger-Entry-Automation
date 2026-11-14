@@ -36,21 +36,26 @@ def main() -> None:
         'mandatory': args.mandatory,
     }
 
+    addressing_style = os.environ.get('MOBILE_RELEASES_ADDRESSING_STYLE', 'path').strip()
+    region = os.environ.get('MOBILE_RELEASES_REGION', 'auto').strip()
     client = boto3.client(
         's3',
         endpoint_url=os.environ['MOBILE_RELEASES_ENDPOINT'],
-        region_name=os.environ.get('MOBILE_RELEASES_REGION', 'auto'),
+        region_name=region,
         aws_access_key_id=os.environ['MOBILE_RELEASES_ACCESS_KEY_ID'],
         aws_secret_access_key=os.environ['MOBILE_RELEASES_SECRET_ACCESS_KEY'],
-        config=Config(signature_version='s3v4', s3={'addressing_style': 'virtual'}),
+        config=Config(signature_version='s3v4', s3={'addressing_style': addressing_style}),
     )
     bucket = os.environ['MOBILE_RELEASES_BUCKET']
-    client.upload_file(
-        str(args.apk),
-        bucket,
-        object_key,
-        ExtraArgs={'ContentType': 'application/vnd.android.package-archive'},
-    )
+    # A release APK is well below S3's 5 GB single-PUT limit. Using one PUT
+    # avoids multipart-signature incompatibilities with S3-compatible stores.
+    with args.apk.open('rb') as apk_stream:
+        client.put_object(
+            Bucket=bucket,
+            Key=object_key,
+            Body=apk_stream,
+            ContentType='application/vnd.android.package-archive',
+        )
     client.put_object(
         Bucket=bucket,
         Key='android/latest.json',
