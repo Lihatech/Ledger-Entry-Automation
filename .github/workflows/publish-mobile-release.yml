@@ -2,6 +2,16 @@ name: Publish Mobile Update
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'mobile/lib/**'
+      - 'mobile/pubspec.yaml'
+      - 'mobile/pubspec.lock'
+      - 'mobile/android/**'
+      - 'mobile/assets/**'
+      - 'scripts/publish_mobile_release.py'
+      - '.github/workflows/publish-mobile-release.yml'
     tags:
       - 'mobile-v*'
   workflow_dispatch:
@@ -16,6 +26,10 @@ on:
         required: false
         default: false
         type: boolean
+
+concurrency:
+  group: mobile-release-publish
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -59,17 +73,20 @@ jobs:
           flutter pub get
           flutter build apk --release --dart-define=API_BASE_URL=https://ledgerautomation.duckdns.org/api --dart-define=SENTRY_DSN=https://10c9de2439f439ae8a020750049ef8ca@o4512253878992896.ingest.de.sentry.io/4512253900161104
 
-      - name: Publish APK to Railway
+      - name: Publish APK to release storage
         env:
           MOBILE_RELEASES_ENDPOINT: ${{ secrets.MOBILE_RELEASES_ENDPOINT }}
           MOBILE_RELEASES_BUCKET: ${{ secrets.MOBILE_RELEASES_BUCKET }}
           MOBILE_RELEASES_REGION: ${{ secrets.MOBILE_RELEASES_REGION }}
           MOBILE_RELEASES_ACCESS_KEY_ID: ${{ secrets.MOBILE_RELEASES_ACCESS_KEY_ID }}
           MOBILE_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.MOBILE_RELEASES_SECRET_ACCESS_KEY }}
-          RELEASE_NOTES: ${{ inputs.release_notes || 'Bug fixes and improvements.' }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
           MANDATORY: ${{ inputs.mandatory || false }}
         run: |
           pip install boto3
+          if [ -z "$RELEASE_NOTES" ]; then
+            RELEASE_NOTES="Automated mobile update from ${GITHUB_SHA::7}."
+          fi
           EXTRA_ARGS=()
           if [ "$MANDATORY" = "true" ]; then EXTRA_ARGS+=(--mandatory); fi
           python scripts/publish_mobile_release.py \
