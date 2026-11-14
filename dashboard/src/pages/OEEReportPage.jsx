@@ -129,6 +129,7 @@ export default function OEEReportPage() {
 
   const currentYear = today.getFullYear();
   const years = Array.from({ length: Math.max(3, currentYear - 2024 + 2) }, (_, i) => 2024 + i);
+  const hasSubmittedReports = reportData?.data?.some(row => row.has_report) || false;
 
   return (
     <>
@@ -149,18 +150,18 @@ export default function OEEReportPage() {
             
             <button
               onClick={handleDownload}
-              disabled={downloading || !selectedMachine || !reportData || reportData.data.length === 0}
+              disabled={downloading || !selectedMachine || !hasSubmittedReports}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 20px',
-                background: (downloading || !selectedMachine || !reportData || reportData.data.length === 0) ? '#9CA3AF' : '#1D4ED8',
+                background: (downloading || !selectedMachine || !hasSubmittedReports) ? '#9CA3AF' : '#1D4ED8',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontWeight: 600,
-                cursor: (downloading || !selectedMachine || !reportData || reportData.data.length === 0) ? 'not-allowed' : 'pointer',
+                cursor: (downloading || !selectedMachine || !hasSubmittedReports) ? 'not-allowed' : 'pointer',
                 transition: 'background 0.2s'
               }}
             >
@@ -332,24 +333,32 @@ export default function OEEReportPage() {
                           </td>
                         )}
                         <td style={{ padding: '10px 16px', color: '#4B5563' }}>{row.shift}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.available_time}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.planned_downtime}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.net_available}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.downtime_losses}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.st || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.nl || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.no || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.mm || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.ow || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.pf || 0}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.operating_time}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.availability}%</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.total_qty}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.cycle_time}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.performance}%</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.rejection}</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.quality_rate}%</td>
-                        <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 700, color: '#1D4ED8', background: '#EFF6FF' }}>{row.oee}%</td>
+                        {row.has_report ? (
+                          <>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.available_time}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.planned_downtime}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.net_available}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.downtime_losses}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.st || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.nl || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.no || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.mm || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.ow || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', color: '#6B7280' }}>{row.downtimes?.pf || 0}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.operating_time}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.availability}%</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.total_qty}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right' }}>{row.cycle_time}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.performance}%</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB' }}>{row.rejection}</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 500 }}>{row.quality_rate}%</td>
+                            <td style={{ padding: '10px 16px', textAlign: 'right', borderLeft: '1px solid #E5E7EB', fontWeight: 700, color: '#1D4ED8', background: '#EFF6FF' }}>{row.oee}%</td>
+                          </>
+                        ) : (
+                          <td colSpan={18} style={{ padding: '10px 16px', color: '#92400E', background: '#FFFBEB', fontStyle: 'italic' }}>
+                            No report submitted
+                          </td>
+                        )}
                       </tr>
                       );
                     })}

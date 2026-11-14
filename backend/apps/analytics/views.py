@@ -401,6 +401,19 @@ class MonthlyOEEReportView(APIView):
                 status=400
             )
 
+        from apps.inspections.models import DailyProductionReport
+        has_reports = DailyProductionReport.objects.filter(
+            machine__machine_code=machine_code,
+            date__year=year,
+            date__month=month,
+            status=DailyProductionReport.Status.SUBMITTED,
+        ).exists()
+        if not has_reports:
+            return Response(
+                {"error": "No submitted production reports found for this machine and month."},
+                status=404,
+            )
+
         from apps.analytics.oee_excel_generator import generate_monthly_oee_excel
         from django.http import HttpResponse
         
@@ -554,6 +567,7 @@ class OEEDataAPIView(APIView):
                 
                 data.append({
                     "id": report.id if report else str(uuid.uuid4()),
+                    "has_report": report is not None,
                     "shift": shift_val,
                     "date": date_str,
                     "available_time": available_time,
