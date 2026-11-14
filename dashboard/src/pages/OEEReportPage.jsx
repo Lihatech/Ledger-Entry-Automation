@@ -129,6 +129,7 @@ export default function OEEReportPage() {
 
   const currentYear = today.getFullYear();
   const years = Array.from({ length: Math.max(3, currentYear - 2024 + 2) }, (_, i) => 2024 + i);
+  const hasSubmittedReports = reportData?.data?.some(row => row.has_report) || false;
 
   return (
     <>
@@ -149,18 +150,18 @@ export default function OEEReportPage() {
             
             <button
               onClick={handleDownload}
-              disabled={downloading || !selectedMachine || !reportData || reportData.data.length === 0}
+              disabled={downloading || !selectedMachine || !hasSubmittedReports}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '10px 20px',
-                background: (downloading || !selectedMachine || !reportData || reportData.data.length === 0) ? '#9CA3AF' : '#1D4ED8',
+                background: (downloading || !selectedMachine || !hasSubmittedReports) ? '#9CA3AF' : '#1D4ED8',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontWeight: 600,
-                cursor: (downloading || !selectedMachine || !reportData || reportData.data.length === 0) ? 'not-allowed' : 'pointer',
+                cursor: (downloading || !selectedMachine || !hasSubmittedReports) ? 'not-allowed' : 'pointer',
                 transition: 'background 0.2s'
               }}
             >
