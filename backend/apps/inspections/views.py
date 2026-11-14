@@ -1810,19 +1810,14 @@ class SetupApprovalView(APIView):
 
 
 class SetupApprovalPDFView(APIView):
-    """Generate a PDF directly from the persisted SetupApproval record."""
+    """Generate the official F02 PDF directly from the persisted SetupApproval record."""
 
     permission_classes = [HasAccess]
     access_key = 'quality.reports.view'
 
     def get(self, request, setup_id):
-        from io import BytesIO
-        from django.http import FileResponse
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
         from apps.inspections.models import SetupApproval
+        from .pdf_generator import generate_setup_approval_pdf
 
         qs = SetupApproval.objects.select_related('machine', 'template').filter(pk=setup_id)
         if getattr(request.user, 'plant_id', None):
@@ -1831,38 +1826,20 @@ class SetupApprovalPDFView(APIView):
         if not setup:
             return Response({'error': 'Setup approval report not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=24, leftMargin=24, topMargin=24, bottomMargin=24)
-        styles = getSampleStyleSheet()
-        story = [
-            Paragraph('Setup Approval Report', styles['Title']),
-            Paragraph(f'Machine: {setup.machine.machine_code} | Part: {setup.part_number} | Inspector: {setup.inspector_name or "-"}', styles['Normal']),
-            Paragraph(f'Submitted: {setup.submitted_at:%Y-%m-%d %H:%M} | Status: {setup.status}', styles['Normal']),
-            Spacer(1, 12),
-        ]
-        rows = [['Parameter', 'Description', 'Trial 1', 'Trial 2', 'Trial 3']]
         report = SetupApprovalView()._report_payload(setup, setup.submitted_at.date())
-        for entry in (report.get('product_parameters', []) + report.get('process_parameters', [])):
-            rows.append([
-                str(entry.get('parameter_code', '')),
-                str(entry.get('parameter_name', '')),
-                str(entry.get('trial_1', '-')),
-                str(entry.get('trial_2', '-')),
-                str(entry.get('trial_3', '-')),
-            ])
-        table = Table(rows, repeatRows=1, colWidths=[90, 260, 90, 90, 90])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('PADDING', (0, 0), (-1, -1), 6),
-        ]))
-        story.append(table)
-        doc.build(story)
-        buffer.seek(0)
+        try:
+            pdf_path = generate_setup_approval_pdf(setup, report)
+        except Exception:
+            logger.exception("Failed to generate setup approval PDF for %s", setup_id)
+            return Response({'error': 'Unable to generate the setup approval PDF.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        abs_pdf_path = os.path.join(settings.MEDIA_ROOT, '..', pdf_path)
+        if not os.path.exists(abs_pdf_path):
+            abs_pdf_path = os.path.join(settings.BASE_DIR, pdf_path)
+        if not os.path.exists(abs_pdf_path):
+            return Response({'error': 'PDF report file not found.'}, status=status.HTTP_404_NOT_FOUND)
         filename = f'Setup_Approval_{setup.submitted_at:%Y-%m-%d}_{setup.machine.machine_code}.pdf'
-        return FileResponse(buffer, content_type='application/pdf', as_attachment=True, filename=filename)
+        return FileResponse(open(abs_pdf_path, 'rb'), content_type='application/pdf', as_attachment=True, filename=filename)
 
     def post(self, request):
         """

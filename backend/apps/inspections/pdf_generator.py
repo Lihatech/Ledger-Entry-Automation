@@ -358,6 +358,133 @@ def generate_first_piece_pdf(session, doc_data: dict) -> str:
     return f"media/pdf_reports/{file_name}"
 
 
+def generate_setup_approval_pdf(setup, report_data: dict) -> str:
+    """Generate the official F02 layout for a persisted SetupApproval record."""
+    media_pdf_dir = os.path.join(settings.MEDIA_ROOT, 'pdf_reports')
+    os.makedirs(media_pdf_dir, exist_ok=True)
+
+    date_str = setup.submitted_at.strftime('%Y-%m-%d')
+    machine_code = setup.machine.machine_code or 'MCH'
+    safe_machine_code = machine_code.replace('/', '_')
+    file_name = f"Setup_Approval_{date_str}_{safe_machine_code}_{str(setup.id)[:8]}.pdf"
+    file_path = os.path.join(media_pdf_dir, file_name)
+    temp_file_path = f"{file_path}.{uuid.uuid4().hex}.tmp"
+
+    page_width, page_height = landscape(A4)
+    margin = 15
+    usable_width = page_width - (2 * margin)
+    doc = SimpleDocTemplate(
+        temp_file_path,
+        pagesize=landscape(A4),
+        rightMargin=margin,
+        leftMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
+    )
+
+    title_style = ParagraphStyle('SetupTitle', fontName='Helvetica-Bold', fontSize=12, alignment=1)
+    subtitle_style = ParagraphStyle('SetupSubtitle', fontName='Helvetica-Bold', fontSize=9.5, alignment=1, textColor=colors.HexColor('#1E40AF'))
+    ref_style = ParagraphStyle('SetupRef', fontName='Helvetica-Bold', fontSize=7, alignment=2)
+    cell = ParagraphStyle('SetupCell', fontName='Helvetica', fontSize=7, alignment=1, leading=8, wordWrap='CJK')
+    left_cell = ParagraphStyle('SetupLeftCell', fontName='Helvetica', fontSize=7, alignment=0, leading=8, wordWrap='CJK')
+    bold = ParagraphStyle('SetupBold', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, wordWrap='CJK')
+    header = ParagraphStyle('SetupHeader', fontName='Helvetica-Bold', fontSize=7, alignment=1, leading=8, textColor=colors.HexColor('#334155'), wordWrap='CJK')
+    critical = ParagraphStyle('SetupCritical', parent=bold, textColor=colors.red)
+    process = ParagraphStyle('SetupProcess', parent=bold, textColor=colors.HexColor('#1E40AF'))
+    section = ParagraphStyle('SetupSection', parent=bold, fontSize=7, textColor=colors.HexColor('#1E40AF'), leading=8, wordWrap='CJK')
+
+    esc = _xml_escape
+    factory_name, factory_code = get_factory_info(setup)
+    template = setup.template
+    part = template.part
+    operation = getattr(template, 'operation_key', None) or getattr(template, 'version', None) or template.name or '-'
+    inspector = setup.inspector_name or (setup.inspector.get_full_name() if setup.inspector else 'Inspector')
+    status = str(setup.status or 'submitted').replace('_', ' ').upper()
+    submitted = setup.submitted_at.strftime('%d %b %Y | Shift I')
+
+    elements = []
+    elements.append(Table([[
+        Paragraph(esc(factory_code), ParagraphStyle('FactoryCode', fontName='Helvetica-Bold', fontSize=16, textColor=colors.white, alignment=1)),
+        [Paragraph(esc(factory_name).upper(), title_style), Paragraph(f"FIRST PIECE SETUP APPROVAL REPORT — PROCESS NO. {esc(operation)}", subtitle_style)],
+        Paragraph(f"DOC REF: {esc(factory_code)}/PRD/F02<br/>REV: 02 (15.0.2013)<br/>PAGE 1 OF 1", ref_style),
+    ]], colWidths=[90, usable_width - 240, 150], style=TableStyle([
+        ('BACKGROUND', (0, 0), (0, 0), colors.black), ('BOX', (0, 0), (-1, -1), 1, colors.black),
+        ('INNERGRID', (0, 0), (-1, -1), 1, colors.black), ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2), ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3), ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ])))
+    elements.append(Table([
+        [Paragraph(f"PROCESS NO: <b>{esc(operation)}</b>", left_cell), Paragraph(f"PART NAME &amp; NO: <b>{esc(setup.part_number or part.part_number)} ({esc(part.part_name)})</b>", left_cell), Paragraph(f"INSPECTOR / OPERATOR: <b>{esc(inspector)}</b>", left_cell)],
+        [Paragraph(f"MACHINE NO: <b>{esc(machine_code)}</b>", left_cell), Paragraph(f"DATE &amp; SHIFT: <b>{esc(submitted)}</b>", left_cell), Paragraph(f"SETUP STATUS: <b>{esc(status)}</b>", left_cell)],
+    ], colWidths=[150, usable_width - 330, 180], style=TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black), ('INNERGRID', (0, 0), (-1, -1), 1, colors.black),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('BACKGROUND', (2, 1), (2, 1), colors.HexColor('#F0FDF4')), ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3), ('TOPPADDING', (0, 0), (-1, -1), 3), ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ])))
+
+    rows = [[Paragraph('P.N O', header), Paragraph('NO', header), Paragraph('PARAMETER NAME & DESCRIPTION', header), Paragraph('CLASS', header), Paragraph('SPECIFICATION', header), Paragraph('EVALUATION TECHNIQUE', header), Paragraph('SAMPLE FREQ', header), Paragraph('1ST #1', header), Paragraph('1ST #2', header), Paragraph('1ST #3', header)]]
+    products = [p for p in (report_data.get('product_parameters') or []) if isinstance(p, dict)]
+    processes = [p for p in (report_data.get('process_parameters') or []) if isinstance(p, dict)]
+    all_params = [(p, False, i) for i, p in enumerate(products)] + [(p, True, i) for i, p in enumerate(processes)]
+    for row_index, (p, is_process, index) in enumerate(all_params, start=1):
+        name = p.get('parameter_name') or p.get('parameter_code') or '-'
+        if is_process:
+            label, class_name, method, sample, spec = f"[PROC] {name}", 'PROC', 'CHECKLIST / DISPLAY', p.get('sample_frequency') or '1ST PC ONLY', p.get('specification') or '-'
+            class_style = process
+        else:
+            label, class_name = name, 'CRITICAL' if p.get('is_critical') or p.get('critical') else '-'
+            method = p.get('evaluation_technique') or p.get('method') or 'VERNIER CALIPER'
+            sample = p.get('sample_frequency') or p.get('sample_size') or '5NOS/SHIFT'
+            nominal = p.get('nominal_value', p.get('nominal', '-'))
+            lower = p.get('lower_tolerance', p.get('lower_limit'))
+            upper = p.get('upper_tolerance', p.get('upper_limit'))
+            spec = f"{esc(nominal)} {esc(p.get('unit') or 'mm')}"
+            if lower is not None and upper is not None:
+                spec += f"<br/><font color='#64748B'>[{esc(lower)} to {esc(upper)}]</font>"
+            class_style = critical if class_name == 'CRITICAL' else cell
+        rows.append([
+            Paragraph(('PROCESS<br/>PARAMETER' if is_process else 'PRODUCT<br/>PARAMETER') if index == 0 else '', section),
+            Paragraph(str(index + 1).zfill(2), bold), Paragraph(esc(label), left_cell),
+            Paragraph(esc(class_name), class_style), Paragraph(spec, bold), Paragraph(esc(method), cell), Paragraph(esc(sample), cell),
+            Paragraph(esc(p.get('trial_1', '-')), bold), Paragraph(esc(p.get('trial_2', '-')), bold), Paragraph(esc(p.get('trial_3', '-')), bold),
+        ])
+    col_widths = [usable_width * value for value in (0.035, 0.035, 0.22, 0.06, 0.15, 0.15, 0.10, 0.08, 0.08, 0.08)]
+    table = Table(rows, colWidths=col_widths, repeatRows=1)
+    table.setStyle(TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black), ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#64748B')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')), ('BACKGROUND', (7, 0), (7, 0), colors.HexColor('#DBEAFE')),
+        ('BACKGROUND', (8, 0), (8, 0), colors.HexColor('#FEF3C7')), ('BACKGROUND', (9, 0), (9, 0), colors.HexColor('#D1FAE5')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'), ('LEFTPADDING', (0, 0), (-1, -1), 2), ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 3), ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    if products:
+        table.setStyle(TableStyle([
+            ('SPAN', (0, 1), (0, len(products))),
+            ('VALIGN', (0, 1), (0, len(products)), 'MIDDLE'),
+        ]))
+    if processes:
+        start = 1 + len(products)
+        table.setStyle(TableStyle([('SPAN', (0, start), (0, start + len(processes) - 1)), ('VALIGN', (0, start), (0, start + len(processes) - 1), 'MIDDLE')]))
+    elements.append(table)
+    elements.append(Table([[Paragraph("REACTION PLAN: <font color='#4B5563'>REJECT, REWORK, SEGREGATE, INFORM SUPERVISOR OR READJUST THE PROCESS</font>", bold)]], colWidths=[usable_width], style=TableStyle([
+        ('BOX', (0, 0), (-1, -1), 1, colors.black), ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')), ('PADDING', (0, 0), (-1, -1), 4),
+    ])))
+    footer = Table([[Paragraph(f"<i>{esc(inspector)}</i>", cell), Paragraph(f"<i>{esc(inspector)}</i>", cell), Paragraph('<i>Supervisor Sign</i>', cell)], ['', '', ''], [Paragraph('<b>OPERATOR SIGNATURE</b>', bold), Paragraph('<b>QUALITY INSPECTOR SIGNATURE</b>', bold), Paragraph('<b>SUPERVISOR SIGNATURE</b>', bold)]], colWidths=[usable_width / 3] * 3, style=TableStyle([
+        ('LINEABOVE', (0, 1), (-1, 1), 0.6, colors.black), ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'), ('PADDING', (0, 0), (-1, -1), 2),
+    ]))
+    elements.append(Spacer(1, 8))
+    elements.append(footer)
+    try:
+        doc.build(elements)
+        os.replace(temp_file_path, file_path)
+    except Exception:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+        raise
+    return f"media/pdf_reports/{file_name}"
+
+
 def generate_daily_production_pdf(report) -> str:
     media_pdf_dir = os.path.join(settings.MEDIA_ROOT, 'pdf_reports')
     os.makedirs(media_pdf_dir, exist_ok=True)
