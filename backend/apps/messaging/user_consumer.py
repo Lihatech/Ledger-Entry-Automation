@@ -113,6 +113,13 @@ class UserNotificationConsumer(AsyncWebsocketConsumer):
             'data': event['data']
         }))
 
+    async def task_assigned_notification(self, event):
+        """Send a newly assigned task to the global notification bell."""
+        await self.send(text_data=json.dumps({
+            'type': 'task_assigned_notification',
+            'data': event['data'],
+        }))
+
     @database_sync_to_async
     def get_user(self, user_id):
         """Get user by ID."""

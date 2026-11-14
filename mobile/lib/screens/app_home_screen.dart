@@ -660,6 +660,14 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
     await notificationProvider.markAsRead(item);
     if (!mounted) return;
 
+    if (item.action == '/tasks' || item.action == 'open_tasks') {
+      Navigator.of(modalContext).pop();
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const TasksScreen()),
+      );
+      return;
+    }
+
     if (item.category != NotificationCategory.message &&
         item.category != NotificationCategory.dcr &&
         item.category != NotificationCategory.document) {
