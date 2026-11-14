@@ -554,6 +554,7 @@ class OEEDataAPIView(APIView):
                 
                 data.append({
                     "id": report.id if report else str(uuid.uuid4()),
+                    "has_report": report is not None,
                     "shift": shift_val,
                     "date": date_str,
                     "available_time": available_time,
