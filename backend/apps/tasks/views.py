@@ -6,6 +6,8 @@ from django.db.models import Q
 from django.core.mail import send_mail
 from django.conf import settings
 import threading
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from .models import Task, TaskAttachment
 from .serializers import TaskSerializer, TaskCreateSerializer, TaskCompleteSerializer
 from apps.users.permissions import HasAccess
@@ -47,6 +49,37 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = TaskCreateSerializer(data=request.data)
         if serializer.is_valid():
             task = serializer.save(allocated_by=user)
+
+            # Keep task assignments in the same global notification stream as
+            # document-control notifications. The WebSocket event makes the
+            # notification appear immediately; the database row preserves it
+            # for users who were offline when the task was assigned.
+            from apps.document_control.models import DCRNotification
+
+            notification = DCRNotification.objects.create(
+                recipient=task.allocated_to,
+                title='New task assigned',
+                message=f"{task.title} was assigned to you by {user.get_full_name() or user.username}.",
+                action_type=DCRNotification.ActionType.GENERAL,
+                action_url='/tasks',
+            )
+            channel_layer = get_channel_layer()
+            if channel_layer is not None:
+                async_to_sync(channel_layer.group_send)(
+                    f'user_notifications_{task.allocated_to_id}',
+                    {
+                        'type': 'task_assigned_notification',
+                        'data': {
+                            'id': notification.id,
+                            'title': notification.title,
+                            'message': notification.message,
+                            'action_type': notification.action_type,
+                            'action_url': notification.action_url,
+                            'is_read': notification.is_read,
+                            'created_at': notification.created_at.isoformat(),
+                        },
+                    },
+                )
             
             # Send email notification in background
             if task.allocated_to and task.allocated_to.email:

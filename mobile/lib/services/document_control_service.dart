@@ -182,6 +182,7 @@ class DCRNotification {
   final String title;
   final String message;
   final String notificationType;
+  final String? actionUrl;
   final int? dcrId;
   final String? dcrNumber;
   final bool isRead;
@@ -192,6 +193,7 @@ class DCRNotification {
     required this.title,
     required this.message,
     required this.notificationType,
+    this.actionUrl,
     this.dcrId,
     this.dcrNumber,
     required this.isRead,
@@ -203,7 +205,10 @@ class DCRNotification {
         id: json['id'] as int,
         title: json['title'] as String? ?? '',
         message: json['message'] as String? ?? '',
-        notificationType: json['notification_type'] as String? ?? 'system',
+        notificationType:
+            (json['notification_type'] ?? json['action_type']) as String? ??
+            'system',
+        actionUrl: json['action_url'] as String?,
         dcrId: json['dcr'] as int?,
         dcrNumber: json['dcr_number'] as String?,
         isRead: json['is_read'] as bool? ?? false,

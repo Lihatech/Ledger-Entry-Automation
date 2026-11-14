@@ -69,6 +69,23 @@ class NotificationProvider extends ChangeNotifier {
   }
 
   void _handleMessageSocketEvent(Map<String, dynamic> event) {
+    if (event['type'] == 'task_assigned_notification') {
+      final data = event['data'];
+      if (data is! Map) return;
+      addOrUpdate(
+        NotificationItem(
+          id: 'dcr-${data['id']}',
+          category: NotificationCategory.system,
+          title: data['title']?.toString() ?? 'New task assigned',
+          message: data['message']?.toString() ?? '',
+          createdAt: DateTime.tryParse(data['created_at']?.toString() ?? ''),
+          backendNotificationId: int.tryParse('${data['id']}'),
+          action: data['action_url']?.toString() ?? '/tasks',
+          metadata: {'notification_type': data['action_type'] ?? 'general'},
+        ),
+      );
+      return;
+    }
     if (event['type'] != 'new_message_notification') return;
     final data = event['data'];
     if (data is! Map) return;

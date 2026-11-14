@@ -107,6 +107,7 @@ class NotificationService {
       backendNotificationId: notification.id,
       dcrId: notification.dcrId,
       dcrNumber: notification.dcrNumber,
+      action: notification.actionUrl,
       metadata: {'notification_type': notification.notificationType},
     );
   }
