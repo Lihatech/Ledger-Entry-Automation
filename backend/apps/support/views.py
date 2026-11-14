@@ -1,5 +1,6 @@
 import json
 import os
+from urllib.parse import urlparse
 
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.views import APIView
@@ -20,11 +21,21 @@ logger = logging.getLogger(__name__)
 def _mobile_releases_client():
     import boto3
     from botocore.config import Config
+    endpoint = os.environ['MOBILE_RELEASES_ENDPOINT'].strip()
+    endpoint_host = urlparse(endpoint).hostname or ''
+    is_aws_s3 = endpoint_host.endswith('.amazonaws.com')
+    region = os.environ.get('MOBILE_RELEASES_REGION', '').strip()
+    if is_aws_s3:
+        region = region if region and region != 'auto' else 'ap-south-1'
+        endpoint_url = None
+    else:
+        region = region or 'auto'
+        endpoint_url = endpoint
 
     return boto3.client(
         's3',
-        endpoint_url=os.environ['MOBILE_RELEASES_ENDPOINT'],
-        region_name=os.environ.get('MOBILE_RELEASES_REGION', 'auto'),
+        endpoint_url=endpoint_url,
+        region_name=region,
         aws_access_key_id=os.environ['MOBILE_RELEASES_ACCESS_KEY_ID'],
         aws_secret_access_key=os.environ['MOBILE_RELEASES_SECRET_ACCESS_KEY'],
         config=Config(
