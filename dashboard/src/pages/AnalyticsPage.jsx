@@ -2,11 +2,19 @@ import { useState, useEffect } from 'react';
 import Header from '../components/layout/Header';
 import Breadcrumbs from '../components/layout/Breadcrumbs';
 import LoadingSpinner from '../components/common/LoadingSpinner';
-import { getReport, getDailyCompletedReports } from '../api/analytics';
+import { getReport, getDailyCompletedReports, getDailyCompletedReportOptions } from '../api/analytics';
 import { getSessionDetail } from '../api/inspections';
 import { getCompanyDetails } from '../api/company';
 import OfficialFormF02Modal from '../components/reports/OfficialFormF02Modal';
 import api from '../api/axios';
+
+const getTodayDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export default function AnalyticsPage() {
   const [report, setReport]               = useState(null);
@@ -14,7 +22,7 @@ export default function AnalyticsPage() {
 
   // Filters
   const [fromConfig, setFromConfig]           = useState('');
-  const [toConfig, setToConfig]               = useState('');
+  const [toConfig, setToConfig]               = useState(getTodayDate);
   const [machineCode, setMachineCode]         = useState('');
   const [partFilter, setPartFilter]           = useState('');
   const [shiftFilter, setShiftFilter]         = useState('');
@@ -29,6 +37,7 @@ export default function AnalyticsPage() {
   const [pdfError, setPdfError]               = useState(null);
   const [selectedSessionDetail, setSelectedSessionDetail] = useState(null);
   const [autoDownload, setAutoDownload]       = useState(false);
+  const [filterOptions, setFilterOptions]     = useState({ machines: [], parts: [], operators: [], inspectors: [] });
 
   const fetchAnalytics = async () => {
     setLoadingReport(true);
@@ -55,17 +64,29 @@ export default function AnalyticsPage() {
     fetchCompanyData();
   }, []);
 
+  useEffect(() => {
+    const fetchFilterOptions = async () => {
+      try {
+        const res = await getDailyCompletedReportOptions();
+        setFilterOptions(res.data || { machines: [], parts: [], operators: [], inspectors: [] });
+      } catch (err) {
+        console.error('Failed to load report filter options', err);
+      }
+    };
+    fetchFilterOptions();
+  }, []);
+
   const fetchDailyCompletedReports = async () => {
     setLoadingReports(true);
     try {
       const params = {};
       if (fromConfig) params.start_date = fromConfig;
       if (toConfig) params.end_date = toConfig;
-      if (machineCode.trim()) params.machine = machineCode.trim();
-      if (partFilter.trim()) params.part = partFilter.trim();
+      if (machineCode) params.machine = machineCode;
+      if (partFilter) params.part = partFilter;
       if (shiftFilter.trim()) params.shift = shiftFilter.trim();
-      if (operatorFilter.trim()) params.operator = operatorFilter.trim();
-      if (inspectorFilter.trim()) params.inspector = inspectorFilter.trim();
+      if (operatorFilter) params.operator_id = operatorFilter;
+      if (inspectorFilter) params.inspector_id = inspectorFilter;
 
       const res = await getDailyCompletedReports(params);
       const list = res.data?.reports ?? [];
@@ -138,7 +159,7 @@ export default function AnalyticsPage() {
 
   const handleResetFilters = () => {
     setFromConfig('');
-    setToConfig('');
+    setToConfig(getTodayDate());
     setMachineCode('');
     setPartFilter('');
     setShiftFilter('');
@@ -196,25 +217,31 @@ export default function AnalyticsPage() {
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 130px' }}>
               <label className="form-label" htmlFor="analytics-machine">Machine</label>
-              <input
+                <select
                 id="analytics-machine"
-                type="text"
                 className="form-input"
-                placeholder="e.g. BAL-01"
                 value={machineCode}
                 onChange={(e) => setMachineCode(e.target.value)}
-              />
+                >
+                  <option value="">All Machines</option>
+                  {filterOptions.machines.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 130px' }}>
-              <label className="form-label" htmlFor="analytics-part">Part Number</label>
-              <input
+              <label className="form-label" htmlFor="analytics-part">Part</label>
+              <select
                 id="analytics-part"
-                type="text"
                 className="form-input"
-                placeholder="e.g. PN001"
                 value={partFilter}
                 onChange={(e) => setPartFilter(e.target.value)}
-              />
+              >
+                <option value="">All Parts</option>
+                {filterOptions.parts.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 100px' }}>
               <label className="form-label" htmlFor="analytics-shift">Shift</label>
@@ -232,25 +259,31 @@ export default function AnalyticsPage() {
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 130px' }}>
               <label className="form-label" htmlFor="analytics-operator">Operator</label>
-              <input
+              <select
                 id="analytics-operator"
-                type="text"
                 className="form-input"
-                placeholder="e.g. Samruddhi"
                 value={operatorFilter}
                 onChange={(e) => setOperatorFilter(e.target.value)}
-              />
+              >
+                <option value="">All Operators</option>
+                {filterOptions.operators.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </div>
             <div className="form-group" style={{ marginBottom: 0, flex: '1 1 130px' }}>
               <label className="form-label" htmlFor="analytics-inspector">Inspector</label>
-              <input
+              <select
                 id="analytics-inspector"
-                type="text"
                 className="form-input"
-                placeholder="e.g. Inspector"
                 value={inspectorFilter}
                 onChange={(e) => setInspectorFilter(e.target.value)}
-              />
+              >
+                <option value="">All Inspectors</option>
+                {filterOptions.inspectors.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '0 0 auto' }}>
               <button
