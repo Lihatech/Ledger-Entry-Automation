@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
+import '../services/app_update_service.dart';
 import 'login_screen.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -596,6 +597,31 @@ class _AccountScreenState extends State<AccountScreen> {
                   label: const Align(
                     alignment: Alignment.centerLeft,
                     child: Text('Change Password', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                ElevatedButton.icon(
+                  onPressed: () => AppUpdateService.checkAndPrompt(
+                    context,
+                    showUpToDate: true,
+                    force: true,
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0F172A),
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  icon: const Icon(Icons.system_update_outlined, color: Color(0xFF2563EB)),
+                  label: const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Check for App Updates', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                 ),
 

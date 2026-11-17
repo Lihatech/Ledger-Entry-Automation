@@ -14,9 +14,14 @@ import 'api_service.dart';
 
 class AppUpdateService {
   static bool _checking = false;
+  static int? _lastPromptedVersionCode;
 
-  static Future<void> checkAndPrompt(BuildContext context) async {
-    if (kIsWeb || _checking || !Platform.isAndroid) return;
+  static Future<bool> checkAndPrompt(
+    BuildContext context, {
+    bool showUpToDate = false,
+    bool force = false,
+  }) async {
+    if (kIsWeb || _checking || !Platform.isAndroid) return false;
     _checking = true;
 
     try {
@@ -33,9 +38,29 @@ class AppUpdateService {
             .timeout(const Duration(seconds: 20)),
       );
 
-      if (response.statusCode != 200 || !context.mounted) return;
+      if (response.statusCode != 200 || !context.mounted) {
+        if (showUpToDate && context.mounted) {
+          _showError(context, 'Could not check for updates.');
+        }
+        return false;
+      }
       final update = jsonDecode(response.body) as Map<String, dynamic>;
-      if (update['updateAvailable'] != true) return;
+      if (update['updateAvailable'] != true) {
+        if (showUpToDate && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('App is up to date.')),
+          );
+        }
+        return false;
+      }
+
+      final latestVersionCode = update['versionCode'] as int?;
+      if (!force &&
+          latestVersionCode != null &&
+          _lastPromptedVersionCode == latestVersionCode) {
+        return true;
+      }
+      _lastPromptedVersionCode = latestVersionCode;
 
       final mandatory = update['mandatory'] == true;
       final accepted = await showDialog<bool>(
@@ -68,8 +93,13 @@ class AppUpdateService {
       if (accepted == true && context.mounted) {
         await _downloadAndInstall(context, update);
       }
+      return true;
     } catch (_) {
       // Update checks are best-effort and must never block normal app use.
+      if (showUpToDate && context.mounted) {
+        _showError(context, 'Could not check for updates.');
+      }
+      return false;
     } finally {
       _checking = false;
     }
