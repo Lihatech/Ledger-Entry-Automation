@@ -7,6 +7,9 @@ from django.core.cache import cache
 from datetime import datetime, timedelta
 
 from apps.inspections.models import InspectionSession
+from apps.machines.models import Machine
+from apps.parts.models import Part
+from apps.users.models import User
 from apps.users.permissions import HasAccess
 
 
@@ -241,9 +244,13 @@ class DailyCompletedReportsView(APIView):
         end_date       = request.query_params.get('end_date') or request.query_params.get('to')
         machine_code   = request.query_params.get('machine')
         part_number    = request.query_params.get('part')
+        machine_id     = request.query_params.get('machine_id')
+        part_id        = request.query_params.get('part_id')
         shift          = request.query_params.get('shift')
         operator_name  = request.query_params.get('operator')
         inspector_name = request.query_params.get('inspector')
+        operator_id    = request.query_params.get('operator_id')
+        inspector_id   = request.query_params.get('inspector_id')
 
         qs = InspectionSession.objects.select_related(
             'machine', 'part', 'operator', 'supervisor', 'finalized_by'
@@ -251,11 +258,12 @@ class DailyCompletedReportsView(APIView):
 
         # Strict completion filter
         from django.db.models import F
-        qs = qs.filter(
+        completion_q = (
             Q(status__in=['completed', 'finalized_passed', 'approved']) |
             Q(is_setup_approved=True, hourly_unlocked_slot__gte=F('machine__plant__factory__shift_hours'))
-        ).exclude(
-            status__in=['draft', 'in_progress', 'pending_review', 'rejected', 'finalized_failed']
+        )
+        qs = qs.filter(completion_q).exclude(
+            status__in=['draft', 'pending_review', 'rejected', 'finalized_failed']
         )
 
         from apps.machines.models import Factory
@@ -289,21 +297,29 @@ class DailyCompletedReportsView(APIView):
                 
         if machine_code:
             qs = qs.filter(machine__machine_code__icontains=machine_code.strip())
+        if machine_id:
+            qs = qs.filter(machine_id=machine_id)
         if part_number:
             qs = qs.filter(part__part_number__icontains=part_number.strip())
+        if part_id:
+            qs = qs.filter(part_id=part_id)
         if shift:
             qs = qs.filter(shift=shift)
         # Keep the identity lookup independent of operator/inspector filters.
         # A daily card may be selected through an hourly row while the First
         # Piece session has a different inspector or supervisor.
         identity_qs = qs
-        if operator_name:
+        if operator_id:
+            qs = qs.filter(operator_id=operator_id)
+        elif operator_name:
             qs = qs.filter(
                 Q(operator__username__icontains=operator_name.strip()) |
                 Q(operator__first_name__icontains=operator_name.strip()) |
                 Q(operator__last_name__icontains=operator_name.strip())
             )
-        if inspector_name:
+        if inspector_id:
+            qs = qs.filter(Q(finalized_by_id=inspector_id) | Q(supervisor_id=inspector_id))
+        elif inspector_name:
             qs = qs.filter(
                 Q(finalized_by__username__icontains=inspector_name.strip()) |
                 Q(finalized_by__first_name__icontains=inspector_name.strip()) |
@@ -371,6 +387,51 @@ class DailyCompletedReportsView(APIView):
             })
 
         return Response({'reports': reports})
+
+
+class DailyCompletedReportOptionsView(APIView):
+    """Return database-backed filter choices for completed-report search."""
+
+    permission_classes = [HasAccess]
+    access_key = 'production.daily.view'
+
+    def get(self, request):
+        plant_id = getattr(request.user, 'plant_id', None)
+
+        machines = Machine.objects.filter(is_active=True)
+        parts = Part.objects.filter(is_active=True)
+        users = User.objects.filter(is_active=True)
+        if plant_id:
+            machines = machines.filter(plant_id=plant_id)
+            parts = parts.filter(machine__plant_id=plant_id)
+            users = users.filter(plant_id=plant_id)
+
+        def user_label(user):
+            return (user.get_full_name() or user.username).strip()
+
+        operator_users = users.filter(role=User.Role.OPERATOR).order_by('first_name', 'last_name', 'username')
+        inspector_users = users.filter(
+            role__in=[User.Role.INSPECTOR, User.Role.SUPERVISOR, User.Role.QUALITY_ENGINEER, User.Role.ADMIN]
+        ).order_by('first_name', 'last_name', 'username')
+
+        return Response({
+            'machines': [
+                {'value': machine.machine_code, 'label': f'{machine.machine_code} - {machine.name}'}
+                for machine in machines.order_by('machine_code')
+            ],
+            'parts': [
+                {'value': part.part_number, 'label': f'{part.part_name} ({part.part_number})'}
+                for part in parts.order_by('part_name', 'part_number')
+            ],
+            'operators': [
+                {'value': str(user.id), 'label': user_label(user)}
+                for user in operator_users
+            ],
+            'inspectors': [
+                {'value': str(user.id), 'label': user_label(user)}
+                for user in inspector_users
+            ],
+        })
 
 
 class MonthlyOEEReportView(APIView):
