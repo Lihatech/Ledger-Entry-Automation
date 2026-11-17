@@ -30,17 +30,32 @@ class AppHomeScreen extends StatefulWidget {
   State<AppHomeScreen> createState() => _AppHomeScreenState();
 }
 
-class _AppHomeScreenState extends State<AppHomeScreen> {
+class _AppHomeScreenState extends State<AppHomeScreen>
+    with WidgetsBindingObserver {
   int _currentIndex = 0;
   List<dynamic> _teamMembers = [];
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDashboardData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       AppUpdateService.checkAndPrompt(context);
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      AppUpdateService.checkAndPrompt(context);
+    }
   }
 
   Future<void> _loadDashboardData() async {
