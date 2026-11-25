@@ -50,7 +50,10 @@ jobs:
           set -Eeuo pipefail
           cd /home/ubuntu/Ledger-Entry-Automation
 
-          previous_sha="$(git rev-parse main 2>/dev/null || true)"
+          # Capture the exact revision currently deployed before changing the
+          # checkout.  The EC2 clone may contain tracked edits from an earlier
+          # manual deploy, so a normal pull is not reliable here.
+          previous_sha="$(git rev-parse HEAD 2>/dev/null || true)"
           rollback_ready=false
           rollback_backend="ledger-entry-automation-backend:rollback"
           rollback_frontend="ledger-entry-automation-frontend:rollback"
@@ -83,7 +86,11 @@ jobs:
 
           git fetch origin main
           git switch main
-          git pull --ff-only origin main
+          # The server is a deployment checkout, not a development checkout.
+          # Discard tracked local edits so a previous interrupted/manual
+          # deployment cannot block the new deployment with "local changes
+          # would be overwritten".  Rollback still returns to previous_sha.
+          git reset --hard origin/main
 
           sudo docker compose up -d db redis
           sudo docker compose build backend frontend
