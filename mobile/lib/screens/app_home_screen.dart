@@ -67,6 +67,7 @@ class _AppHomeScreenState extends State<AppHomeScreen>
       context,
       listen: false,
     );
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     try {
       final provider = inspectionProvider;
       final machineId = provider.selectedMachine?['id'];
@@ -79,7 +80,14 @@ class _AppHomeScreenState extends State<AppHomeScreen>
       String msg = '';
       if (machineId != null) {
         final partId = int.tryParse('${provider.selectedPart?['id']}');
-        final res = await ApiService.checkSetupApproved(machineId, partId: partId);
+        final selectedShift = auth.assignedShift == 'ALL'
+            ? provider.shift
+            : auth.assignedShift;
+        final res = await ApiService.checkSetupApproved(
+          machineId,
+          partId: partId,
+          shift: selectedShift,
+        );
         approved = res['is_setup_approved'] == true;
         msg = res['message'] ?? '';
         final hasReport =
@@ -612,6 +620,9 @@ class _AppHomeScreenState extends State<AppHomeScreen>
                                                   rej['id'];
                                               final started = await provider
                                                   .startSession(
+                                                    shift: auth.assignedShift == 'ALL'
+                                                        ? provider.shift
+                                                        : auth.assignedShift,
                                                     trial: nextTrial,
                                                     parentId: parentId,
                                                     inspectionType:

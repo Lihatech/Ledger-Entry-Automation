@@ -1215,10 +1215,21 @@ class SetupStatusView(APIView):
             else:
                 part_q = Q(part__part_number=part_id_param)
 
+        # Keep progress isolated by shift as well as machine and part.  The
+        # shift is optional for older clients, but newer clients send it so a
+        # finalized report from another shift cannot be restored accidentally.
+        shift_param = request.query_params.get('shift')
+        shift_aliases = {'A': 'I', 'B': 'II', 'C': 'III'}
+        requested_shift = str(shift_param or '').strip().upper()
+        requested_shift = shift_aliases.get(requested_shift, requested_shift)
+        shift_q = Q()
+        if requested_shift and requested_shift != 'ALL':
+            shift_q = Q(shift=requested_shift)
+
         # ── Optional template filter ──────────────────────────────────────────
         template_id_param = request.query_params.get('template') or request.query_params.get('template_id')
-        fp_q = mach_q & part_q & Q(started_at__date=today, inspection_type='first_piece')
-        hourly_q = mach_q & part_q & Q(started_at__date=today, inspection_type='hourly')
+        fp_q = mach_q & part_q & shift_q & Q(started_at__date=today, inspection_type='first_piece')
+        hourly_q = mach_q & part_q & shift_q & Q(started_at__date=today, inspection_type='hourly')
         if template_id_param and str(template_id_param).isdigit():
             fp_q = fp_q & Q(template_id=int(template_id_param))
             hourly_q = hourly_q & Q(template_id=int(template_id_param))
@@ -1245,7 +1256,7 @@ class SetupStatusView(APIView):
         if not session:
             session = InspectionSession.objects.select_related(
                 'part', 'machine', 'machine__plant__factory'
-            ).filter(mach_q & part_q).order_by('-started_at').first()
+            ).filter(mach_q & part_q & shift_q).order_by('-started_at').first()
 
         if not session:
             return Response({
@@ -1306,6 +1317,7 @@ class SetupStatusView(APIView):
             t = sessions_for_op[0].template
             op_fp = InspectionSession.objects.filter(
                 mach_q,
+                shift_q,
                 template_id=tid,
                 started_at__date=today,
                 inspection_type='first_piece',

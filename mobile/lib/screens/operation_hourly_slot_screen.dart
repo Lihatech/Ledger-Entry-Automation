@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../providers/auth_provider.dart';
 import '../providers/inspection_provider.dart';
 import '../services/api_service.dart';
 import 'inspection_voice_screen.dart';
@@ -51,9 +52,17 @@ class _OperationHourlySlotScreenState extends State<OperationHourlySlotScreen> {
 
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
       final machineId = provider.selectedMachine?['id'] ?? 1;
       final partId = int.tryParse('${provider.selectedPart?['id']}');
-      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
+      final selectedShift = auth.assignedShift == 'ALL'
+          ? provider.shift
+          : auth.assignedShift;
+      final setupStatus = await ApiService.checkSetupApproved(
+        machineId,
+        partId: partId,
+        shift: selectedShift,
+      );
       final List<dynamic> opsFromApi = setupStatus['operations'] ?? [];
       final tid = widget.template['id'] as int?;
 
@@ -426,7 +435,9 @@ class _OperationHourlySlotScreenState extends State<OperationHourlySlotScreen> {
     }
 
     await provider.loadParameters(widget.template);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     final started = await provider.startSession(
+      shift: auth.assignedShift == 'ALL' ? provider.shift : auth.assignedShift,
       trial: 1,
       inspectionType: 'hourly',
       hourlySlot: slotNum,

@@ -381,6 +381,7 @@ class InspectionProvider with ChangeNotifier {
       final setupInfo = await ApiService.checkSetupApproved(
         selectedMachine!['id'],
         partId: partId,
+        shift: shift,
       );
       if (setupInfo['session_id'] != null) {
         final sessionDoc = await ApiService.getSessionDetail(
