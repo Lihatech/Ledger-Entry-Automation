@@ -1070,9 +1070,13 @@ class ApiService {
   static Future<Map<String, dynamic>> checkSetupApproved(
     int machineId, {
     String? date,
+    int? partId,
   }) async {
     try {
-      final query = date != null ? '&date=$date' : '';
+      final queryParts = <String>[];
+      if (partId != null) queryParts.add('part=$partId');
+      if (date != null) queryParts.add('date=$date');
+      final query = queryParts.isEmpty ? '' : '&${queryParts.join('&')}';
       final response = await authenticatedRequest(
         (headers) => http.get(
           Uri.parse(

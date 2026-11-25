@@ -130,6 +130,18 @@ class InspectionProvider with ChangeNotifier {
 
   // ── Part selection ────────────────────────────────────────────────────────
   void selectPart(Map<String, dynamic> part) {
+    final oldPartId = selectedPart?['id']?.toString();
+    final oldPartNumber = selectedPart?['part_number']?.toString();
+    final newPartId = part['id']?.toString();
+    final newPartNumber = part['part_number']?.toString();
+    if (selectedPart != null &&
+        (oldPartId != newPartId || oldPartNumber != newPartNumber)) {
+      // Sessions are scoped to the selected part. Never carry the previous
+      // part's local state into the newly selected part.
+      _sessions.clear();
+      _activeOperationKey = null;
+      activeRejectionNotice = null;
+    }
     selectedPart = part;
     saveCurrentState();
     notifyListeners();
@@ -365,8 +377,10 @@ class InspectionProvider with ChangeNotifier {
     }
 
     if (targetCodes.isEmpty && selectedMachine != null) {
+      final partId = int.tryParse('${selectedPart?['id']}');
       final setupInfo = await ApiService.checkSetupApproved(
         selectedMachine!['id'],
+        partId: partId,
       );
       if (setupInfo['session_id'] != null) {
         final sessionDoc = await ApiService.getSessionDetail(

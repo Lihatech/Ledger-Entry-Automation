@@ -1170,8 +1170,8 @@ class HourlyStatusView(APIView):
 # ─── Check Setup Approval Status ──────────────────────────────────────────
 class SetupStatusView(APIView):
     """
-    GET /api/inspections/setup-status/?machine=2
-    Returns whether 1st Piece Inspection is approved for a machine.
+    GET /api/inspections/setup-status/?machine=2&part=7
+    Returns whether 1st Piece Inspection is approved for a machine and part.
 
     New (per-operation session isolation):
       Response includes an `operations[]` array where each entry has its own
@@ -1198,16 +1198,27 @@ class SetupStatusView(APIView):
         else:
             today = timezone.localdate()
 
-        # ── Build shared machine filter ────────────────────────────────────────────────────────
+        # ── Build shared machine/part filter ───────────────────────────────────────────────────
         if str(machine_id).isdigit():
             mach_q = Q(machine_id=int(machine_id)) | Q(machine__machine_code=machine_id)
         else:
             mach_q = Q(machine__machine_code=machine_id)
 
+        # A machine can run multiple parts on the same day. Keep the part
+        # filter optional for older clients, but use it for newer clients so
+        # progress from one part cannot be restored for another part.
+        part_id_param = request.query_params.get('part') or request.query_params.get('part_id')
+        part_q = Q()
+        if part_id_param:
+            if str(part_id_param).isdigit():
+                part_q = Q(part_id=int(part_id_param))
+            else:
+                part_q = Q(part__part_number=part_id_param)
+
         # ── Optional template filter ──────────────────────────────────────────
         template_id_param = request.query_params.get('template') or request.query_params.get('template_id')
-        fp_q = mach_q & Q(started_at__date=today, inspection_type='first_piece')
-        hourly_q = mach_q & Q(started_at__date=today, inspection_type='hourly')
+        fp_q = mach_q & part_q & Q(started_at__date=today, inspection_type='first_piece')
+        hourly_q = mach_q & part_q & Q(started_at__date=today, inspection_type='hourly')
         if template_id_param and str(template_id_param).isdigit():
             fp_q = fp_q & Q(template_id=int(template_id_param))
             hourly_q = hourly_q & Q(template_id=int(template_id_param))
@@ -1234,7 +1245,7 @@ class SetupStatusView(APIView):
         if not session:
             session = InspectionSession.objects.select_related(
                 'part', 'machine', 'machine__plant__factory'
-            ).filter(mach_q).order_by('-started_at').first()
+            ).filter(mach_q & part_q).order_by('-started_at').first()
 
         if not session:
             return Response({
@@ -1923,8 +1934,12 @@ class SetupApprovalPDFView(APIView):
 
         # Sync process_param_entries to active sessions' document_payload for this machine
         from apps.inspections import document_utils as doc_utils
+        # Process readings belong to the selected template/part. Do not copy
+        # them to every active session on the machine when multiple products
+        # are being run on that machine the same day.
         active_sessions = InspectionSession.objects.filter(
             machine_id=int(machine_id),
+            template_id=int(template_id),
             started_at__date=now.date(),
         )
         for session in active_sessions:

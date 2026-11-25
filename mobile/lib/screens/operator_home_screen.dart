@@ -86,7 +86,8 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
 
       await provider.fetchPendingRejections();
 
-      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final partId = int.tryParse('${provider.selectedPart?['id']}');
+      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
       final bool hasToday = setupStatus['has_today_report'] == true;
       final bool approved = setupStatus['is_setup_approved'] == true;
 

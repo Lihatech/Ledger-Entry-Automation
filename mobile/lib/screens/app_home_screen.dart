@@ -63,7 +63,8 @@ class _AppHomeScreenState extends State<AppHomeScreen> {
       bool approved = false;
       String msg = '';
       if (machineId != null) {
-        final res = await ApiService.checkSetupApproved(machineId);
+        final partId = int.tryParse('${provider.selectedPart?['id']}');
+        final res = await ApiService.checkSetupApproved(machineId, partId: partId);
         approved = res['is_setup_approved'] == true;
         msg = res['message'] ?? '';
         final hasReport =

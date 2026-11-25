@@ -35,10 +35,11 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     setState(() => _isRefreshing = true);
     final provider = Provider.of<InspectionProvider>(context, listen: false);
     final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+    final partId = int.tryParse('${provider.selectedPart?['id']}');
     if (machineId == null) return;
 
     try {
-      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
       final hasReport =
           setupStatus['has_today_report'] == true ||
           setupStatus['session_id'] != null;
@@ -69,6 +70,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
       final machineId = int.tryParse('${provider.selectedMachine?['id']}');
+      final partId = int.tryParse('${provider.selectedPart?['id']}');
       if (machineId == null) {
         if (mounted) {
           setState(() {
@@ -84,7 +86,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       Map<int, List<int>> opCompletedSlots = {};
       Map<int, int> opActiveSlots = {};
       try {
-        final setupStatus = await ApiService.checkSetupApproved(machineId);
+        final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
         if (setupStatus['has_today_report'] == true ||
             setupStatus['session_id'] != null) {
           await provider.restoreActiveReportState(setupStatus);
