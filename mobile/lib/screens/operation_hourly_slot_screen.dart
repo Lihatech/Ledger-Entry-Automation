@@ -52,7 +52,8 @@ class _OperationHourlySlotScreenState extends State<OperationHourlySlotScreen> {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
       final machineId = provider.selectedMachine?['id'] ?? 1;
-      final setupStatus = await ApiService.checkSetupApproved(machineId);
+      final partId = int.tryParse('${provider.selectedPart?['id']}');
+      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
       final List<dynamic> opsFromApi = setupStatus['operations'] ?? [];
       final tid = widget.template['id'] as int?;
 

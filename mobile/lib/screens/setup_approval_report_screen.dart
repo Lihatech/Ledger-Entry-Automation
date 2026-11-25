@@ -87,7 +87,8 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
           ? "${_selectedDate!.year}-${_selectedDate!.month.toString().padLeft(2, '0')}-${_selectedDate!.day.toString().padLeft(2, '0')}" 
           : null;
 
-      final setupStatus = await ApiService.checkSetupApproved(machineId, date: dateStr);
+      final partId = int.tryParse('${provider.selectedPart?['id']}');
+      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId, date: dateStr);
       final reportSessionId = setupStatus['first_piece_session_id']
           ?? setupStatus['session_id'];
 
