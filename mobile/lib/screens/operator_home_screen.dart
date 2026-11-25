@@ -37,6 +37,7 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
   Future<void> _loadOperatorTemplates() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
 
       if (provider.selectedMachine == null) {
         try {
@@ -87,7 +88,14 @@ class _OperatorHomeScreenState extends State<OperatorHomeScreen> {
       await provider.fetchPendingRejections();
 
       final partId = int.tryParse('${provider.selectedPart?['id']}');
-      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
+      final selectedShift = auth.assignedShift == 'ALL'
+          ? provider.shift
+          : auth.assignedShift;
+      final setupStatus = await ApiService.checkSetupApproved(
+        machineId,
+        partId: partId,
+        shift: selectedShift,
+      );
       final bool hasToday = setupStatus['has_today_report'] == true;
       final bool approved = setupStatus['is_setup_approved'] == true;
 

@@ -37,9 +37,17 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     final machineId = int.tryParse('${provider.selectedMachine?['id']}');
     final partId = int.tryParse('${provider.selectedPart?['id']}');
     if (machineId == null) return;
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final selectedShift = auth.assignedShift == 'ALL'
+        ? provider.shift
+        : auth.assignedShift;
 
     try {
-      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
+      final setupStatus = await ApiService.checkSetupApproved(
+        machineId,
+        partId: partId,
+        shift: selectedShift,
+      );
       final hasReport =
           setupStatus['has_today_report'] == true ||
           setupStatus['session_id'] != null;
@@ -69,6 +77,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
   Future<void> _loadTemplates() async {
     try {
       final provider = Provider.of<InspectionProvider>(context, listen: false);
+      final auth = Provider.of<AuthProvider>(context, listen: false);
       final machineId = int.tryParse('${provider.selectedMachine?['id']}');
       final partId = int.tryParse('${provider.selectedPart?['id']}');
       if (machineId == null) {
@@ -86,7 +95,14 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
       Map<int, List<int>> opCompletedSlots = {};
       Map<int, int> opActiveSlots = {};
       try {
-        final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId);
+        final selectedShift = auth.assignedShift == 'ALL'
+            ? provider.shift
+            : auth.assignedShift;
+        final setupStatus = await ApiService.checkSetupApproved(
+          machineId,
+          partId: partId,
+          shift: selectedShift,
+        );
         if (setupStatus['has_today_report'] == true ||
             setupStatus['session_id'] != null) {
           await provider.restoreActiveReportState(setupStatus);
@@ -150,6 +166,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final isInspector = auth.isInspector;
     final inspType = isInspector ? 'first_piece' : 'hourly';
+    final selectedShift = auth.assignedShift == 'ALL'
+        ? provider.shift
+        : auth.assignedShift;
 
     final key = InspectionProvider.operationKey(template, inspType);
     provider.switchActiveOperation(key);
@@ -199,6 +218,7 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
     }
 
     final started = await provider.startSession(
+      shift: selectedShift,
       trial: isInspector ? trialNumber : 0,
       hourlySlot: isInspector ? 0 : provider.hourlySlot,
       inspectionType: inspType,
@@ -485,6 +505,9 @@ class _OperationSelectScreenState extends State<OperationSelectScreen> {
                               );
                               final parentId = rej['session_id'] ?? rej['id'];
                               final started = await provider.startSession(
+                                shift: auth.assignedShift == 'ALL'
+                                    ? provider.shift
+                                    : auth.assignedShift,
                                 trial: nextTrial,
                                 parentId: parentId,
                               );

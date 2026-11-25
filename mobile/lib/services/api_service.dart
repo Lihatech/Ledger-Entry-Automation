@@ -1071,11 +1071,15 @@ class ApiService {
     int machineId, {
     String? date,
     int? partId,
+    String? shift,
   }) async {
     try {
       final queryParts = <String>[];
       if (partId != null) queryParts.add('part=$partId');
       if (date != null) queryParts.add('date=$date');
+      if (shift != null && shift.isNotEmpty && shift != 'ALL') {
+        queryParts.add('shift=$shift');
+      }
       final query = queryParts.isEmpty ? '' : '&${queryParts.join('&')}';
       final response = await authenticatedRequest(
         (headers) => http.get(

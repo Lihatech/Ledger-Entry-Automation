@@ -50,6 +50,7 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
     });
 
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     var template = provider.selectedTemplate;
     final machine = provider.selectedMachine;
 
@@ -88,7 +89,15 @@ class _SetupApprovalReportScreenState extends State<SetupApprovalReportScreen> {
           : null;
 
       final partId = int.tryParse('${provider.selectedPart?['id']}');
-      final setupStatus = await ApiService.checkSetupApproved(machineId, partId: partId, date: dateStr);
+      final selectedShift = auth.assignedShift == 'ALL'
+          ? provider.shift
+          : auth.assignedShift;
+      final setupStatus = await ApiService.checkSetupApproved(
+        machineId,
+        partId: partId,
+        date: dateStr,
+        shift: selectedShift,
+      );
       final reportSessionId = setupStatus['first_piece_session_id']
           ?? setupStatus['session_id'];
 
