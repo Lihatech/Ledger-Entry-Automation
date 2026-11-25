@@ -21,28 +21,46 @@ logger = logging.getLogger(__name__)
 def _mobile_releases_client():
     import boto3
     from botocore.config import Config
-    endpoint = os.environ['MOBILE_RELEASES_ENDPOINT'].strip()
+    # Mobile releases use the same private AWS S3 bucket/IAM role as media
+    # storage in production. Dedicated MOBILE_RELEASES_* variables remain
+    # supported for deployments using a separate bucket or S3-compatible
+    # provider, but they are not required on the EC2 backend.
+    endpoint = (
+        os.environ.get('MOBILE_RELEASES_ENDPOINT')
+        or os.environ.get('AWS_S3_ENDPOINT_URL')
+        or ''
+    ).strip()
     endpoint_host = urlparse(endpoint).hostname or ''
     is_aws_s3 = endpoint_host.endswith('.amazonaws.com')
-    region = os.environ.get('MOBILE_RELEASES_REGION', '').strip()
+    region = (
+        os.environ.get('MOBILE_RELEASES_REGION')
+        or os.environ.get('AWS_S3_REGION_NAME')
+        or 'ap-south-1'
+    ).strip()
     if is_aws_s3:
         region = region if region and region != 'auto' else 'ap-south-1'
         endpoint_url = None
     else:
         region = region or 'auto'
-        endpoint_url = endpoint
+        endpoint_url = endpoint or None
 
-    return boto3.client(
-        's3',
-        endpoint_url=endpoint_url,
-        region_name=region,
-        aws_access_key_id=os.environ['MOBILE_RELEASES_ACCESS_KEY_ID'],
-        aws_secret_access_key=os.environ['MOBILE_RELEASES_SECRET_ACCESS_KEY'],
-        config=Config(
+    client_kwargs = {
+        'endpoint_url': endpoint_url,
+        'region_name': region,
+        'config': Config(
             signature_version='s3v4',
             s3={'addressing_style': os.environ.get('MOBILE_RELEASES_ADDRESSING_STYLE', 'path')},
         ),
-    )
+    }
+    access_key = os.environ.get('MOBILE_RELEASES_ACCESS_KEY_ID') or os.environ.get('AWS_ACCESS_KEY_ID')
+    secret_key = os.environ.get('MOBILE_RELEASES_SECRET_ACCESS_KEY') or os.environ.get('AWS_SECRET_ACCESS_KEY')
+    if access_key and secret_key:
+        client_kwargs.update(
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+        )
+    # When no keys are supplied, boto3 uses the EC2 instance IAM role.
+    return boto3.client('s3', **client_kwargs)
 
 
 class MobileUpdateView(APIView):
@@ -57,7 +75,10 @@ class MobileUpdateView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        bucket = os.environ.get('MOBILE_RELEASES_BUCKET')
+        bucket = (
+            os.environ.get('MOBILE_RELEASES_BUCKET')
+            or os.environ.get('AWS_STORAGE_BUCKET_NAME')
+        )
         if not bucket:
             return Response(
                 {'detail': 'Mobile releases are not configured.'},
