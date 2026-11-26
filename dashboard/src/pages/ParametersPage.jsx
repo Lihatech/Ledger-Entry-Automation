@@ -4351,7 +4351,7 @@ export default function ParametersPage() {
         {/* Modal: Add / Edit Process Parameter */}
         {showProcessParamModal && selectedTemplate && (
           <div className="modal-overlay" onClick={() => setShowProcessParamModal(false)}>
-            <div className="modal-content" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content parameter-rule-editor-modal" style={{ maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
                 <h3>{editingProcessParam ? `Edit Process Parameter Rule` : `Add Process Parameter Rule to [${selectedTemplate?.inspection_type?.toUpperCase()}]`}</h3>
                 <button type="button" className="btn-close" onClick={() => setShowProcessParamModal(false)}>×</button>
