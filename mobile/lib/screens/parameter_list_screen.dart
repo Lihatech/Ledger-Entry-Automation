@@ -298,13 +298,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF1E1B4B), Color(0xFF1E293B)],
+                  colors: [Color(0xFFEFF6FF), Color(0xFFF8FAFC)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: const Color(0xFF4338CA).withValues(alpha: 0.5),
+                  color: const Color(0xFFBFDBFE),
                 ),
               ),
               child: Row(
@@ -313,13 +313,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF4F46E5).withValues(alpha: 0.2),
+                      color: const Color(0xFFDBEAFE),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFF6366F1)),
+                      border: Border.all(color: const Color(0xFF93C5FD)),
                     ),
                     child: const Icon(
                       Icons.grid_view_rounded,
-                      color: Color(0xFF818CF8),
+                      color: Color(0xFF2563EB),
                       size: 22,
                     ),
                   ),
@@ -334,7 +334,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                             Text(
                               '$tabTitle ($activeTotal items)',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: Color(0xFF0F172A),
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -342,7 +342,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                             Text(
                               '$activeRecorded / $activeTotal Recorded',
                               style: const TextStyle(
-                                color: Color(0xFF34D399),
+                                color: Color(0xFF059669),
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                               ),
@@ -357,9 +357,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                 ? (activeRecorded / activeTotal)
                                 : 0,
                             minHeight: 6,
-                            backgroundColor: const Color(0xFF334155),
+                            backgroundColor: const Color(0xFFE2E8F0),
                             valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFF10B981),
+                              Color(0xFF2563EB),
                             ),
                           ),
                         ),
@@ -368,7 +368,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           Text(
                             'Overall session: $overallRecorded / $overallTotal total recorded',
                             style: const TextStyle(
-                              color: Color(0xFF94A3B8),
+                              color: Color(0xFF64748B),
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
                             ),
@@ -402,13 +402,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: _activeCategoryTab == 'process'
-                                ? const Color(0xFF4338CA)
-                                : const Color(0xFF1E293B),
+                                ? const Color(0xFF2563EB)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _activeCategoryTab == 'process'
-                                  ? const Color(0xFF818CF8)
-                                  : const Color(0xFF334155),
+                                  ? const Color(0xFF60A5FA)
+                                  : const Color(0xFFCBD5E1),
                               width: _activeCategoryTab == 'process'
                                   ? 1.8
                                   : 1.0,
@@ -424,7 +424,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                   'Process (${_parameters.where((p) => p['is_process_parameter'] == true).length})',
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: _activeCategoryTab == 'process'
+                                        ? Colors.white
+                                        : const Color(0xFF334155),
                                     fontSize: 11,
                                     fontWeight: _activeCategoryTab == 'process'
                                         ? FontWeight.w900
@@ -450,13 +452,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: _activeCategoryTab == 'product'
-                                ? const Color(0xFF0284C7)
-                                : const Color(0xFF1E293B),
+                                ? const Color(0xFF0EA5E9)
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: _activeCategoryTab == 'product'
                                   ? const Color(0xFF38BDF8)
-                                  : const Color(0xFF334155),
+                                  : const Color(0xFFCBD5E1),
                               width: _activeCategoryTab == 'product'
                                   ? 1.8
                                   : 1.0,
@@ -472,7 +474,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                   'Product (${_parameters.where((p) => p['is_process_parameter'] != true).length})',
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: _activeCategoryTab == 'product'
+                                        ? Colors.white
+                                        : const Color(0xFF334155),
                                     fontSize: 11,
                                     fontWeight: _activeCategoryTab == 'product'
                                         ? FontWeight.w900
@@ -496,21 +500,21 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: _activeCategoryTab == 'all'
-                              ? const Color(0xFF334155)
-                              : const Color(0xFF0F172A),
+                              ? const Color(0xFFE2E8F0)
+                              : Colors.white,
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: _activeCategoryTab == 'all'
-                                ? const Color(0xFF94A3B8)
-                                : const Color(0xFF1E293B),
+                                ? const Color(0xFF64748B)
+                                : const Color(0xFFCBD5E1),
                           ),
                         ),
                         child: Text(
                           'All (${_parameters.length})',
                           style: TextStyle(
                             color: _activeCategoryTab == 'all'
-                                ? Colors.white
-                                : const Color(0xFF94A3B8),
+                                ? const Color(0xFF334155)
+                                : const Color(0xFF64748B),
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -528,7 +532,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                 children: [
                   const Icon(
                     Icons.touch_app_rounded,
-                    color: Color(0xFF94A3B8),
+                    color: Color(0xFF64748B),
                     size: 14,
                   ),
                   const SizedBox(width: 6),
@@ -537,7 +541,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                         ? 'Tap tile to enter ${_activeCategoryTab.toUpperCase()} parameter'
                         : 'Tap any tile to inspect with Auto-Advance',
                     style: TextStyle(
-                      color: Colors.grey.shade400,
+                      color: Color(0xFF64748B),
                       fontSize: 11.5,
                       fontWeight: FontWeight.w500,
                     ),
@@ -549,24 +553,24 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.15),
+                      color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(
-                        color: const Color(0xFFEF4444).withValues(alpha: 0.4),
+                        color: const Color(0xFFFCA5A5),
                       ),
                     ),
                     child: const Row(
                       children: [
                         Icon(
                           Icons.warning_amber_rounded,
-                          color: Color(0xFFEF4444),
+                          color: Color(0xFFDC2626),
                           size: 10,
                         ),
                         SizedBox(width: 3),
                         Text(
                           '◑ Critical',
                           style: TextStyle(
-                            color: Color(0xFFF87171),
+                            color: Color(0xFFDC2626),
                             fontSize: 9.5,
                             fontWeight: FontWeight.bold,
                           ),
@@ -604,7 +608,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           Text(
                             'No ${_activeCategoryTab.toUpperCase()} parameters configured.',
                             style: const TextStyle(
-                              color: Color(0xFF94A3B8),
+                              color: Color(0xFF64748B),
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
                             ),
@@ -621,22 +625,22 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: Colors.white,
                 border: Border(
-                  top: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                  top: BorderSide(color: Color(0xFFE2E8F0)),
                 ),
               ),
               child: ElevatedButton.icon(
                 onPressed: () => _startDataEntry(startIndex: 0),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4F46E5),
+                  backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
                   elevation: 4,
-                  shadowColor: const Color(0xFF4F46E5).withValues(alpha: 0.5),
+                  shadowColor: const Color(0xFF2563EB).withValues(alpha: 0.25),
                 ),
                 icon: const Icon(Icons.bolt_rounded, size: 22),
                 label: Text(
@@ -694,19 +698,19 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
         }
 
         // Clean Card theme
-        Color cardBg = const Color(0xFF1E293B);
-        Color borderCol = const Color(0xFF334155);
+        Color cardBg = Colors.white;
+        Color borderCol = const Color(0xFFE2E8F0);
 
         if (isRecorded) {
           if (status == 'ok') {
-            cardBg = const Color(0xFF064E3B).withValues(alpha: 0.35);
+            cardBg = const Color(0xFFECFDF5);
             borderCol = const Color(0xFF059669);
           } else {
-            cardBg = const Color(0xFF7F1D1D).withValues(alpha: 0.35);
+            cardBg = const Color(0xFFFEF2F2);
             borderCol = const Color(0xFFDC2626);
           }
         } else if (isCritical) {
-          borderCol = const Color(0xFFF87171).withValues(alpha: 0.6);
+          borderCol = const Color(0xFFFCA5A5);
         }
 
         return Material(
@@ -747,13 +751,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                               vertical: 2.5,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0F172A),
+                              color: const Color(0xFFEFF6FF),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               code,
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: const Color(0xFF1D4ED8),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -777,28 +781,24 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFEF4444,
-                            ).withValues(alpha: 0.15),
+                            color: const Color(0xFFFEF2F2),
                             borderRadius: BorderRadius.circular(4),
                             border: Border.all(
-                              color: const Color(
-                                0xFFEF4444,
-                              ).withValues(alpha: 0.5),
+                              color: const Color(0xFFFCA5A5),
                             ),
                           ),
                           child: const Row(
                             children: [
                               Icon(
                                 Icons.warning_amber_rounded,
-                                color: Color(0xFFEF4444),
+                                color: Color(0xFFDC2626),
                                 size: 10,
                               ),
                               SizedBox(width: 2),
                               Text(
                                 'Critical',
                                 style: TextStyle(
-                                  color: Color(0xFFF87171),
+                                  color: Color(0xFFDC2626),
                                   fontSize: 9,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -820,7 +820,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: Color(0xFF0F172A),
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
                             height: 1.15,
@@ -832,7 +832,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF94A3B8),
+                            color: Color(0xFF64748B),
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
@@ -848,13 +848,9 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                     decoration: BoxDecoration(
                       color: isRecorded
                           ? (status == 'ok'
-                                ? const Color(
-                                    0xFF10B981,
-                                  ).withValues(alpha: 0.18)
-                                : const Color(
-                                    0xFFEF4444,
-                                  ).withValues(alpha: 0.18))
-                          : const Color(0xFF0F172A),
+                                ? const Color(0xFFD1FAE5)
+                                : const Color(0xFFFEE2E2))
+                          : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Center(
@@ -867,8 +863,8 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                       ? Icons.check_circle_rounded
                                       : Icons.cancel_rounded,
                                   color: status == 'ok'
-                                      ? const Color(0xFF34D399)
-                                      : const Color(0xFFF87171),
+                                      ? const Color(0xFF059669)
+                                      : const Color(0xFFDC2626),
                                   size: 13,
                                 ),
                                 const SizedBox(width: 4),
@@ -881,8 +877,8 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                                       : (status == 'ok' ? 'OK' : 'FAIL'),
                                   style: TextStyle(
                                     color: status == 'ok'
-                                        ? const Color(0xFF34D399)
-                                        : const Color(0xFFF87171),
+                                        ? const Color(0xFF059669)
+                                        : const Color(0xFFDC2626),
                                     fontSize: 11,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -930,16 +926,16 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isRecorded
                   ? (status == 'ok'
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444))
+                        ? const Color(0xFF059669)
+                        : const Color(0xFFDC2626))
                   : (isCritical
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.5)
-                        : const Color(0xFF334155)),
+                        ? const Color(0xFFFCA5A5)
+                        : const Color(0xFFE2E8F0)),
             ),
           ),
           child: ListTile(
@@ -951,13 +947,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             leading: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
+                color: const Color(0xFFEFF6FF),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 code,
                 style: const TextStyle(
-                  color: Color(0xFF818CF8),
+                  color: Color(0xFF1D4ED8),
                   fontWeight: FontWeight.w900,
                   fontSize: 13,
                 ),
@@ -969,7 +965,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                   child: Text(
                     name,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: const Color(0xFF0F172A),
                       fontWeight: FontWeight.bold,
                       fontSize: 13.5,
                     ),
@@ -982,13 +978,13 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+                      color: const Color(0xFFFEF2F2),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Text(
                       'CRITICAL',
                       style: TextStyle(
-                        color: Color(0xFFF87171),
+                        color: Color(0xFFDC2626),
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
                       ),
@@ -998,7 +994,7 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
             ),
             subtitle: Text(
               'Spec: $spec  •  $technique',
-              style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+              style: const TextStyle(color: Color(0xFF64748B), fontSize: 11.5),
             ),
             trailing: isRecorded
                 ? Icon(
@@ -1006,8 +1002,8 @@ class _ParameterListScreenState extends State<ParameterListScreen> {
                         ? Icons.check_circle_rounded
                         : Icons.cancel_rounded,
                     color: status == 'ok'
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFEF4444),
+                        ? const Color(0xFF059669)
+                        : const Color(0xFFDC2626),
                   )
                 : const Icon(
                     Icons.arrow_forward_ios_rounded,
