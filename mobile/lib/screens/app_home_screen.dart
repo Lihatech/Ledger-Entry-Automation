@@ -213,6 +213,12 @@ class _AppHomeScreenState extends State<AppHomeScreen>
     if (!mounted || selected == null || selected == auth.assignedShift) return;
     final result = await auth.changeAssignedShift(selected);
     if (!mounted) return;
+    if (result['success'] == true) {
+      // Keep server-side reports intact, but do not reuse a local session from
+      // the previous shift when the next inspection screen is opened.
+      await Provider.of<InspectionProvider>(context, listen: false)
+          .resetSessionState();
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(

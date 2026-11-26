@@ -128,6 +128,10 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     int trialNumber,
   ) async {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final selectedShift = auth.assignedShift == 'ALL'
+        ? provider.shift
+        : auth.assignedShift;
     provider.clearPendingValues();
     if (trialNumber == 1) {
       await provider.loadParameters(template, isFirstPiece: true);
@@ -136,6 +140,7 @@ class _InspectorHomeScreenState extends State<InspectorHomeScreen> {
     }
 
     final started = await provider.startSession(
+      shift: selectedShift,
       trial: trialNumber,
       inspectionType: 'first_piece',
     );
