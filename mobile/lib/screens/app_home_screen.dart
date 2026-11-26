@@ -229,6 +229,7 @@ class _AppHomeScreenState extends State<AppHomeScreen>
 
   void _showNotificationsModal(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     final notificationProvider = Provider.of<NotificationProvider>(
       context,
       listen: false,
