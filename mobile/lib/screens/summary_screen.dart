@@ -16,6 +16,7 @@ class SummaryScreen extends StatefulWidget {
 
 class _SummaryScreenState extends State<SummaryScreen> {
   bool _isSubmitting = false;
+  Map<String, Map<String, dynamic>>? _displayResults;
 
   String _formatSpecSubtitle(Map<String, dynamic> param) {
     if (param['is_process_parameter'] == true) {
@@ -97,7 +98,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
   Widget build(BuildContext context) {
     final provider = Provider.of<InspectionProvider>(context);
     final auth = Provider.of<AuthProvider>(context);
-    final results = provider.recordedResults;
+    final results = _displayResults ?? provider.recordedResults;
     final isInspector = auth.isInspector;
 
     return Scaffold(
@@ -351,6 +352,12 @@ class _SummaryScreenState extends State<SummaryScreen> {
                         });
 
                         Map<String, dynamic>? finalResult;
+                        final displayResults = provider.recordedResults.map(
+                          (key, value) => MapEntry(
+                            key,
+                            Map<String, dynamic>.from(value),
+                          ),
+                        );
                         if (isInspector) {
                           finalResult = await provider
                               .finalizeFirstPieceSession();
@@ -362,6 +369,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
 
                         setState(() {
                           _isSubmitting = false;
+                          _displayResults = displayResults;
                         });
 
                         _showCompletionDialog(provider, finalResult);
@@ -406,7 +414,7 @@ class _SummaryScreenState extends State<SummaryScreen> {
     InspectionProvider provider, [
     Map<String, dynamic>? finalResult,
   ]) {
-    final results = provider.recordedResults;
+    final results = _displayResults ?? provider.recordedResults;
     final totalParams = provider.parameters.length;
     int okCount = 0;
     int oocCount = 0;
